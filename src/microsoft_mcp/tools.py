@@ -1,166 +1,116 @@
 import base64
-import datetime as dt
 from typing import Any
 from fastmcp import FastMCP
 from . import graph, auth
-from .drive_operations import (
-    create_folder,
-    move_item,
-    delete_item,
-)
-from .email_utils import EmailBody
-from .health import check_health
 
 mcp = FastMCP("microsoft-mcp")
 
 
 @mcp.tool
-def list_signed_in_accounts() -> list[dict[str, str]]:
-    """Show all Microsoft accounts signed in to this MCP server"""
+def list_accounts() -> list[dict[str, str]]:
+    """List all signed-in Microsoft accounts"""
     return [
-        {"username": account.username, "account_id": account.home_account_id}
-        for account in auth.list_accounts()
+        {"username": acc.username, "account_id": acc.account_id}
+        for acc in auth.list_accounts()
     ]
 
 
 @mcp.tool
-def read_latest_email(
-    count: int = 5, account_id: str | None = None
-) -> list[dict[str, str]]:
-    """Return the N most-recent inbox messages (id, subject, sender)"""
-    messages = graph.list_messages(top=count, account_id=account_id)
-    return [
-        {
-            "id": msg["id"],
-            "subject": msg["subject"],
-            "from": msg["from"]["emailAddress"]["address"],
+def read_emails(count: int = 10, folder: str = "inbox", account_id: str | None = None) -> list[dict[str, Any]]:
+    """Read emails from any folder (inbox, sentitems, drafts, etc)"""
+    result = graph.request("GET", f"/me/mailFolders/{folder}/messages", account_id, params={"$top": count})
+    return result["value"] if result else []
+
+
+@mcp.tool  
+def send_email(to: str, subject: str, body: str, account_id: str | None = None) -> str:
+    """Send an email"""
+    payload = {
+        "message": {
+            "subject": subject,
+            "body": {"contentType": "Text", "content": body},
+            "toRecipients": [{"emailAddress": {"address": to}}]
         }
-        for msg in messages["value"]
-    ]
-
-
-@mcp.tool
-def send_email(
-    to: str, subject: str, body: str = "", account_id: str | None = None
-) -> str:
-    """Send a plain-text email via Outlook"""
-    graph.send_mail(subject, body, to, account_id=account_id)
+    }
+    graph.request("POST", "/me/sendMail", account_id, json=payload)
     return "sent"
 
 
 @mcp.tool
-def send_html_email(
-    to: str | list[str],
-    subject: str,
-    body_html: str,
-    cc: list[str] | None = None,
-    bcc: list[str] | None = None,
-    account_id: str | None = None,
-) -> str:
-    """Send an HTML email via Outlook with optional CC/BCC recipients"""
-    email_body = EmailBody(content=body_html, content_type="HTML")
-    graph.send_mail(subject, email_body, to, cc=cc, bcc=bcc, account_id=account_id)
-    return "sent"
+def get_calendar_events(days: int = 7, account_id: str | None = None) -> list[dict[str, Any]]:
+    """Get calendar events for next N days"""
+    params = {
+        "$filter": f"start/dateTime ge '{graph.request('GET', '/me', account_id)['createdDateTime']}'"
+    }
+    result = graph.request("GET", "/me/events", account_id, params=params)
+    return result["value"][:days * 5] if result else []
 
 
 @mcp.tool
-def create_calendar_event(
-    subject: str,
-    start_iso: str,
-    end_iso: str,
-    attendees: list[str] | None = None,
-    account_id: str | None = None,
-) -> str:
-    """Create an event in the default calendar and return its ID"""
-    event = graph.create_event(
-        subject, start_iso, end_iso, attendees, account_id=account_id
-    )
-    return event["id"]
+def create_event(subject: str, start: str, end: str, attendees: list[str] | None = None, account_id: str | None = None) -> str:
+    """Create calendar event (ISO datetime format for start/end)"""
+    event = {
+        "subject": subject,
+        "start": {"dateTime": start, "timeZone": "UTC"},
+        "end": {"dateTime": end, "timeZone": "UTC"},
+    }
+    if attendees:
+        event["attendees"] = [{"emailAddress": {"address": a}, "type": "required"} for a in attendees]
+    
+    result = graph.request("POST", "/me/events", account_id, json=event)
+    return result["id"] if result else "error"
 
 
 @mcp.tool
-def upcoming_events(
-    days: int = 7, account_id: str | None = None
-) -> list[dict[str, Any]]:
-    """List next N days of events (UTC)"""
-    now = dt.datetime.utcnow()
-    end = now + dt.timedelta(days=days)
-    events = graph.list_events(now, end, account_id=account_id)
-    return events["value"]
-
-
-@mcp.tool
-def drive_info(account_id: str | None = None) -> dict[str, Any]:
-    """Retrieve basic OneDrive metadata"""
-    return graph.get_drive(account_id=account_id)
-
-
-@mcp.tool
-def list_files_in_root(
-    max_items: int = 20, account_id: str | None = None
-) -> list[dict[str, Any]]:
-    """List file/folder names in the root of OneDrive"""
-    items = graph.list_root_children(top=max_items, account_id=account_id)
+def list_files(path: str = "/", account_id: str | None = None) -> list[dict[str, str]]:
+    """List files in OneDrive folder"""
+    endpoint = "/me/drive/root/children" if path == "/" else f"/me/drive/root:/{path}:/children"
+    result = graph.request("GET", endpoint, account_id)
+    
     return [
-        {"name": item["name"], "id": item["id"], "is_folder": "folder" in item}
-        for item in items["value"]
-    ]
+        {"name": item["name"], "id": item["id"], "type": "folder" if "folder" in item else "file"}
+        for item in result.get("value", [])
+    ] if result else []
 
 
 @mcp.tool
-def download_drive_item(item_id: str, account_id: str | None = None) -> str:
-    """Download a OneDrive file; returns raw bytes (base64-encoded)"""
-    data = graph.download_file(item_id, account_id=account_id)
-    return base64.b64encode(data).decode()
+def download_file(file_id: str, account_id: str | None = None) -> str:
+    """Download file content as base64"""
+    content = graph.download_raw(f"/me/drive/items/{file_id}/content", account_id)
+    return base64.b64encode(content).decode()
 
 
 @mcp.tool
-def upload_drive_file(
-    path: str, content_base64: str, account_id: str | None = None
-) -> dict[str, str]:
-    """Upload a file to OneDrive at the given path (e.g. 'notes/todo.txt')"""
+def upload_file(path: str, content_base64: str, account_id: str | None = None) -> dict[str, str]:
+    """Upload file to OneDrive"""
     data = base64.b64decode(content_base64)
-    info = graph.upload_file(path, data, account_id=account_id)
-    return {"id": info["id"], "web_url": info["webUrl"]}
+    result = graph.request("PUT", f"/me/drive/root:/{path}:/content", account_id, data=data)
+    return {"id": result["id"], "name": result["name"]} if result else {"error": "upload failed"}
 
 
 @mcp.tool
-def create_drive_folder(
-    parent_path: str, folder_name: str, account_id: str | None = None
-) -> dict[str, str]:
-    """Create a new folder in OneDrive"""
-    result = create_folder(parent_path, folder_name, account_id)
-    return {"id": result["id"], "name": result["name"]}
-
-
-@mcp.tool
-def delete_drive_item(item_id: str, account_id: str | None = None) -> str:
-    """Delete a file or folder from OneDrive"""
-    delete_item(item_id, account_id)
+def delete_file(file_id: str, account_id: str | None = None) -> str:
+    """Delete file or folder"""
+    graph.request("DELETE", f"/me/drive/items/{file_id}", account_id)
     return "deleted"
 
 
 @mcp.tool
-def move_drive_item(
-    item_id: str,
-    new_parent_id: str,
-    new_name: str | None = None,
-    account_id: str | None = None,
-) -> dict[str, str]:
-    """Move or rename a file/folder in OneDrive"""
-    result = move_item(item_id, new_parent_id, new_name, account_id)
-    return {"id": result["id"], "name": result["name"]}
-
-
-@mcp.tool
-def health_check(account_id: str | None = None) -> dict[str, Any]:
-    """Check the health status of the Microsoft MCP server"""
-    status = check_health(account_id)
-    return {
-        "healthy": status.healthy,
-        "message": status.message,
-        "checked_at": status.checked_at,
-        "auth_status": status.auth_status,
-        "api_status": status.api_status,
-        "accounts_count": status.accounts_count,
-    }
+def search(query: str, types: list[str] | None = None, account_id: str | None = None) -> list[dict[str, Any]]:
+    """Search across emails, files, and events"""
+    search_types = types or ["message", "event", "drive"]
+    results = []
+    
+    for entity_type in search_types:
+        payload = {
+            "requests": [{
+                "entityTypes": [entity_type],
+                "query": {"queryString": query}
+            }]
+        }
+        result = graph.request("POST", "/search/query", account_id, json=payload)
+        if result:
+            for response in result.get("value", []):
+                results.extend(response.get("hitsContainers", [{}])[0].get("hits", []))
+    
+    return results

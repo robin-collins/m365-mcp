@@ -1,109 +1,54 @@
 # Microsoft MCP
 
-Microsoft Graph MCP server for Outlook, Calendar, and OneDrive with multi-account support.
-
-## Features
-
-- Multi-account support: Manage multiple Microsoft accounts (personal, work, university)
-- Email: Read inbox messages, send emails
-- Calendar: View upcoming events, create new events
-- OneDrive: List files, upload/download files
-- Device-code authentication: No redirect server needed
-- Token caching: Sign in once per account
+Minimal, powerful MCP server for Microsoft Graph API (Outlook, Calendar, OneDrive).
 
 ## Quick Start
 
-### 1. Install
-
 ```bash
-git clone https://github.com/your-org/microsoft-mcp
-cd microsoft-mcp
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv sync
-```
+# Install
+uv add microsoft-mcp
 
-### 2. Azure App Registration
+# Set up (get client ID from Azure Portal)
+export MICROSOFT_MCP_CLIENT_ID="your-app-id"
 
-Register an app in Azure AD (free):
-
-1. Go to Azure Portal > Microsoft Entra ID > App registrations
-2. Click "New registration"
-3. Name: microsoft-mcp
-4. Supported account types: Accounts in any organizational directory and personal Microsoft accounts
-5. Authentication > Allow public client flows: Yes
-6. API permissions > Add delegated permissions: Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, Files.ReadWrite, offline_access, User.Read
-7. Copy the Application (client) ID
-
-### 3. Environment Setup
-
-```bash
-export MICROSOFT_MCP_CLIENT_ID="your-app-id-here"
-export MICROSOFT_MCP_TENANT_ID="common"  # or "consumers" for personal accounts only
-```
-
-**Note**: If you get "Need admin approval" error, either:
-- Use `MICROSOFT_MCP_TENANT_ID="consumers"` for personal Microsoft accounts only
-- Ask your organization's admin to grant consent for the app
-- Use a personal Microsoft account instead of a work/school account
-
-### 4. Run the Server
-
-```bash
+# Run
 uv run microsoft-mcp
 ```
 
-On first run, visit the displayed URL and enter the device code to authenticate.
+## Azure Setup
 
-## Available Tools
+1. Go to [Azure Portal](https://portal.azure.com) → Microsoft Entra ID → App registrations
+2. New registration → Name: `microsoft-mcp`
+3. Supported accounts: Personal + Work/School
+4. Authentication → Allow public client flows: Yes
+5. API permissions → Add: Mail.ReadWrite, Calendars.ReadWrite, Files.ReadWrite
+6. Copy Application ID
 
-### Email
-- read_latest_email(count, account_id) - Get recent inbox messages
-- send_email(to, subject, body, account_id) - Send plain text email
-- send_html_email(to, subject, body_html, cc, bcc, account_id) - Send HTML email with CC/BCC support
+## Tools
 
-### Calendar
-- upcoming_events(days, account_id) - List events for next N days
-- create_calendar_event(subject, start_iso, end_iso, attendees, account_id) - Create new event
+- `list_accounts()` - Show signed-in accounts
+- `read_emails(count, folder, account_id)` - Read from any mail folder  
+- `send_email(to, subject, body, account_id)` - Send email
+- `get_calendar_events(days, account_id)` - List calendar events
+- `create_event(subject, start, end, attendees, account_id)` - Create event
+- `list_files(path, account_id)` - Browse OneDrive
+- `download_file(file_id, account_id)` - Download as base64
+- `upload_file(path, content_base64, account_id)` - Upload file
+- `delete_file(file_id, account_id)` - Delete file/folder
+- `search(query, types, account_id)` - Search across services
 
-### OneDrive
-- drive_info(account_id) - Get drive metadata
-- list_files_in_root(max_items, account_id) - List root folder contents
-- download_drive_item(item_id, account_id) - Download file as base64
-- upload_drive_file(path, content_base64, account_id) - Upload file
-- create_drive_folder(parent_path, folder_name, account_id) - Create new folder
-- delete_drive_item(item_id, account_id) - Delete file or folder
-- move_drive_item(item_id, new_parent_id, new_name, account_id) - Move/rename items
+## Multi-Account
 
-### Accounts
-- list_signed_in_accounts() - Show all cached accounts
-- health_check(account_id) - Check server health and connectivity
-
-## Multi-Account Usage
-
-All tools accept an optional account_id parameter. Use list_signed_in_accounts() to get account IDs.
+All tools support `account_id` parameter. Use `list_accounts()` to get IDs.
 
 ```python
-# Use default account
-client.tools.read_latest_email()
+# Default account
+send_email("user@example.com", "Hi", "Hello!")
 
-# Use specific account
-client.tools.read_latest_email(account_id="account-id-here")
+# Specific account  
+send_email("user@example.com", "Hi", "Hello!", account_id="abc123")
 ```
 
-## Advanced Features
+## License
 
-### Automatic Retry Logic
-All API calls include automatic retry with exponential backoff for rate limits and transient errors.
-
-### Request Logging
-Enable detailed request/response logging:
-```bash
-export MICROSOFT_MCP_LOG_LEVEL=DEBUG
-export MICROSOFT_MCP_LOG_REQUESTS=true
-```
-
-### Token Management
-Tokens are automatically refreshed in the background before expiration.
-
-### Health Monitoring
-Use the health_check tool to verify authentication and API connectivity.
+MIT

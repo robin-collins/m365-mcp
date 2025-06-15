@@ -51,9 +51,8 @@ def get_token(account_id: str | None = None) -> str:
     if "error" in result:
         raise Exception(f"Auth failed: {result.get('error_description', result['error'])}")
     
-    cache = app.token_cache
-    if cache.has_state_changed:
-        CACHE_FILE.write_text(cache.serialize())
+    if hasattr(app.token_cache, "has_state_changed") and app.token_cache.has_state_changed:
+        CACHE_FILE.write_text(app.token_cache.serialize())
     
     return result["access_token"]
 

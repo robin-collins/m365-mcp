@@ -39,11 +39,16 @@ def send_email(to: str, subject: str, body: str, account_id: str | None = None) 
 @mcp.tool
 def get_calendar_events(days: int = 7, account_id: str | None = None) -> list[dict[str, Any]]:
     """Get calendar events for next N days"""
+    import datetime as dt
+    start = dt.datetime.utcnow().isoformat() + "Z"
+    end = (dt.datetime.utcnow() + dt.timedelta(days=days)).isoformat() + "Z"
     params = {
-        "$filter": f"start/dateTime ge '{graph.request('GET', '/me', account_id)['createdDateTime']}'"
+        "$filter": f"start/dateTime ge '{start}' and start/dateTime le '{end}'",
+        "$orderby": "start/dateTime",
+        "$top": days * 5
     }
     result = graph.request("GET", "/me/events", account_id, params=params)
-    return result["value"][:days * 5] if result else []
+    return result["value"] if result else []
 
 
 @mcp.tool
@@ -98,19 +103,26 @@ def delete_file(file_id: str, account_id: str | None = None) -> str:
 @mcp.tool
 def search(query: str, types: list[str] | None = None, account_id: str | None = None) -> list[dict[str, Any]]:
     """Search across emails, files, and events"""
-    search_types = types or ["message", "event", "drive"]
-    results = []
+    search_types = types or ["message", "event", "driveItem"]
     
-    for entity_type in search_types:
-        payload = {
-            "requests": [{
-                "entityTypes": [entity_type],
-                "query": {"queryString": query}
-            }]
-        }
+    payload = {
+        "requests": [{
+            "entityTypes": search_types,
+            "query": {"queryString": query},
+            "from": 0,
+            "size": 25
+        }]
+    }
+    
+    try:
         result = graph.request("POST", "/search/query", account_id, json=payload)
-        if result:
-            for response in result.get("value", []):
-                results.extend(response.get("hitsContainers", [{}])[0].get("hits", []))
+        if result and "value" in result:
+            hits = []
+            for response in result["value"]:
+                for container in response.get("hitsContainers", []):
+                    hits.extend(container.get("hits", []))
+            return hits
+    except Exception:
+        pass
     
-    return results
+    return []

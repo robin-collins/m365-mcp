@@ -37,7 +37,7 @@ def request(
 def download_raw(path: str, account_id: str | None = None) -> bytes:
     headers = {"Authorization": f"Bearer {get_token(account_id)}"}
     
-    with httpx.Client() as client:
+    with httpx.Client(follow_redirects=True) as client:
         response = client.get(f"{BASE_URL}{path}", headers=headers)
         response.raise_for_status()
         return response.content

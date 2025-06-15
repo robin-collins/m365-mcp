@@ -43,20 +43,16 @@ def main():
         if choice == 'n':
             break
         elif choice == 'y':
-            print("\nAuthenticating new account...")
-            print("You'll be prompted to visit a URL and enter a code.")
-            
             try:
-                # This will trigger device code flow
-                token = auth.get_token()
-                print("\n✓ Authentication successful!")
+                # Use the new authentication function
+                new_account = auth.authenticate_new_account()
                 
-                # Show updated account list
-                accounts = auth.list_accounts()
-                if accounts:
-                    new_account = accounts[-1]  # Most recent is usually last
+                if new_account:
+                    print("\n✓ Authentication successful!")
                     print(f"Signed in as: {new_account.username}")
                     print(f"Account ID: {new_account.account_id}")
+                else:
+                    print("\n✗ Authentication failed: Could not retrieve account information")
             except Exception as e:
                 print(f"\n✗ Authentication failed: {e}")
                 continue

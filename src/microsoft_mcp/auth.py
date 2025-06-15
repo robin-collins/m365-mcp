@@ -45,7 +45,10 @@ def get_token(account_id: str | None = None) -> str:
     
     if not result:
         flow = app.initiate_device_flow(scopes=SCOPES)
-        print(f"\nTo authenticate:\n1. Visit {flow['verification_uri']}\n2. Enter code: {flow['user_code']}")
+        if "user_code" not in flow:
+            raise Exception(f"Failed to get device code: {flow.get('error_description', 'Unknown error')}")
+        verification_uri = flow.get('verification_uri', flow.get('verification_url', 'https://microsoft.com/devicelogin'))
+        print(f"\nTo authenticate:\n1. Visit {verification_uri}\n2. Enter code: {flow['user_code']}")
         result = app.acquire_token_by_device_flow(flow)
     
     if "error" in result:
@@ -63,3 +66,39 @@ def list_accounts() -> list[Account]:
         Account(username=a["username"], account_id=a["home_account_id"])
         for a in app.get_accounts()
     ]
+
+
+def authenticate_new_account() -> Account | None:
+    """Authenticate a new account interactively"""
+    app = get_app()
+    
+    flow = app.initiate_device_flow(scopes=SCOPES)
+    if "user_code" not in flow:
+        raise Exception(f"Failed to get device code: {flow.get('error_description', 'Unknown error')}")
+    
+    print(f"\nTo authenticate:")
+    print(f"1. Visit: {flow.get('verification_uri', flow.get('verification_url', 'https://microsoft.com/devicelogin'))}")
+    print(f"2. Enter code: {flow['user_code']}")
+    print(f"3. Sign in with your Microsoft account")
+    print(f"\nWaiting for authentication...")
+    
+    result = app.acquire_token_by_device_flow(flow)
+    
+    if "error" in result:
+        raise Exception(f"Auth failed: {result.get('error_description', result['error'])}")
+    
+    if hasattr(app.token_cache, "has_state_changed") and app.token_cache.has_state_changed:
+        CACHE_FILE.write_text(app.token_cache.serialize())
+    
+    # Get the newly added account
+    accounts = app.get_accounts()
+    if accounts:
+        # Find the account that matches the token we just got
+        for account in accounts:
+            if account.get("username", "").lower() == result.get("id_token_claims", {}).get("preferred_username", "").lower():
+                return Account(username=account["username"], account_id=account["home_account_id"])
+        # If exact match not found, return the last account
+        account = accounts[-1]
+        return Account(username=account["username"], account_id=account["home_account_id"])
+    
+    return None

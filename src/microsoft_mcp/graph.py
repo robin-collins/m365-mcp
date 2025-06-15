@@ -17,7 +17,7 @@ def request(
         "Authorization": f"Bearer {get_token(account_id)}",
         "Content-Type": "application/json" if json else "application/octet-stream",
     }
-    
+
     with httpx.Client() as client:
         response = client.request(
             method=method,
@@ -28,7 +28,7 @@ def request(
             content=data,
         )
         response.raise_for_status()
-        
+
         if response.content:
             return response.json()
         return None
@@ -36,7 +36,7 @@ def request(
 
 def download_raw(path: str, account_id: str | None = None) -> bytes:
     headers = {"Authorization": f"Bearer {get_token(account_id)}"}
-    
+
     with httpx.Client(follow_redirects=True) as client:
         response = client.get(f"{BASE_URL}{path}", headers=headers)
         response.raise_for_status()

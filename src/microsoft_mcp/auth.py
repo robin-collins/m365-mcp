@@ -19,51 +19,65 @@ def get_app() -> msal.PublicClientApplication:
     client_id = os.getenv("MICROSOFT_MCP_CLIENT_ID")
     if not client_id:
         raise ValueError("MICROSOFT_MCP_CLIENT_ID environment variable is required")
-    
+
     tenant_id = os.getenv("MICROSOFT_MCP_TENANT_ID", "common")
     authority = f"https://login.microsoftonline.com/{tenant_id}"
-    
+
     cache = msal.SerializableTokenCache()
     if CACHE_FILE.exists():
         cache.deserialize(CACHE_FILE.read_text())
-    
+
     app = msal.PublicClientApplication(
         client_id, authority=authority, token_cache=cache
     )
-    
+
     if cache.has_state_changed:
         CACHE_FILE.write_text(cache.serialize())
-    
+
     return app
 
 
 def get_token(account_id: str | None = None) -> str:
     app = get_app()
-    
+
     accounts = app.get_accounts()
     account = None
-    
+
     if account_id:
-        account = next((a for a in accounts if a["home_account_id"] == account_id), None)
+        account = next(
+            (a for a in accounts if a["home_account_id"] == account_id), None
+        )
     elif accounts:
         account = accounts[0]
-    
+
     result = app.acquire_token_silent(SCOPES, account=account)
-    
+
     if not result:
         flow = app.initiate_device_flow(scopes=SCOPES)
         if "user_code" not in flow:
-            raise Exception(f"Failed to get device code: {flow.get('error_description', 'Unknown error')}")
-        verification_uri = flow.get('verification_uri', flow.get('verification_url', 'https://microsoft.com/devicelogin'))
-        print(f"\nTo authenticate:\n1. Visit {verification_uri}\n2. Enter code: {flow['user_code']}")
+            raise Exception(
+                f"Failed to get device code: {flow.get('error_description', 'Unknown error')}"
+            )
+        verification_uri = flow.get(
+            "verification_uri",
+            flow.get("verification_url", "https://microsoft.com/devicelogin"),
+        )
+        print(
+            f"\nTo authenticate:\n1. Visit {verification_uri}\n2. Enter code: {flow['user_code']}"
+        )
         result = app.acquire_token_by_device_flow(flow)
-    
+
     if "error" in result:
-        raise Exception(f"Auth failed: {result.get('error_description', result['error'])}")
-    
-    if hasattr(app.token_cache, "has_state_changed") and app.token_cache.has_state_changed:
+        raise Exception(
+            f"Auth failed: {result.get('error_description', result['error'])}"
+        )
+
+    if (
+        hasattr(app.token_cache, "has_state_changed")
+        and app.token_cache.has_state_changed
+    ):
         CACHE_FILE.write_text(app.token_cache.serialize())
-    
+
     return result["access_token"]
 
 
@@ -78,34 +92,52 @@ def list_accounts() -> list[Account]:
 def authenticate_new_account() -> Account | None:
     """Authenticate a new account interactively"""
     app = get_app()
-    
+
     flow = app.initiate_device_flow(scopes=SCOPES)
     if "user_code" not in flow:
-        raise Exception(f"Failed to get device code: {flow.get('error_description', 'Unknown error')}")
-    
-    print(f"\nTo authenticate:")
-    print(f"1. Visit: {flow.get('verification_uri', flow.get('verification_url', 'https://microsoft.com/devicelogin'))}")
+        raise Exception(
+            f"Failed to get device code: {flow.get('error_description', 'Unknown error')}"
+        )
+
+    print("\nTo authenticate:")
+    print(
+        f"1. Visit: {flow.get('verification_uri', flow.get('verification_url', 'https://microsoft.com/devicelogin'))}"
+    )
     print(f"2. Enter code: {flow['user_code']}")
-    print(f"3. Sign in with your Microsoft account")
-    print(f"\nWaiting for authentication...")
-    
+    print("3. Sign in with your Microsoft account")
+    print("\nWaiting for authentication...")
+
     result = app.acquire_token_by_device_flow(flow)
-    
+
     if "error" in result:
-        raise Exception(f"Auth failed: {result.get('error_description', result['error'])}")
-    
-    if hasattr(app.token_cache, "has_state_changed") and app.token_cache.has_state_changed:
+        raise Exception(
+            f"Auth failed: {result.get('error_description', result['error'])}"
+        )
+
+    if (
+        hasattr(app.token_cache, "has_state_changed")
+        and app.token_cache.has_state_changed
+    ):
         CACHE_FILE.write_text(app.token_cache.serialize())
-    
+
     # Get the newly added account
     accounts = app.get_accounts()
     if accounts:
         # Find the account that matches the token we just got
         for account in accounts:
-            if account.get("username", "").lower() == result.get("id_token_claims", {}).get("preferred_username", "").lower():
-                return Account(username=account["username"], account_id=account["home_account_id"])
+            if (
+                account.get("username", "").lower()
+                == result.get("id_token_claims", {})
+                .get("preferred_username", "")
+                .lower()
+            ):
+                return Account(
+                    username=account["username"], account_id=account["home_account_id"]
+                )
         # If exact match not found, return the last account
         account = accounts[-1]
-        return Account(username=account["username"], account_id=account["home_account_id"])
-    
+        return Account(
+            username=account["username"], account_id=account["home_account_id"]
+        )
+
     return None

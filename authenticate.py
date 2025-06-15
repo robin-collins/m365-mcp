@@ -19,16 +19,15 @@ from microsoft_mcp import auth
 
 
 def main():
-    
     if not os.getenv("MICROSOFT_MCP_CLIENT_ID"):
         print("Error: MICROSOFT_MCP_CLIENT_ID environment variable is required")
         print("\nPlease set it in your .env file or environment:")
         print("export MICROSOFT_MCP_CLIENT_ID='your-app-id'")
         sys.exit(1)
-    
+
     print("Microsoft MCP Authentication")
     print("============================\n")
-    
+
     # List current accounts
     accounts = auth.list_accounts()
     if accounts:
@@ -38,31 +37,33 @@ def main():
         print()
     else:
         print("No accounts currently authenticated.\n")
-    
+
     # Authenticate new account
     while True:
         choice = input("Do you want to authenticate a new account? (y/n): ").lower()
-        if choice == 'n':
+        if choice == "n":
             break
-        elif choice == 'y':
+        elif choice == "y":
             try:
                 # Use the new authentication function
                 new_account = auth.authenticate_new_account()
-                
+
                 if new_account:
                     print("\n✓ Authentication successful!")
                     print(f"Signed in as: {new_account.username}")
                     print(f"Account ID: {new_account.account_id}")
                 else:
-                    print("\n✗ Authentication failed: Could not retrieve account information")
+                    print(
+                        "\n✗ Authentication failed: Could not retrieve account information"
+                    )
             except Exception as e:
                 print(f"\n✗ Authentication failed: {e}")
                 continue
-            
+
             print()
         else:
             print("Please enter 'y' or 'n'")
-    
+
     # Final account summary
     accounts = auth.list_accounts()
     if accounts:
@@ -71,12 +72,14 @@ def main():
         for account in accounts:
             print(f"• {account.username}")
             print(f"  Account ID: {account.account_id}")
-        
-        print("\nYou can use these account IDs with any MCP tool by passing account_id parameter.")
+
+        print(
+            "\nYou can use these account IDs with any MCP tool by passing account_id parameter."
+        )
         print("Example: send_email(..., account_id='<account-id>')")
     else:
         print("\nNo accounts authenticated.")
-    
+
     print("\nAuthentication complete!")
 
 

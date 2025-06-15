@@ -9,6 +9,9 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
+# Load environment variables before anything else
+load_dotenv()
+
 # Add src to path so we can import our modules
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
@@ -16,7 +19,6 @@ from microsoft_mcp import auth
 
 
 def main():
-    load_dotenv()
     
     if not os.getenv("MICROSOFT_MCP_CLIENT_ID"):
         print("Error: MICROSOFT_MCP_CLIENT_ID environment variable is required")

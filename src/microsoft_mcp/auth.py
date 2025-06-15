@@ -2,12 +2,12 @@ import os
 import msal
 import pathlib as pl
 from typing import NamedTuple
+from dotenv import load_dotenv
 
-CLIENT_ID = os.getenv("MICROSOFT_MCP_CLIENT_ID")
-TENANT_ID = os.getenv("MICROSOFT_MCP_TENANT_ID", "common")
-AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
-SCOPES = ["https://graph.microsoft.com/.default"]
+load_dotenv()
+
 CACHE_FILE = pl.Path.home() / ".microsoft_mcp_token_cache.json"
+SCOPES = ["https://graph.microsoft.com/.default"]
 
 
 class Account(NamedTuple):
@@ -16,12 +16,19 @@ class Account(NamedTuple):
 
 
 def get_app() -> msal.PublicClientApplication:
+    client_id = os.getenv("MICROSOFT_MCP_CLIENT_ID")
+    if not client_id:
+        raise ValueError("MICROSOFT_MCP_CLIENT_ID environment variable is required")
+    
+    tenant_id = os.getenv("MICROSOFT_MCP_TENANT_ID", "common")
+    authority = f"https://login.microsoftonline.com/{tenant_id}"
+    
     cache = msal.SerializableTokenCache()
     if CACHE_FILE.exists():
         cache.deserialize(CACHE_FILE.read_text())
     
     app = msal.PublicClientApplication(
-        CLIENT_ID, authority=AUTHORITY, token_cache=cache
+        client_id, authority=authority, token_cache=cache
     )
     
     if cache.has_state_changed:

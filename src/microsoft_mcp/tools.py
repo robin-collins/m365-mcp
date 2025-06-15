@@ -22,10 +22,15 @@ def read_emails(
     include_body: bool = True,
     account_id: str | None = None
 ) -> list[dict[str, Any]]:
-    """Read emails with full details including body content"""
+    """Read emails from any folder (set include_body=False for subject/sender only)"""
+    if include_body:
+        select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead"
+    else:
+        select_fields = "id,subject,from,toRecipients,receivedDateTime,hasAttachments,conversationId,isRead"
+    
     params = {
         "$top": count,
-        "$select": "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead"
+        "$select": select_fields
     }
     result = graph.request("GET", f"/me/mailFolders/{folder}/messages", account_id, params=params)
     return result["value"] if result else []

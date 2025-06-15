@@ -2,24 +2,85 @@
 
 Powerful MCP server for Microsoft Graph API - a complete AI assistant toolkit for Outlook, Calendar, OneDrive, and Contacts.
 
-## Quick Start
+## Features
+
+- **Email Management**: Read, send, reply, manage attachments, organize folders
+- **Calendar Intelligence**: Create, update, check availability, respond to invitations
+- **OneDrive Files**: Upload, download, browse with pagination
+- **Contacts**: Search and list contacts from your address book
+- **Multi-Account**: Support for multiple Microsoft accounts (personal, work, school)
+- **Unified Search**: Search across emails, files, events, and people
+
+## Quick Start with Claude Desktop
 
 ```bash
-# Install
-uv add microsoft-mcp
+# Add Microsoft MCP server (replace with your Azure app ID)
+claude mcp add microsoft-mcp -e MICROSOFT_MCP_CLIENT_ID=your-app-id-here -- uvx --from git+https://github.com/elyxlz/microsoft-mcp.git microsoft-mcp
 
-# Set up (get client ID from Azure Portal)
-export MICROSOFT_MCP_CLIENT_ID="your-app-id"
-
-# Run
-uv run microsoft-mcp
+# Start Claude Desktop
+claude
 ```
 
-## Azure Setup
+### Usage Examples
+
+```bash
+# Email examples
+> read my latest emails with full content
+> reply to the email from John saying "I'll review this today"
+> send an email with attachment to alice@example.com
+
+# Calendar examples  
+> show my calendar for next week
+> check if I'm free tomorrow at 2pm
+> create a meeting with Bob next Monday at 10am
+
+# File examples
+> list files in my OneDrive
+> upload this report to OneDrive
+> search for "project proposal" across all my files
+
+# Multi-account
+> list all my Microsoft accounts
+> send email from my work account
+```
+
+## Available Tools
+
+### Email Tools
+- **`read_emails`** - Read emails with full body content
+- **`get_email`** - Get specific email with attachments
+- **`reply_to_email`** - Reply maintaining thread context
+- **`send_email`** - Send with CC/BCC and attachments
+- **`mark_email_read`** - Mark emails as read/unread
+- **`move_email`** - Move between folders
+- **`download_attachment`** - Download email attachments
+
+### Calendar Tools
+- **`get_calendar_events`** - List events with full details
+- **`check_availability`** - Check free/busy times
+- **`create_event`** - Create with location and attendees
+- **`update_event`** - Reschedule or modify events
+- **`delete_event`** - Cancel events
+- **`respond_to_event`** - Accept/decline invitations
+
+### Contact & File Tools
+- **`get_contacts`** - Search or list contacts
+- **`list_files`** - Browse OneDrive with pagination
+- **`upload_file`** - Upload files to OneDrive
+- **`download_file`** - Download file content
+- **`delete_file`** - Delete files or folders
+
+### Utility Tools
+- **`search`** - Universal search across all services
+- **`list_accounts`** - Show authenticated accounts
+
+## Manual Setup
+
+### 1. Azure App Registration
 
 1. Go to [Azure Portal](https://portal.azure.com) → Microsoft Entra ID → App registrations
 2. New registration → Name: `microsoft-mcp`
-3. Supported accounts: Personal + Work/School
+3. Supported account types: Personal + Work/School
 4. Authentication → Allow public client flows: Yes
 5. API permissions → Add these delegated permissions:
    - Mail.ReadWrite
@@ -30,82 +91,92 @@ uv run microsoft-mcp
    - User.Read
 6. Copy Application ID
 
-## Features for AI Assistants
+### 2. Installation
 
-### 📧 Email Management
-- **Read emails** with full body content and conversation threading
-- **Reply to emails** maintaining thread context
-- **Send emails** with CC/BCC and file attachments
-- **Manage email state**: mark as read/unread, move between folders
-- **Download attachments** from any email
-- **Get specific email** details including all attachments
+```bash
+git clone https://github.com/elyxlz/microsoft-mcp.git
+cd microsoft-mcp
+uv sync
+```
 
-### 📅 Calendar Intelligence
-- **List events** with complete details (location, attendees, body)
-- **Check availability** for smart scheduling
-- **Create events** with location, description, and attendees
-- **Update events** - reschedule, change details
-- **Delete/cancel events** with automatic notifications
-- **Respond to invitations** (accept/decline/tentative)
+### 3. Authentication
 
-### 👥 Contacts & People
-- **Search contacts** by name or email
-- **List all contacts** with full details
-- **People API** integration for richer data
+```bash
+# Set your Azure app ID
+export MICROSOFT_MCP_CLIENT_ID="your-app-id-here"
 
-### 📁 OneDrive Files
-- **Browse files** with pagination support
-- **Upload/download** any file type
-- **Delete files** and folders
-- **File metadata** including size and modification time
+# Run authentication script
+uv run authenticate.py
 
-### 🔍 Unified Search
-- **Search everything**: emails, events, files, and people
-- **Configurable result limits**
-- **Multi-type search** in one query
+# Follow the prompts to authenticate your Microsoft accounts
+```
 
-## All Tools
+### 4. Claude Desktop Configuration
 
-### Email Tools
-- `read_emails(count, folder, include_body, account_id)` - Read with full content
-- `get_email(email_id, account_id)` - Get specific email with attachments
-- `reply_to_email(email_id, body, reply_all, account_id)` - Thread-aware replies
-- `send_email(to, subject, body, cc, attachments, account_id)` - Full-featured sending
-- `mark_email_read(email_id, is_read, account_id)` - Manage read status
-- `move_email(email_id, destination_folder, account_id)` - Organize emails
-- `download_attachment(email_id, attachment_id, account_id)` - Get attachments
+Add to your Claude Desktop configuration:
 
-### Calendar Tools  
-- `get_calendar_events(days, include_details, account_id)` - Rich event data
-- `check_availability(start, end, attendees, account_id)` - Free/busy check
-- `create_event(subject, start, end, location, body, attendees, timezone, account_id)`
-- `update_event(event_id, subject, start, end, location, body, account_id)`
-- `delete_event(event_id, send_cancellation, account_id)`
-- `respond_to_event(event_id, response, message, account_id)`
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`  
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
-### Contact Tools
-- `get_contacts(search, limit, account_id)` - Search or list contacts
+```json
+{
+  "mcpServers": {
+    "microsoft": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/elyxlz/microsoft-mcp.git", "microsoft-mcp"],
+      "env": {
+        "MICROSOFT_MCP_CLIENT_ID": "your-app-id-here"
+      }
+    }
+  }
+}
+```
 
-### File Tools
-- `list_files(path, next_link, account_id)` - Browse with pagination
-- `download_file(file_id, account_id)` - Get file content
-- `upload_file(path, content_base64, account_id)` - Upload files
-- `delete_file(file_id, account_id)` - Remove files
+Or for local development:
 
-### Search & Discovery
-- `search(query, types, limit, account_id)` - Universal search
-- `list_accounts()` - Show all signed-in accounts
+```json
+{
+  "mcpServers": {
+    "microsoft": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/microsoft-mcp", "run", "microsoft-mcp"],
+      "env": {
+        "MICROSOFT_MCP_CLIENT_ID": "your-app-id-here"
+      }
+    }
+  }
+}
+```
 
 ## Multi-Account Support
 
-All tools support `account_id` parameter for multi-account scenarios:
+All tools support an optional `account_id` parameter:
 
 ```python
-# Default account
+# Use default account
 send_email("user@example.com", "Subject", "Body")
 
-# Specific account  
-send_email("user@example.com", "Subject", "Body", account_id="home-account-id")
+# Use specific account  
+send_email("user@example.com", "Subject", "Body", account_id="account-id-here")
+
+# List accounts to get IDs
+list_accounts()
+```
+
+## Development
+
+```bash
+# Run tests
+uv run pytest tests/ -v
+
+# Type checking
+uv run pyright
+
+# Format code
+uvx ruff format .
+
+# Lint
+uvx ruff check --fix --unsafe-fixes .
 ```
 
 ## Example: AI Assistant Scenarios
@@ -139,6 +210,20 @@ create_event(
     attendees=["colleague@company.com", "manager@company.com"]
 )
 ```
+
+## Security Notes
+
+- Tokens are cached locally in `~/.microsoft_mcp_token_cache.json`
+- Use app-specific passwords if you have 2FA enabled
+- Only request permissions your app actually needs
+- Consider using a dedicated app registration for production
+
+## Troubleshooting
+
+- **Authentication fails**: Check your CLIENT_ID is correct
+- **"Need admin approval"**: Use `MICROSOFT_MCP_TENANT_ID=consumers` for personal accounts
+- **Missing permissions**: Ensure all required API permissions are granted in Azure
+- **Token errors**: Delete `~/.microsoft_mcp_token_cache.json` and re-authenticate
 
 ## License
 

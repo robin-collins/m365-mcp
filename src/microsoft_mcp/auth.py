@@ -72,11 +72,9 @@ def get_token(account_id: str | None = None) -> str:
             f"Auth failed: {result.get('error_description', result['error'])}"
         )
 
-    if (
-        hasattr(app.token_cache, "has_state_changed")
-        and app.token_cache.has_state_changed
-    ):
-        CACHE_FILE.write_text(app.token_cache.serialize())
+    cache = app.token_cache
+    if isinstance(cache, msal.SerializableTokenCache) and cache.has_state_changed:
+        CACHE_FILE.write_text(cache.serialize())
 
     return result["access_token"]
 
@@ -114,11 +112,9 @@ def authenticate_new_account() -> Account | None:
             f"Auth failed: {result.get('error_description', result['error'])}"
         )
 
-    if (
-        hasattr(app.token_cache, "has_state_changed")
-        and app.token_cache.has_state_changed
-    ):
-        CACHE_FILE.write_text(app.token_cache.serialize())
+    cache = app.token_cache
+    if isinstance(cache, msal.SerializableTokenCache) and cache.has_state_changed:
+        CACHE_FILE.write_text(cache.serialize())
 
     # Get the newly added account
     accounts = app.get_accounts()

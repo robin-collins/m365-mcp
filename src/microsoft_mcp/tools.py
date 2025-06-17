@@ -29,10 +29,10 @@ def list_accounts() -> list[dict[str, str]]:
 
 @mcp.tool
 def list_emails(
+    account_id: str,
     folder: str = "inbox",
     limit: int = 10,
     include_body: bool = True,
-    account_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """List emails from specified folder"""
     folder_path = _FOLDERS.get(folder.lower(), folder)
@@ -51,11 +51,17 @@ def list_emails(
     result = graph.request(
         "GET", f"/me/mailFolders/{folder_path}/messages", account_id, params=params
     )
-    return result["value"] if result else []
+    if not result:
+        raise ValueError(
+            f"Failed to list emails from folder {folder_path} - no response"
+        )
+    if "value" not in result:
+        raise ValueError(f"Unexpected response structure: {result}")
+    return result["value"]
 
 
 @mcp.tool
-def get_email(email_id: str, account_id: str | None = None) -> dict[str, Any]:
+def get_email(email_id: str, account_id: str) -> dict[str, Any]:
     """Get full email details including attachments list"""
     params = {"$expand": "attachments"}
     result = graph.request("GET", f"/me/messages/{email_id}", account_id, params=params)
@@ -66,13 +72,13 @@ def get_email(email_id: str, account_id: str | None = None) -> dict[str, Any]:
 
 @mcp.tool
 def create_email(
+    account_id: str,
     to: str | list[str],
     subject: str,
     body: str,
     cc: list[str] | None = None,
     attachments: list[dict[str, str]] | None = None,
     send_immediately: bool = True,
-    account_id: str | None = None,
 ) -> dict[str, Any]:
     """Create and optionally send an email"""
     to_list = [to] if isinstance(to, str) else to
@@ -108,17 +114,19 @@ def create_email(
 
 @mcp.tool
 def update_email(
-    email_id: str, updates: dict[str, Any], account_id: str | None = None
+    email_id: str, updates: dict[str, Any], account_id: str
 ) -> dict[str, Any]:
     """Update email properties (isRead, categories, flag, etc.)"""
     result = graph.request(
         "PATCH", f"/me/messages/{email_id}", account_id, json=updates
     )
-    return result or {"status": "updated"}
+    if not result:
+        raise ValueError(f"Failed to update email {email_id} - no response")
+    return result
 
 
 @mcp.tool
-def delete_email(email_id: str, account_id: str | None = None) -> dict[str, str]:
+def delete_email(email_id: str, account_id: str) -> dict[str, str]:
     """Delete an email"""
     graph.request("DELETE", f"/me/messages/{email_id}", account_id)
     return {"status": "deleted"}
@@ -126,7 +134,7 @@ def delete_email(email_id: str, account_id: str | None = None) -> dict[str, str]
 
 @mcp.tool
 def move_email(
-    email_id: str, destination_folder: str, account_id: str | None = None
+    email_id: str, destination_folder: str, account_id: str
 ) -> dict[str, Any]:
     """Move email to another folder"""
     folder_path = _FOLDERS.get(destination_folder.lower(), destination_folder)
@@ -134,11 +142,15 @@ def move_email(
     folders = graph.request("GET", "/me/mailFolders", account_id)
     folder_id = None
 
-    if folders and "value" in folders:
-        for folder in folders["value"]:
-            if folder["displayName"].lower() == folder_path.lower():
-                folder_id = folder["id"]
-                break
+    if not folders:
+        raise ValueError("Failed to retrieve mail folders")
+    if "value" not in folders:
+        raise ValueError(f"Unexpected folder response structure: {folders}")
+
+    for folder in folders["value"]:
+        if folder["displayName"].lower() == folder_path.lower():
+            folder_id = folder["id"]
+            break
 
     if not folder_id:
         raise ValueError(f"Folder '{destination_folder}' not found")
@@ -147,12 +159,16 @@ def move_email(
     result = graph.request(
         "POST", f"/me/messages/{email_id}/move", account_id, json=payload
     )
-    return result or {"status": "moved"}
+    if not result:
+        raise ValueError("Failed to move email - no response from server")
+    if "id" not in result:
+        raise ValueError(f"Failed to move email - unexpected response: {result}")
+    return {"status": "moved", "new_id": result["id"]}
 
 
 @mcp.tool
 def reply_email(
-    email_id: str, body: str, reply_all: bool = False, account_id: str | None = None
+    account_id: str, email_id: str, body: str, reply_all: bool = False
 ) -> dict[str, str]:
     """Reply to an email"""
     endpoint = f"/me/messages/{email_id}/{'replyAll' if reply_all else 'reply'}"
@@ -163,10 +179,10 @@ def reply_email(
 
 @mcp.tool
 def list_events(
+    account_id: str,
     days_ahead: int = 7,
     days_back: int = 0,
     include_details: bool = True,
-    account_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """List calendar events within specified date range"""
     start = (dt.datetime.utcnow() - dt.timedelta(days=days_back)).isoformat() + "Z"
@@ -190,7 +206,7 @@ def list_events(
 
 
 @mcp.tool
-def get_event(event_id: str, account_id: str | None = None) -> dict[str, Any]:
+def get_event(event_id: str, account_id: str) -> dict[str, Any]:
     """Get full event details"""
     result = graph.request("GET", f"/me/events/{event_id}", account_id)
     if not result:
@@ -200,6 +216,7 @@ def get_event(event_id: str, account_id: str | None = None) -> dict[str, Any]:
 
 @mcp.tool
 def create_event(
+    account_id: str,
     subject: str,
     start: str,
     end: str,
@@ -207,7 +224,6 @@ def create_event(
     body: str | None = None,
     attendees: list[str] | None = None,
     timezone: str = "UTC",
-    account_id: str | None = None,
 ) -> dict[str, Any]:
     """Create a calendar event"""
     event = {
@@ -235,7 +251,7 @@ def create_event(
 
 @mcp.tool
 def update_event(
-    event_id: str, updates: dict[str, Any], account_id: str | None = None
+    event_id: str, updates: dict[str, Any], account_id: str
 ) -> dict[str, Any]:
     """Update event properties"""
     formatted_updates = {}
@@ -265,7 +281,7 @@ def update_event(
 
 @mcp.tool
 def delete_event(
-    event_id: str, send_cancellation: bool = True, account_id: str | None = None
+    account_id: str, event_id: str, send_cancellation: bool = True
 ) -> dict[str, str]:
     """Delete or cancel a calendar event"""
     if send_cancellation:
@@ -277,10 +293,10 @@ def delete_event(
 
 @mcp.tool
 def respond_event(
+    account_id: str,
     event_id: str,
     response: str = "accept",
     message: str | None = None,
-    account_id: str | None = None,
 ) -> dict[str, str]:
     """Respond to event invitation (accept, decline, tentativelyAccept)"""
     payload: dict[str, Any] = {"sendResponse": True}
@@ -293,10 +309,10 @@ def respond_event(
 
 @mcp.tool
 def check_availability(
+    account_id: str,
     start: str,
     end: str,
     attendees: list[str] | None = None,
-    account_id: str | None = None,
 ) -> dict[str, Any]:
     """Check calendar availability for scheduling"""
     me_info = graph.request("GET", "/me", account_id)
@@ -320,9 +336,7 @@ def check_availability(
 
 
 @mcp.tool
-def list_contacts(
-    limit: int = 50, account_id: str | None = None
-) -> list[dict[str, Any]]:
+def list_contacts(account_id: str, limit: int = 50) -> list[dict[str, Any]]:
     """List contacts"""
     params = {"$top": limit}
     result = graph.request("GET", "/me/contacts", account_id, params=params)
@@ -330,7 +344,7 @@ def list_contacts(
 
 
 @mcp.tool
-def get_contact(contact_id: str, account_id: str | None = None) -> dict[str, Any]:
+def get_contact(contact_id: str, account_id: str) -> dict[str, Any]:
     """Get contact details"""
     result = graph.request("GET", f"/me/contacts/{contact_id}", account_id)
     if not result:
@@ -340,11 +354,11 @@ def get_contact(contact_id: str, account_id: str | None = None) -> dict[str, Any
 
 @mcp.tool
 def create_contact(
+    account_id: str,
     given_name: str,
     surname: str | None = None,
     email_addresses: list[str] | None = None,
     phone_numbers: dict[str, str] | None = None,
-    account_id: str | None = None,
 ) -> dict[str, Any]:
     """Create a new contact"""
     contact: dict[str, Any] = {"givenName": given_name}
@@ -374,7 +388,7 @@ def create_contact(
 
 @mcp.tool
 def update_contact(
-    contact_id: str, updates: dict[str, Any], account_id: str | None = None
+    contact_id: str, updates: dict[str, Any], account_id: str
 ) -> dict[str, Any]:
     """Update contact information"""
     result = graph.request(
@@ -384,7 +398,7 @@ def update_contact(
 
 
 @mcp.tool
-def delete_contact(contact_id: str, account_id: str | None = None) -> dict[str, str]:
+def delete_contact(contact_id: str, account_id: str) -> dict[str, str]:
     """Delete a contact"""
     graph.request("DELETE", f"/me/contacts/{contact_id}", account_id)
     return {"status": "deleted"}
@@ -392,7 +406,7 @@ def delete_contact(contact_id: str, account_id: str | None = None) -> dict[str, 
 
 @mcp.tool
 def list_files(
-    path: str = "/", limit: int = 50, account_id: str | None = None
+    account_id: str, path: str = "/", limit: int = 50
 ) -> list[dict[str, Any]]:
     """List files and folders in OneDrive"""
     endpoint = (
@@ -423,7 +437,7 @@ def list_files(
 
 
 @mcp.tool
-def get_file(file_id: str, account_id: str | None = None) -> dict[str, Any]:
+def get_file(file_id: str, account_id: str) -> dict[str, Any]:
     """Get file metadata and content as base64"""
     metadata = graph.request("GET", f"/me/drive/items/{file_id}", account_id)
     content = graph.download_raw(f"/me/drive/items/{file_id}/content", account_id)
@@ -432,9 +446,7 @@ def get_file(file_id: str, account_id: str | None = None) -> dict[str, Any]:
 
 
 @mcp.tool
-def create_file(
-    path: str, content_base64: str, account_id: str | None = None
-) -> dict[str, Any]:
+def create_file(path: str, content_base64: str, account_id: str) -> dict[str, Any]:
     """Create or upload a file to OneDrive"""
     data = base64.b64decode(content_base64)
     result = graph.request(
@@ -446,9 +458,7 @@ def create_file(
 
 
 @mcp.tool
-def update_file(
-    file_id: str, content_base64: str, account_id: str | None = None
-) -> dict[str, Any]:
+def update_file(file_id: str, content_base64: str, account_id: str) -> dict[str, Any]:
     """Update file content"""
     data = base64.b64decode(content_base64)
     result = graph.request(
@@ -460,7 +470,7 @@ def update_file(
 
 
 @mcp.tool
-def delete_file(file_id: str, account_id: str | None = None) -> dict[str, str]:
+def delete_file(file_id: str, account_id: str) -> dict[str, str]:
     """Delete a file or folder"""
     graph.request("DELETE", f"/me/drive/items/{file_id}", account_id)
     return {"status": "deleted"}
@@ -468,7 +478,7 @@ def delete_file(file_id: str, account_id: str | None = None) -> dict[str, str]:
 
 @mcp.tool
 def get_attachment(
-    email_id: str, attachment_id: str, account_id: str | None = None
+    email_id: str, attachment_id: str, account_id: str
 ) -> dict[str, Any]:
     """Get email attachment details and content"""
     result = graph.request(
@@ -477,10 +487,10 @@ def get_attachment(
 
     if not result:
         raise ValueError("Attachment not found")
-    
+
     if "contentBytes" not in result:
         raise ValueError("Attachment content not available")
-        
+
     return {
         "name": result.get("name", "unknown"),
         "content_type": result.get("contentType", "application/octet-stream"),
@@ -490,32 +500,106 @@ def get_attachment(
 
 
 @mcp.tool
-def search(
+def search_files(
     query: str,
-    types: list[str] | None = None,
-    limit: int = 25,
-    account_id: str | None = None,
+    account_id: str,
+    limit: int = 50,
 ) -> list[dict[str, Any]]:
-    """Universal search across emails, files, events, and contacts"""
-    search_types = types or ["message", "event", "driveItem", "person"]
-
-    payload = {
-        "requests": [
-            {
-                "entityTypes": search_types,
-                "query": {"queryString": query},
-                "from": 0,
-                "size": limit,
-            }
-        ]
+    """Search for files in OneDrive using query string"""
+    params = {
+        "$top": limit,
+        "$select": "id,name,size,lastModifiedDateTime,folder,file,@microsoft.graph.downloadUrl",
     }
 
-    result = graph.request("POST", "/search/query", account_id, json=payload)
-    if result and "value" in result:
-        hits = []
-        for response in result["value"]:
-            for container in response.get("hitsContainers", []):
-                hits.extend(container.get("hits", []))
-        return hits
+    result = graph.request(
+        "GET", f"/me/drive/root/search(q='{query}')", account_id, params=params
+    )
 
+    if result and "value" in result:
+        return [
+            {
+                "id": item["id"],
+                "name": item["name"],
+                "type": "folder" if "folder" in item else "file",
+                "size": item.get("size", 0),
+                "modified": item.get("lastModifiedDateTime"),
+                "download_url": item.get("@microsoft.graph.downloadUrl"),
+            }
+            for item in result["value"]
+        ]
     return []
+
+
+@mcp.tool
+def search_emails(
+    query: str,
+    account_id: str,
+    limit: int = 50,
+    folder: str | None = None,
+) -> list[dict[str, Any]]:
+    """Search emails using Microsoft Graph $search parameter
+
+    This is an alternative to the universal search function, specifically for emails.
+    It uses the $search parameter on the messages endpoint which may work better
+    for email-specific searches.
+    """
+    params = {
+        "$search": f'"{query}"',
+        "$top": limit,
+        "$select": "id,subject,from,toRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead",
+    }
+
+    if folder:
+        folder_path = _FOLDERS.get(folder.lower(), folder)
+        endpoint = f"/me/mailFolders/{folder_path}/messages"
+    else:
+        endpoint = "/me/messages"
+
+    result = graph.request("GET", endpoint, account_id, params=params)
+    return result["value"] if result else []
+
+
+@mcp.tool
+def search_events(
+    query: str,
+    account_id: str,
+    days_ahead: int = 365,
+    days_back: int = 365,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Search calendar events by keyword in subject, body, or location"""
+    start = (dt.datetime.utcnow() - dt.timedelta(days=days_back)).isoformat() + "Z"
+    end = (dt.datetime.utcnow() + dt.timedelta(days=days_ahead)).isoformat() + "Z"
+
+    params = {
+        "$filter": f"(contains(subject,'{query}') or contains(body/content,'{query}') or contains(location/displayName,'{query}')) and start/dateTime ge '{start}' and start/dateTime le '{end}'",
+        "$top": limit,
+        "$select": "id,subject,start,end,location,body,attendees,organizer,isAllDay,recurrence,onlineMeeting",
+    }
+
+    result = graph.request("GET", "/me/events", account_id, params=params)
+    if not result:
+        raise ValueError("Failed to search events - no response")
+    if "value" not in result:
+        raise ValueError(f"Unexpected response structure: {result}")
+    return result["value"]
+
+
+@mcp.tool
+def search_contacts(
+    query: str,
+    account_id: str,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Search contacts by name, email, or phone number"""
+    params = {
+        "$filter": f"contains(displayName,'{query}') or contains(givenName,'{query}') or contains(surname,'{query}') or contains(emailAddresses/any(e:e/address),'{query}')",
+        "$top": limit,
+    }
+
+    result = graph.request("GET", "/me/contacts", account_id, params=params)
+    if not result:
+        raise ValueError("Failed to search contacts - no response")
+    if "value" not in result:
+        raise ValueError(f"Unexpected response structure: {result}")
+    return result["value"]

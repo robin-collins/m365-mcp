@@ -18,6 +18,14 @@ def request(
         "Content-Type": "application/json" if json else "application/octet-stream",
     }
 
+    if params and (
+        "$search" in params
+        or "contains(" in params.get("$filter", "")
+        or "/any(" in params.get("$filter", "")
+    ):
+        headers["ConsistencyLevel"] = "eventual"
+        params.setdefault("$count", "true")
+
     with httpx.Client() as client:
         response = client.request(
             method=method,

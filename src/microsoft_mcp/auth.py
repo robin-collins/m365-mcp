@@ -7,12 +7,27 @@ from dotenv import load_dotenv
 load_dotenv()
 
 CACHE_FILE = pl.Path.home() / ".microsoft_mcp_token_cache.json"
-SCOPES = ["https://graph.microsoft.com/.default"]
+SCOPES = [
+    "https://graph.microsoft.com/.default",
+    "offline_access",
+]
 
 
 class Account(NamedTuple):
     username: str
     account_id: str
+
+
+def _read_cache() -> str | None:
+    try:
+        return CACHE_FILE.read_text()
+    except FileNotFoundError:
+        return None
+
+
+def _write_cache(content: str) -> None:
+    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CACHE_FILE.write_text(content)
 
 
 def get_app() -> msal.PublicClientApplication:
@@ -24,15 +39,13 @@ def get_app() -> msal.PublicClientApplication:
     authority = f"https://login.microsoftonline.com/{tenant_id}"
 
     cache = msal.SerializableTokenCache()
-    if CACHE_FILE.exists():
-        cache.deserialize(CACHE_FILE.read_text())
+    cache_content = _read_cache()
+    if cache_content:
+        cache.deserialize(cache_content)
 
     app = msal.PublicClientApplication(
         client_id, authority=authority, token_cache=cache
     )
-
-    if cache.has_state_changed:
-        CACHE_FILE.write_text(cache.serialize())
 
     return app
 
@@ -74,7 +87,7 @@ def get_token(account_id: str | None = None) -> str:
 
     cache = app.token_cache
     if isinstance(cache, msal.SerializableTokenCache) and cache.has_state_changed:
-        CACHE_FILE.write_text(cache.serialize())
+        _write_cache(cache.serialize())
 
     return result["access_token"]
 
@@ -114,7 +127,7 @@ def authenticate_new_account() -> Account | None:
 
     cache = app.token_cache
     if isinstance(cache, msal.SerializableTokenCache) and cache.has_state_changed:
-        CACHE_FILE.write_text(cache.serialize())
+        _write_cache(cache.serialize())
 
     # Get the newly added account
     accounts = app.get_accounts()

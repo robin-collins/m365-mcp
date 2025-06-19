@@ -130,7 +130,7 @@ async def test_get_email():
         emails = parse_result(list_result, "list_emails")
 
         if emails and len(emails) > 0:
-            email_id = emails[0]["id"]
+            email_id = emails[0].get("id")
             result = await session.call_tool(
                 "get_email",
                 {"email_id": email_id, "account_id": account_info["account_id"]},
@@ -139,35 +139,7 @@ async def test_get_email():
             email_detail = parse_result(result)
             assert email_detail is not None
             assert "id" in email_detail
-            assert email_detail["id"] == email_id
-
-
-@pytest.mark.asyncio
-async def test_create_email_send_immediately():
-    """Test create_email tool with immediate send"""
-    async for session in get_session():
-        account_info = await get_account_info(session)
-        test_attachment = {
-            "name": "test.txt",
-            "content_base64": base64.b64encode(b"Test attachment content").decode(),
-        }
-
-        result = await session.call_tool(
-            "create_email",
-            {
-                "account_id": account_info["account_id"],
-                "to": account_info["email"],
-                "subject": f"MCP Test - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-                "body": "Test email with attachment from Microsoft MCP integration tests.",
-                "cc": [account_info["email"]],
-                "attachments": [test_attachment],
-                "send_immediately": True,
-            },
-        )
-        assert not result.isError
-        send_result = parse_result(result)
-        assert send_result is not None
-        assert send_result.get("status") == "sent"
+            assert email_detail.get("id") == email_id
 
 
 @pytest.mark.asyncio
@@ -176,13 +148,12 @@ async def test_create_email_draft():
     async for session in get_session():
         account_info = await get_account_info(session)
         result = await session.call_tool(
-            "create_email",
+            "create_email_draft",
             {
                 "account_id": account_info["account_id"],
                 "to": account_info["email"],
                 "subject": "MCP Test Draft",
                 "body": "This is a test draft email",
-                "send_immediately": False,
             },
         )
         assert not result.isError
@@ -190,7 +161,7 @@ async def test_create_email_draft():
         assert draft_data is not None
         assert "id" in draft_data
 
-        draft_id = draft_data["id"]
+        draft_id = draft_data.get("id")
         delete_result = await session.call_tool(
             "delete_email",
             {"email_id": draft_id, "account_id": account_info["account_id"]},
@@ -209,7 +180,7 @@ async def test_update_email():
         emails = parse_result(list_result, "list_emails")
 
         if emails and len(emails) > 0:
-            email_id = emails[0]["id"]
+            email_id = emails[0].get("id")
             original_read_state = emails[0].get("isRead", True)
 
             result = await session.call_tool(
@@ -253,7 +224,7 @@ async def test_delete_email():
             result = await session.call_tool(
                 "delete_email",
                 {
-                    "email_id": draft_data["id"],
+                    "email_id": draft_data.get("id"),
                     "account_id": account_info["account_id"],
                 },
             )
@@ -275,7 +246,7 @@ async def test_move_email():
         emails = parse_result(list_result, "list_emails")
 
         if emails and len(emails) > 0:
-            email_id = emails[0]["id"]
+            email_id = emails[0].get("id")
             result = await session.call_tool(
                 "move_email",
                 {
@@ -301,8 +272,8 @@ async def test_move_email():
 
 
 @pytest.mark.asyncio
-async def test_reply_email():
-    """Test reply_email tool"""
+async def test_reply_to_email():
+    """Test reply_to_email tool"""
     async for session in get_session():
         account_info = await get_account_info(session)
         await asyncio.sleep(2)
@@ -320,12 +291,44 @@ async def test_reply_email():
 
         if test_email:
             result = await session.call_tool(
-                "reply_email",
+                "reply_to_email",
                 {
                     "account_id": account_info["account_id"],
-                    "email_id": test_email["id"],
+                    "email_id": test_email.get("id"),
                     "body": "This is a test reply",
-                    "reply_all": False,
+                },
+            )
+            assert not result.isError
+            reply_result = parse_result(result)
+            assert reply_result is not None
+            assert reply_result.get("status") == "sent"
+
+
+@pytest.mark.asyncio
+async def test_reply_all_email():
+    """Test reply_all_email tool"""
+    async for session in get_session():
+        account_info = await get_account_info(session)
+        await asyncio.sleep(2)
+        list_result = await session.call_tool(
+            "list_emails", {"account_id": account_info["account_id"], "limit": 5}
+        )
+        emails = parse_result(list_result, "list_emails")
+
+        test_email = None
+        if emails:
+            test_email = next(
+                (e for e in emails if "MCP Test" in e.get("subject", "")),
+                emails[0] if emails else None,
+            )
+
+        if test_email:
+            result = await session.call_tool(
+                "reply_all_email",
+                {
+                    "account_id": account_info["account_id"],
+                    "email_id": test_email.get("id"),
+                    "body": "This is a test reply to all",
                 },
             )
             assert not result.isError
@@ -368,7 +371,7 @@ async def test_get_event():
         events = parse_result(list_result, "list_events")
 
         if events and len(events) > 0:
-            event_id = events[0]["id"]
+            event_id = events[0].get("id")
             result = await session.call_tool(
                 "get_event",
                 {"event_id": event_id, "account_id": account_info["account_id"]},
@@ -377,7 +380,7 @@ async def test_get_event():
             event_detail = parse_result(result)
             assert event_detail is not None
             assert "id" in event_detail
-            assert event_detail["id"] == event_id
+            assert event_detail.get("id") == event_id
 
 
 @pytest.mark.asyncio
@@ -405,7 +408,7 @@ async def test_create_event():
         assert event_data is not None
         assert "id" in event_data
 
-        event_id = event_data["id"]
+        event_id = event_data.get("id")
         delete_result = await session.call_tool(
             "delete_event",
             {
@@ -436,7 +439,7 @@ async def test_update_event():
         )
         event_data = parse_result(create_result)
         assert event_data is not None
-        event_id = event_data["id"]
+        event_id = event_data.get("id")
 
         new_start = start_time + timedelta(hours=2)
         new_end = new_start + timedelta(hours=1)
@@ -486,7 +489,7 @@ async def test_delete_event():
         )
         event_data = parse_result(create_result)
         assert event_data is not None
-        event_id = event_data["id"]
+        event_id = event_data.get("id")
 
         result = await session.call_tool(
             "delete_event",
@@ -522,7 +525,7 @@ async def test_respond_event():
                     "respond_event",
                     {
                         "account_id": account_info["account_id"],
-                        "event_id": invite_event["id"],
+                        "event_id": invite_event.get("id"),
                         "response": "tentativelyAccept",
                         "message": "I might be able to attend",
                     },
@@ -589,7 +592,7 @@ async def test_get_contact():
         assert not list_result.isError
         contacts = parse_result(list_result, "list_contacts")
         if contacts and len(contacts) > 0:
-            contact_id = contacts[0]["id"]
+            contact_id = contacts[0].get("id")
             result = await session.call_tool(
                 "get_contact",
                 {"contact_id": contact_id, "account_id": account_info["account_id"]},
@@ -620,7 +623,7 @@ async def test_create_contact():
         assert new_contact is not None
         assert "id" in new_contact
 
-        contact_id = new_contact["id"]
+        contact_id = new_contact.get("id")
         delete_result = await session.call_tool(
             "delete_contact",
             {"contact_id": contact_id, "account_id": account_info["account_id"]},
@@ -643,7 +646,7 @@ async def test_update_contact():
         )
         assert not create_result.isError
         new_contact = parse_result(create_result)
-        contact_id = new_contact["id"]
+        contact_id = new_contact.get("id")
 
         result = await session.call_tool(
             "update_contact",
@@ -677,7 +680,7 @@ async def test_delete_contact():
         )
         assert not create_result.isError
         new_contact = parse_result(create_result)
-        contact_id = new_contact["id"]
+        contact_id = new_contact.get("id")
 
         result = await session.call_tool(
             "delete_contact",
@@ -724,7 +727,7 @@ async def test_get_file():
             },
         )
         file_data = parse_result(create_result)
-        file_id = file_data["id"]
+        file_id = file_data.get("id")
 
         result = await session.call_tool(
             "get_file", {"file_id": file_id, "account_id": account_info["account_id"]}
@@ -769,7 +772,7 @@ async def test_create_file():
         assert upload_result is not None
         assert "id" in upload_result
 
-        file_id = upload_result["id"]
+        file_id = upload_result.get("id")
         delete_result = await session.call_tool(
             "delete_file",
             {"file_id": file_id, "account_id": account_info["account_id"]},
@@ -797,7 +800,7 @@ async def test_update_file():
             },
         )
         file_data = parse_result(create_result)
-        file_id = file_data["id"]
+        file_id = file_data.get("id")
 
         updated_content = f"Updated content at {datetime.now().isoformat()}"
         updated_b64 = base64.b64encode(updated_content.encode()).decode()
@@ -839,7 +842,7 @@ async def test_delete_file():
             },
         )
         file_data = parse_result(create_result)
-        file_id = file_data["id"]
+        file_id = file_data.get("id")
 
         result = await session.call_tool(
             "delete_file",
@@ -876,15 +879,15 @@ async def test_get_attachment():
             if (
                 email_detail
                 and "attachments" in email_detail
-                and email_detail["attachments"]
+                and email_detail.get("attachments")
             ):
-                attachment = email_detail["attachments"][0]
+                attachment = email_detail.get("attachments", [])[0]
                 result = await session.call_tool(
                     "get_attachment",
                     {
-                        "email_id": email_with_attach["id"],
+                        "email_id": email_with_attach.get("id"),
                         "account_id": account_info["account_id"],
-                        "attachment_id": attachment["id"],
+                        "attachment_id": attachment.get("id"),
                     },
                 )
                 assert not result.isError
@@ -954,3 +957,50 @@ async def test_search_contacts():
         assert not result.isError
         search_results = parse_result(result)
         assert search_results is not None
+
+
+@pytest.mark.asyncio
+async def test_send_email():
+    """Test send_email tool"""
+    async for session in get_session():
+        account_info = await get_account_info(session)
+        await asyncio.sleep(2)
+
+        result = await session.call_tool(
+            "send_email",
+            {
+                "account_id": account_info["account_id"],
+                "to": account_info["email"],
+                "subject": f"MCP Test Send Email {datetime.now(timezone.utc).isoformat()}",
+                "body": "This is a test email sent via send_email tool",
+            },
+        )
+        assert not result.isError
+        sent_result = parse_result(result)
+        assert sent_result is not None
+        assert sent_result.get("status") == "sent"
+
+
+@pytest.mark.asyncio
+async def test_unified_search():
+    """Test unified_search tool"""
+    async for session in get_session():
+        account_info = await get_account_info(session)
+
+        result = await session.call_tool(
+            "unified_search",
+            {
+                "account_id": account_info["account_id"],
+                "query": "test",
+                "entity_types": ["message", "event", "driveItem"],
+                "limit": 10,
+            },
+        )
+        assert not result.isError
+        search_results = parse_result(result)
+        assert search_results is not None
+        assert isinstance(search_results, dict)
+        # Results should be grouped by entity type
+        for entity_type in ["message", "event", "driveItem"]:
+            if entity_type in search_results:
+                assert isinstance(search_results[entity_type], list)

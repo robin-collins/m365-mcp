@@ -6,15 +6,16 @@ from . import graph, auth
 
 mcp = FastMCP("microsoft-mcp")
 
-_FOLDERS = {
-    "inbox": "inbox",
-    "sent": "sentitems",
-    "sentitems": "sentitems",
-    "drafts": "drafts",
-    "deleted": "deleteditems",
-    "deleteditems": "deleteditems",
-    "junk": "junkemail",
-    "archive": "archive",
+FOLDERS = {
+    k.casefold(): v
+    for k, v in {
+        "inbox": "inbox",
+        "sent": "sentitems",
+        "drafts": "drafts",
+        "deleted": "deleteditems",
+        "junk": "junkemail",
+        "archive": "archive",
+    }.items()
 }
 
 
@@ -35,7 +36,7 @@ def list_emails(
     include_body: bool = True,
 ) -> list[dict[str, Any]]:
     """List emails from specified folder"""
-    folder_path = _FOLDERS.get(folder.lower(), folder)
+    folder_path = FOLDERS.get(folder.casefold(), folder)
 
     if include_body:
         select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead"
@@ -43,21 +44,21 @@ def list_emails(
         select_fields = "id,subject,from,toRecipients,receivedDateTime,hasAttachments,conversationId,isRead"
 
     params = {
-        "$top": limit,
+        "$top": min(limit, 100),
         "$select": select_fields,
         "$orderby": "receivedDateTime desc",
     }
 
-    result = graph.request(
-        "GET", f"/me/mailFolders/{folder_path}/messages", account_id, params=params
-    )
-    if not result:
-        raise ValueError(
-            f"Failed to list emails from folder {folder_path} - no response"
+    emails = list(
+        graph.request_paginated(
+            f"/me/mailFolders/{folder_path}/messages",
+            account_id,
+            params=params,
+            limit=limit,
         )
-    if "value" not in result:
-        raise ValueError(f"Unexpected response structure: {result}")
-    return result["value"]
+    )
+
+    return emails
 
 
 @mcp.tool
@@ -71,16 +72,15 @@ def get_email(email_id: str, account_id: str) -> dict[str, Any]:
 
 
 @mcp.tool
-def create_email(
+def create_email_draft(
     account_id: str,
     to: str | list[str],
     subject: str,
     body: str,
     cc: list[str] | None = None,
     attachments: list[dict[str, str]] | None = None,
-    send_immediately: bool = True,
 ) -> dict[str, Any]:
-    """Create and optionally send an email"""
+    """Create an email draft"""
     to_list = [to] if isinstance(to, str) else to
 
     message = {
@@ -92,7 +92,75 @@ def create_email(
     if cc:
         message["ccRecipients"] = [{"emailAddress": {"address": addr}} for addr in cc]
 
+    small_attachments = []
+    large_attachments = []
+
     if attachments:
+        for att in attachments:
+            att_size = len(base64.b64decode(att["content_base64"]))
+            if att_size < 3 * 1024 * 1024:
+                small_attachments.append(
+                    {
+                        "@odata.type": "#microsoft.graph.fileAttachment",
+                        "name": att["name"],
+                        "contentBytes": att["content_base64"],
+                    }
+                )
+            else:
+                large_attachments.append(att)
+
+    if small_attachments:
+        message["attachments"] = small_attachments
+
+    result = graph.request("POST", "/me/messages", account_id, json=message)
+    if not result:
+        raise ValueError("Failed to create email draft")
+
+    message_id = result["id"]
+
+    for att in large_attachments:
+        att_data = base64.b64decode(att["content_base64"])
+        graph.upload_large_mail_attachment(
+            message_id,
+            att["name"],
+            att_data,
+            account_id,
+            att.get("content_type", "application/octet-stream"),
+        )
+
+    return result
+
+
+@mcp.tool
+def send_email(
+    account_id: str,
+    to: str | list[str],
+    subject: str,
+    body: str,
+    cc: list[str] | None = None,
+    attachments: list[dict[str, str]] | None = None,
+) -> dict[str, str]:
+    """Send an email immediately"""
+    to_list = [to] if isinstance(to, str) else to
+
+    message = {
+        "subject": subject,
+        "body": {"contentType": "Text", "content": body},
+        "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_list],
+    }
+
+    if cc:
+        message["ccRecipients"] = [{"emailAddress": {"address": addr}} for addr in cc]
+
+    # Check if we have large attachments
+    has_large_attachments = False
+    if attachments:
+        for att in attachments:
+            if len(base64.b64decode(att["content_base64"])) >= 3 * 1024 * 1024:
+                has_large_attachments = True
+                break
+
+    if not has_large_attachments and attachments:
         message["attachments"] = [
             {
                 "@odata.type": "#microsoft.graph.fileAttachment",
@@ -101,15 +169,56 @@ def create_email(
             }
             for att in attachments
         ]
-
-    if send_immediately:
         graph.request("POST", "/me/sendMail", account_id, json={"message": message})
         return {"status": "sent"}
-    else:
+    elif has_large_attachments:
+        # Create draft first, then add large attachments, then send
+        # We need to handle large attachments manually here
+        to_list = [to] if isinstance(to, str) else to
+        message = {
+            "subject": subject,
+            "body": {"contentType": "Text", "content": body},
+            "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_list],
+        }
+        if cc:
+            message["ccRecipients"] = [
+                {"emailAddress": {"address": addr}} for addr in cc
+            ]
+
         result = graph.request("POST", "/me/messages", account_id, json=message)
         if not result:
             raise ValueError("Failed to create email draft")
-        return result
+
+        message_id = result["id"]
+
+        for att in attachments or []:
+            att_data = base64.b64decode(att["content_base64"])
+            if len(att_data) >= 3 * 1024 * 1024:
+                graph.upload_large_mail_attachment(
+                    message_id,
+                    att["name"],
+                    att_data,
+                    account_id,
+                    att.get("content_type", "application/octet-stream"),
+                )
+            else:
+                small_att = {
+                    "@odata.type": "#microsoft.graph.fileAttachment",
+                    "name": att["name"],
+                    "contentBytes": att["content_base64"],
+                }
+                graph.request(
+                    "POST",
+                    f"/me/messages/{message_id}/attachments",
+                    account_id,
+                    json=small_att,
+                )
+
+        graph.request("POST", f"/me/messages/{message_id}/send", account_id)
+        return {"status": "sent"}
+    else:
+        graph.request("POST", "/me/sendMail", account_id, json={"message": message})
+        return {"status": "sent"}
 
 
 @mcp.tool
@@ -137,7 +246,7 @@ def move_email(
     email_id: str, destination_folder: str, account_id: str
 ) -> dict[str, Any]:
     """Move email to another folder"""
-    folder_path = _FOLDERS.get(destination_folder.lower(), destination_folder)
+    folder_path = FOLDERS.get(destination_folder.casefold(), destination_folder)
 
     folders = graph.request("GET", "/me/mailFolders", account_id)
     folder_id = None
@@ -167,11 +276,18 @@ def move_email(
 
 
 @mcp.tool
-def reply_email(
-    account_id: str, email_id: str, body: str, reply_all: bool = False
-) -> dict[str, str]:
-    """Reply to an email"""
-    endpoint = f"/me/messages/{email_id}/{'replyAll' if reply_all else 'reply'}"
+def reply_to_email(account_id: str, email_id: str, body: str) -> dict[str, str]:
+    """Reply to an email (sender only)"""
+    endpoint = f"/me/messages/{email_id}/reply"
+    payload = {"message": {"body": {"contentType": "Text", "content": body}}}
+    graph.request("POST", endpoint, account_id, json=payload)
+    return {"status": "sent"}
+
+
+@mcp.tool
+def reply_all_email(account_id: str, email_id: str, body: str) -> dict[str, str]:
+    """Reply to all recipients of an email"""
+    endpoint = f"/me/messages/{email_id}/replyAll"
     payload = {"message": {"body": {"contentType": "Text", "content": body}}}
     graph.request("POST", endpoint, account_id, json=payload)
     return {"status": "sent"}
@@ -189,7 +305,7 @@ def list_events(
     end = (dt.datetime.utcnow() + dt.timedelta(days=days_ahead)).isoformat() + "Z"
 
     params = {
-        "$filter": f"start/dateTime ge '{start}' and start/dateTime le '{end}'",
+        "$filter": f"start/dateTime le '{end}' and end/dateTime ge '{start}'",
         "$orderby": "start/dateTime",
         "$top": 100,
     }
@@ -201,8 +317,9 @@ def list_events(
     else:
         params["$select"] = "id,subject,start,end,location,organizer"
 
-    result = graph.request("GET", "/me/events", account_id, params=params)
-    return result["value"] if result else []
+    events = list(graph.request_paginated("/me/events", account_id, params=params))
+
+    return events
 
 
 @mcp.tool
@@ -338,9 +455,13 @@ def check_availability(
 @mcp.tool
 def list_contacts(account_id: str, limit: int = 50) -> list[dict[str, Any]]:
     """List contacts"""
-    params = {"$top": limit}
-    result = graph.request("GET", "/me/contacts", account_id, params=params)
-    return result["value"] if result else []
+    params = {"$top": min(limit, 100)}
+
+    contacts = list(
+        graph.request_paginated("/me/contacts", account_id, params=params, limit=limit)
+    )
+
+    return contacts
 
 
 @mcp.tool
@@ -415,25 +536,25 @@ def list_files(
         else f"/me/drive/root:/{path}:/children"
     )
     params = {
-        "$top": limit,
+        "$top": min(limit, 100),
         "$select": "id,name,size,lastModifiedDateTime,folder,file,@microsoft.graph.downloadUrl",
     }
 
-    result = graph.request("GET", endpoint, account_id, params=params)
+    items = list(
+        graph.request_paginated(endpoint, account_id, params=params, limit=limit)
+    )
 
-    if result and "value" in result:
-        return [
-            {
-                "id": item["id"],
-                "name": item["name"],
-                "type": "folder" if "folder" in item else "file",
-                "size": item.get("size", 0),
-                "modified": item.get("lastModifiedDateTime"),
-                "download_url": item.get("@microsoft.graph.downloadUrl"),
-            }
-            for item in result["value"]
-        ]
-    return []
+    return [
+        {
+            "id": item["id"],
+            "name": item["name"],
+            "type": "folder" if "folder" in item else "file",
+            "size": item.get("size", 0),
+            "modified": item.get("lastModifiedDateTime"),
+            "download_url": item.get("@microsoft.graph.downloadUrl"),
+        }
+        for item in items
+    ]
 
 
 @mcp.tool
@@ -449,9 +570,7 @@ def get_file(file_id: str, account_id: str) -> dict[str, Any]:
 def create_file(path: str, content_base64: str, account_id: str) -> dict[str, Any]:
     """Create or upload a file to OneDrive"""
     data = base64.b64decode(content_base64)
-    result = graph.request(
-        "PUT", f"/me/drive/root:/{path}:/content", account_id, data=data
-    )
+    result = graph.upload_large_file(f"/me/drive/root:/{path}:", data, account_id)
     if not result:
         raise ValueError(f"Failed to create file at path: {path}")
     return result
@@ -461,9 +580,7 @@ def create_file(path: str, content_base64: str, account_id: str) -> dict[str, An
 def update_file(file_id: str, content_base64: str, account_id: str) -> dict[str, Any]:
     """Update file content"""
     data = base64.b64decode(content_base64)
-    result = graph.request(
-        "PUT", f"/me/drive/items/{file_id}/content", account_id, data=data
-    )
+    result = graph.upload_large_file(f"/me/drive/items/{file_id}", data, account_id)
     if not result:
         raise ValueError(f"Failed to update file with ID: {file_id}")
     return result
@@ -505,29 +622,20 @@ def search_files(
     account_id: str,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
-    """Search for files in OneDrive using query string"""
-    params = {
-        "$top": limit,
-        "$select": "id,name,size,lastModifiedDateTime,folder,file,@microsoft.graph.downloadUrl",
-    }
+    """Search for files in OneDrive using the modern search API."""
+    items = list(graph.search_query(query, ["driveItem"], account_id, limit))
 
-    result = graph.request(
-        "GET", f"/me/drive/root/search(q='{query}')", account_id, params=params
-    )
-
-    if result and "value" in result:
-        return [
-            {
-                "id": item["id"],
-                "name": item["name"],
-                "type": "folder" if "folder" in item else "file",
-                "size": item.get("size", 0),
-                "modified": item.get("lastModifiedDateTime"),
-                "download_url": item.get("@microsoft.graph.downloadUrl"),
-            }
-            for item in result["value"]
-        ]
-    return []
+    return [
+        {
+            "id": item["id"],
+            "name": item["name"],
+            "type": "folder" if "folder" in item else "file",
+            "size": item.get("size", 0),
+            "modified": item.get("lastModifiedDateTime"),
+            "download_url": item.get("@microsoft.graph.downloadUrl"),
+        }
+        for item in items
+    ]
 
 
 @mcp.tool
@@ -537,26 +645,23 @@ def search_emails(
     limit: int = 50,
     folder: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Search emails using Microsoft Graph $search parameter
-
-    This is an alternative to the universal search function, specifically for emails.
-    It uses the $search parameter on the messages endpoint which may work better
-    for email-specific searches.
-    """
-    params = {
-        "$search": f'"{query}"',
-        "$top": limit,
-        "$select": "id,subject,from,toRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead",
-    }
-
+    """Search emails using the modern search API."""
     if folder:
-        folder_path = _FOLDERS.get(folder.lower(), folder)
+        # For folder-specific search, use the traditional endpoint
+        folder_path = FOLDERS.get(folder.casefold(), folder)
         endpoint = f"/me/mailFolders/{folder_path}/messages"
-    else:
-        endpoint = "/me/messages"
 
-    result = graph.request("GET", endpoint, account_id, params=params)
-    return result["value"] if result else []
+        params = {
+            "$search": f'"{query}"',
+            "$top": min(limit, 100),
+            "$select": "id,subject,from,toRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead",
+        }
+
+        return list(
+            graph.request_paginated(endpoint, account_id, params=params, limit=limit)
+        )
+
+    return list(graph.search_query(query, ["message"], account_id, limit))
 
 
 @mcp.tool
@@ -567,22 +672,29 @@ def search_events(
     days_back: int = 365,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
-    """Search calendar events by keyword in subject, body, or location"""
-    start = (dt.datetime.utcnow() - dt.timedelta(days=days_back)).isoformat() + "Z"
-    end = (dt.datetime.utcnow() + dt.timedelta(days=days_ahead)).isoformat() + "Z"
+    """Search calendar events using the modern search API."""
+    events = list(graph.search_query(query, ["event"], account_id, limit))
 
-    params = {
-        "$filter": f"(contains(subject,'{query}') or contains(body/content,'{query}') or contains(location/displayName,'{query}')) and start/dateTime ge '{start}' and start/dateTime le '{end}'",
-        "$top": limit,
-        "$select": "id,subject,start,end,location,body,attendees,organizer,isAllDay,recurrence,onlineMeeting",
-    }
+    # Filter by date range if needed
+    if days_ahead != 365 or days_back != 365:
+        start = dt.datetime.utcnow() - dt.timedelta(days=days_back)
+        end = dt.datetime.utcnow() + dt.timedelta(days=days_ahead)
 
-    result = graph.request("GET", "/me/events", account_id, params=params)
-    if not result:
-        raise ValueError("Failed to search events - no response")
-    if "value" not in result:
-        raise ValueError(f"Unexpected response structure: {result}")
-    return result["value"]
+        filtered_events = []
+        for event in events:
+            event_start = dt.datetime.fromisoformat(
+                event.get("start", {}).get("dateTime", "").replace("Z", "+00:00")
+            )
+            event_end = dt.datetime.fromisoformat(
+                event.get("end", {}).get("dateTime", "").replace("Z", "+00:00")
+            )
+
+            if event_start <= end and event_end >= start:
+                filtered_events.append(event)
+
+        return filtered_events
+
+    return events
 
 
 @mcp.tool
@@ -591,15 +703,48 @@ def search_contacts(
     account_id: str,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
-    """Search contacts by name, email, or phone number"""
+    """Search contacts. Uses traditional search since unified_search doesn't support contacts."""
     params = {
-        "$filter": f"contains(displayName,'{query}') or contains(givenName,'{query}') or contains(surname,'{query}') or contains(emailAddresses/any(e:e/address),'{query}')",
-        "$top": limit,
+        "$search": f'"{query}"',
+        "$top": min(limit, 100),
     }
 
-    result = graph.request("GET", "/me/contacts", account_id, params=params)
-    if not result:
-        raise ValueError("Failed to search contacts - no response")
-    if "value" not in result:
-        raise ValueError(f"Unexpected response structure: {result}")
-    return result["value"]
+    contacts = list(
+        graph.request_paginated("/me/contacts", account_id, params=params, limit=limit)
+    )
+
+    return contacts
+
+
+@mcp.tool
+def unified_search(
+    query: str,
+    account_id: str,
+    entity_types: list[str] | None = None,
+    limit: int = 50,
+) -> dict[str, list[dict[str, Any]]]:
+    """Search across multiple Microsoft 365 resources using the modern search API
+
+    entity_types can include: 'message', 'event', 'drive', 'driveItem', 'list', 'listItem', 'site'
+    If not specified, searches across all available types.
+    """
+    if not entity_types:
+        entity_types = ["message", "event", "driveItem"]
+
+    results = {entity_type: [] for entity_type in entity_types}
+
+    items = list(graph.search_query(query, entity_types, account_id, limit))
+
+    for item in items:
+        resource_type = item.get("@odata.type", "").split(".")[-1]
+
+        if resource_type == "message":
+            results.setdefault("message", []).append(item)
+        elif resource_type == "event":
+            results.setdefault("event", []).append(item)
+        elif resource_type in ["driveItem", "file", "folder"]:
+            results.setdefault("driveItem", []).append(item)
+        else:
+            results.setdefault("other", []).append(item)
+
+    return {k: v for k, v in results.items() if v}

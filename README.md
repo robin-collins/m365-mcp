@@ -47,32 +47,47 @@ claude
 ## Available Tools
 
 ### Email Tools
-- **`read_emails`** - Read emails with full body content
+- **`list_emails`** - List emails with optional body content
 - **`get_email`** - Get specific email with attachments
+- **`create_email_draft`** - Create email draft with attachments support
+- **`send_email`** - Send email immediately with CC/BCC and attachments
 - **`reply_to_email`** - Reply maintaining thread context
-- **`send_email`** - Send with CC/BCC and attachments
-- **`mark_email_read`** - Mark emails as read/unread
-- **`move_email`** - Move between folders
-- **`download_attachment`** - Download email attachments
+- **`reply_all_email`** - Reply to all recipients in thread
+- **`update_email`** - Mark emails as read/unread
+- **`move_email`** - Move emails between folders
+- **`delete_email`** - Delete emails
+- **`get_attachment`** - Get email attachment content
+- **`search_emails`** - Search emails by query
 
 ### Calendar Tools
-- **`get_calendar_events`** - List events with full details
-- **`check_availability`** - Check free/busy times
-- **`create_event`** - Create with location and attendees
+- **`list_events`** - List calendar events with details
+- **`get_event`** - Get specific event details
+- **`create_event`** - Create events with location and attendees
 - **`update_event`** - Reschedule or modify events
 - **`delete_event`** - Cancel events
-- **`respond_to_event`** - Accept/decline invitations
+- **`respond_event`** - Accept/decline/tentative response to invitations
+- **`check_availability`** - Check free/busy times for scheduling
+- **`search_events`** - Search calendar events
 
-### Contact & File Tools
-- **`get_contacts`** - Search or list contacts
-- **`list_files`** - Browse OneDrive with pagination
-- **`upload_file`** - Upload files to OneDrive
-- **`download_file`** - Download file content
+### Contact Tools
+- **`list_contacts`** - List all contacts
+- **`get_contact`** - Get specific contact details
+- **`create_contact`** - Create new contact
+- **`update_contact`** - Update contact information
+- **`delete_contact`** - Delete contact
+- **`search_contacts`** - Search contacts by query
+
+### File Tools
+- **`list_files`** - Browse OneDrive files and folders
+- **`get_file`** - Download file content
+- **`create_file`** - Upload files to OneDrive
+- **`update_file`** - Update existing file content
 - **`delete_file`** - Delete files or folders
+- **`search_files`** - Search files in OneDrive
 
 ### Utility Tools
-- **`search`** - Universal search across all services
-- **`list_accounts`** - Show authenticated accounts
+- **`unified_search`** - Search across emails, events, and files
+- **`list_accounts`** - Show authenticated Microsoft accounts
 
 ## Manual Setup
 
@@ -150,17 +165,17 @@ Or for local development:
 
 ## Multi-Account Support
 
-All tools support an optional `account_id` parameter:
+All tools require an `account_id` parameter as the first argument:
 
 ```python
-# Use default account
-send_email("user@example.com", "Subject", "Body")
-
-# Use specific account  
-send_email("user@example.com", "Subject", "Body", account_id="account-id-here")
-
 # List accounts to get IDs
-list_accounts()
+accounts = list_accounts()
+account_id = accounts[0]["account_id"]
+
+# Use account for operations
+send_email(account_id, "user@example.com", "Subject", "Body")
+list_emails(account_id, limit=10, include_body=True)
+create_event(account_id, "Meeting", "2024-01-15T10:00:00Z", "2024-01-15T11:00:00Z")
 ```
 
 ## Development
@@ -183,25 +198,34 @@ uvx ruff check --fix --unsafe-fixes .
 
 ### Smart Email Management
 ```python
-# Read latest emails with full content
-emails = read_emails(count=10, include_body=True)
+# Get account ID first
+accounts = list_accounts()
+account_id = accounts[0]["account_id"]
+
+# List latest emails with full content
+emails = list_emails(account_id, limit=10, include_body=True)
 
 # Reply maintaining thread
-reply_to_email(email_id, "Thanks for your message. I'll review and get back to you.")
+reply_to_email(account_id, email_id, "Thanks for your message. I'll review and get back to you.")
 
 # Forward with attachments
-email = get_email(email_id)
-attachments = [download_attachment(email_id, att["id"]) for att in email["attachments"]]
-send_email("boss@company.com", f"FW: {email['subject']}", email["body"]["content"], attachments=attachments)
+email = get_email(email_id, account_id)
+attachments = [get_attachment(email_id, att["id"], account_id) for att in email["attachments"]]
+send_email(account_id, "boss@company.com", f"FW: {email['subject']}", email["body"]["content"], attachments=attachments)
 ```
 
 ### Intelligent Scheduling
 ```python
+# Get account ID first
+accounts = list_accounts()
+account_id = accounts[0]["account_id"]
+
 # Check availability before scheduling
-availability = check_availability("2024-01-15T10:00:00Z", "2024-01-15T18:00:00Z", ["colleague@company.com"])
+availability = check_availability(account_id, "2024-01-15T10:00:00Z", "2024-01-15T18:00:00Z", ["colleague@company.com"])
 
 # Create meeting with details
 create_event(
+    account_id,
     "Project Review",
     "2024-01-15T14:00:00Z", 
     "2024-01-15T15:00:00Z",

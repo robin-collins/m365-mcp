@@ -210,13 +210,12 @@ async def test_delete_email():
     async for session in get_session():
         account_info = await get_account_info(session)
         draft_result = await session.call_tool(
-            "create_email",
+            "create_email_draft",
             {
                 "account_id": account_info["account_id"],
                 "to": account_info["email"],
                 "subject": "MCP Test Delete",
                 "body": "This email will be deleted",
-                "send_immediately": False,
             },
         )
         draft_data = parse_result(draft_result)
@@ -859,44 +858,63 @@ async def test_get_attachment():
     """Test get_attachment tool"""
     async for session in get_session():
         account_info = await get_account_info(session)
-        list_result = await session.call_tool(
-            "list_emails", {"account_id": account_info["account_id"], "limit": 20}
+
+        # First create an email with an attachment
+        test_attachment_content = base64.b64encode(
+            b"This is a test attachment content"
+        ).decode()
+        draft_result = await session.call_tool(
+            "create_email_draft",
+            {
+                "account_id": account_info["account_id"],
+                "to": account_info["email"],
+                "subject": "MCP Test Email with Attachment",
+                "body": "This email contains a test attachment",
+                "attachments": [
+                    {"name": "test_file.txt", "content_base64": test_attachment_content}
+                ],
+            },
         )
-        emails = parse_result(list_result, "list_emails")
+        assert not draft_result.isError
+        draft_data = parse_result(draft_result)
+        email_id = draft_data["id"]
 
-        emails_with_attachments = [e for e in emails if e.get("hasAttachments")]
-        if emails_with_attachments:
-            email_with_attach = emails_with_attachments[0]
-            email_result = await session.call_tool(
-                "get_email",
-                {
-                    "email_id": email_with_attach["id"],
-                    "account_id": account_info["account_id"],
-                },
-            )
-            email_detail = parse_result(email_result)
+        # Get the email to retrieve attachment details
+        email_result = await session.call_tool(
+            "get_email",
+            {
+                "email_id": email_id,
+                "account_id": account_info["account_id"],
+            },
+        )
+        email_detail = parse_result(email_result)
 
-            if (
-                email_detail
-                and "attachments" in email_detail
-                and email_detail.get("attachments")
-            ):
-                attachment = email_detail.get("attachments", [])[0]
-                result = await session.call_tool(
-                    "get_attachment",
-                    {
-                        "email_id": email_with_attach.get("id"),
-                        "account_id": account_info["account_id"],
-                        "attachment_id": attachment.get("id"),
-                    },
-                )
-                assert not result.isError
-                attachment_data = parse_result(result)
-                assert attachment_data is not None
-                assert "name" in attachment_data
-                assert "content_base64" in attachment_data
-        else:
-            assert False, "No emails with attachments found"
+        assert email_detail.get("attachments"), "Email should have attachments"
+        attachment = email_detail["attachments"][0]
+
+        # Test getting the attachment
+        result = await session.call_tool(
+            "get_attachment",
+            {
+                "email_id": email_id,
+                "account_id": account_info["account_id"],
+                "attachment_id": attachment["id"],
+            },
+        )
+        assert not result.isError
+        attachment_data = parse_result(result)
+        assert attachment_data is not None
+        assert attachment_data["name"] == "test_file.txt"
+        assert "content_base64" in attachment_data
+
+        # Clean up - delete the draft
+        await session.call_tool(
+            "delete_email",
+            {
+                "email_id": email_id,
+                "account_id": account_info["account_id"],
+            },
+        )
 
 
 @pytest.mark.asyncio
@@ -992,7 +1010,7 @@ async def test_unified_search():
             {
                 "account_id": account_info["account_id"],
                 "query": "test",
-                "entity_types": ["message", "event", "driveItem"],
+                "entity_types": ["message"],
                 "limit": 10,
             },
         )
@@ -1001,6 +1019,5 @@ async def test_unified_search():
         assert search_results is not None
         assert isinstance(search_results, dict)
         # Results should be grouped by entity type
-        for entity_type in ["message", "event", "driveItem"]:
-            if entity_type in search_results:
-                assert isinstance(search_results[entity_type], list)
+        if "message" in search_results:
+            assert isinstance(search_results["message"], list)

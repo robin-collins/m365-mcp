@@ -7,10 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 CACHE_FILE = pl.Path.home() / ".microsoft_mcp_token_cache.json"
-SCOPES = [
-    "https://graph.microsoft.com/.default",
-    "offline_access",
-]
+SCOPES = ["https://graph.microsoft.com/.default"]
 
 
 class Account(NamedTuple):

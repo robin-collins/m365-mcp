@@ -438,8 +438,9 @@ def list_events(
     include_details: bool = True,
 ) -> list[dict[str, Any]]:
     """List calendar events within specified date range"""
-    start = (dt.datetime.utcnow() - dt.timedelta(days=days_back)).isoformat() + "Z"
-    end = (dt.datetime.utcnow() + dt.timedelta(days=days_ahead)).isoformat() + "Z"
+    now = dt.datetime.now(dt.timezone.utc)
+    start = (now - dt.timedelta(days=days_back)).isoformat()
+    end = (now + dt.timedelta(days=days_ahead)).isoformat()
 
     params = {
         "$filter": f"start/dateTime le '{end}' and end/dateTime ge '{start}'",
@@ -814,8 +815,9 @@ def search_events(
 
     # Filter by date range if needed
     if days_ahead != 365 or days_back != 365:
-        start = dt.datetime.utcnow() - dt.timedelta(days=days_back)
-        end = dt.datetime.utcnow() + dt.timedelta(days=days_ahead)
+        now = dt.datetime.now(dt.timezone.utc)
+        start = now - dt.timedelta(days=days_back)
+        end = now + dt.timedelta(days=days_ahead)
 
         filtered_events = []
         for event in events:

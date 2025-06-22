@@ -437,25 +437,27 @@ def list_events(
     days_back: int = 0,
     include_details: bool = True,
 ) -> list[dict[str, Any]]:
-    """List calendar events within specified date range"""
+    """List calendar events within specified date range, including recurring event instances"""
     now = dt.datetime.now(dt.timezone.utc)
     start = (now - dt.timedelta(days=days_back)).isoformat()
     end = (now + dt.timedelta(days=days_ahead)).isoformat()
 
     params = {
-        "$filter": f"start/dateTime le '{end}' and end/dateTime ge '{start}'",
+        "startDateTime": start,
+        "endDateTime": end,
         "$orderby": "start/dateTime",
         "$top": 100,
     }
 
     if include_details:
         params["$select"] = (
-            "id,subject,start,end,location,body,attendees,organizer,isAllDay,recurrence,onlineMeeting"
+            "id,subject,start,end,location,body,attendees,organizer,isAllDay,recurrence,onlineMeeting,seriesMasterId"
         )
     else:
-        params["$select"] = "id,subject,start,end,location,organizer"
+        params["$select"] = "id,subject,start,end,location,organizer,seriesMasterId"
 
-    events = list(graph.request_paginated("/me/events", account_id, params=params))
+    # Use calendarView to get recurring event instances
+    events = list(graph.request_paginated("/me/calendarView", account_id, params=params))
 
     return events
 

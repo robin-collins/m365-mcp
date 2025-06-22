@@ -88,6 +88,8 @@ claude
 ### Utility Tools
 - **`unified_search`** - Search across emails, events, and files
 - **`list_accounts`** - Show authenticated Microsoft accounts
+- **`authenticate_account`** - Start authentication for a new Microsoft account
+- **`complete_authentication`** - Complete the authentication process after entering device code
 
 ## Manual Setup
 

@@ -1,5 +1,6 @@
 import base64
 import datetime as dt
+import pathlib as pl
 from typing import Any
 from fastmcp import FastMCP
 from . import graph, auth
@@ -215,9 +216,9 @@ def create_email_draft(
     subject: str,
     body: str,
     cc: list[str] | None = None,
-    attachments: list[dict[str, str]] | None = None,
+    attachments: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Create an email draft"""
+    """Create an email draft with file paths as attachments"""
     to_list = [to] if isinstance(to, str) else to
 
     message = {
@@ -233,18 +234,28 @@ def create_email_draft(
     large_attachments = []
 
     if attachments:
-        for att in attachments:
-            att_size = len(base64.b64decode(att["content_base64"]))
+        for file_path in attachments:
+            path = pl.Path(file_path).expanduser().resolve()
+            content_bytes = path.read_bytes()
+            att_size = len(content_bytes)
+            att_name = path.name
+
             if att_size < 3 * 1024 * 1024:
                 small_attachments.append(
                     {
                         "@odata.type": "#microsoft.graph.fileAttachment",
-                        "name": att["name"],
-                        "contentBytes": att["content_base64"],
+                        "name": att_name,
+                        "contentBytes": base64.b64encode(content_bytes).decode("utf-8"),
                     }
                 )
             else:
-                large_attachments.append(att)
+                large_attachments.append(
+                    {
+                        "name": att_name,
+                        "content_bytes": content_bytes,
+                        "content_type": "application/octet-stream",
+                    }
+                )
 
     if small_attachments:
         message["attachments"] = small_attachments
@@ -256,11 +267,10 @@ def create_email_draft(
     message_id = result["id"]
 
     for att in large_attachments:
-        att_data = base64.b64decode(att["content_base64"])
         graph.upload_large_mail_attachment(
             message_id,
             att["name"],
-            att_data,
+            att["content_bytes"],
             account_id,
             att.get("content_type", "application/octet-stream"),
         )
@@ -275,9 +285,9 @@ def send_email(
     subject: str,
     body: str,
     cc: list[str] | None = None,
-    attachments: list[dict[str, str]] | None = None,
+    attachments: list[str] | None = None,
 ) -> dict[str, str]:
-    """Send an email immediately"""
+    """Send an email immediately with file paths as attachments"""
     to_list = [to] if isinstance(to, str) else to
 
     message = {
@@ -291,20 +301,35 @@ def send_email(
 
     # Check if we have large attachments
     has_large_attachments = False
-    if attachments:
-        for att in attachments:
-            if len(base64.b64decode(att["content_base64"])) >= 3 * 1024 * 1024:
-                has_large_attachments = True
-                break
+    processed_attachments = []
 
-    if not has_large_attachments and attachments:
+    if attachments:
+        for file_path in attachments:
+            path = pl.Path(file_path).expanduser().resolve()
+            content_bytes = path.read_bytes()
+            att_size = len(content_bytes)
+            att_name = path.name
+
+            processed_attachments.append(
+                {
+                    "name": att_name,
+                    "content_bytes": content_bytes,
+                    "content_type": "application/octet-stream",
+                    "size": att_size,
+                }
+            )
+
+            if att_size >= 3 * 1024 * 1024:
+                has_large_attachments = True
+
+    if not has_large_attachments and processed_attachments:
         message["attachments"] = [
             {
                 "@odata.type": "#microsoft.graph.fileAttachment",
                 "name": att["name"],
-                "contentBytes": att["content_base64"],
+                "contentBytes": base64.b64encode(att["content_bytes"]).decode("utf-8"),
             }
-            for att in attachments
+            for att in processed_attachments
         ]
         graph.request("POST", "/me/sendMail", account_id, json={"message": message})
         return {"status": "sent"}
@@ -328,13 +353,12 @@ def send_email(
 
         message_id = result["id"]
 
-        for att in attachments or []:
-            att_data = base64.b64decode(att["content_base64"])
-            if len(att_data) >= 3 * 1024 * 1024:
+        for att in processed_attachments:
+            if att["size"] >= 3 * 1024 * 1024:
                 graph.upload_large_mail_attachment(
                     message_id,
                     att["name"],
-                    att_data,
+                    att["content_bytes"],
                     account_id,
                     att.get("content_type", "application/octet-stream"),
                 )
@@ -342,7 +366,9 @@ def send_email(
                 small_att = {
                     "@odata.type": "#microsoft.graph.fileAttachment",
                     "name": att["name"],
-                    "contentBytes": att["content_base64"],
+                    "contentBytes": base64.b64encode(att["content_bytes"]).decode(
+                        "utf-8"
+                    ),
                 }
                 graph.request(
                     "POST",
@@ -705,8 +731,10 @@ def get_file(file_id: str, account_id: str, download_path: str) -> dict[str, Any
     import subprocess
 
     metadata = graph.request("GET", f"/me/drive/items/{file_id}", account_id)
+    if not metadata:
+        raise ValueError(f"File with ID {file_id} not found")
+        
     download_url = metadata.get("@microsoft.graph.downloadUrl")
-
     if not download_url:
         raise ValueError("No download URL available for this file")
 
@@ -719,28 +747,34 @@ def get_file(file_id: str, account_id: str, download_path: str) -> dict[str, Any
 
         return {
             "path": download_path,
-            "name": metadata.get("name"),
+            "name": metadata.get("name", "unknown"),
             "size_mb": round(metadata.get("size", 0) / (1024 * 1024), 2),
-            "mime_type": metadata.get("file", {}).get("mimeType"),
+            "mime_type": metadata.get("file", {}).get("mimeType") if metadata else None,
         }
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Failed to download file: {e.stderr.decode()}")
 
 
 @mcp.tool
-def create_file(path: str, content_base64: str, account_id: str) -> dict[str, Any]:
-    """Create or upload a file to OneDrive"""
-    data = base64.b64decode(content_base64)
-    result = graph.upload_large_file(f"/me/drive/root:/{path}:", data, account_id)
+def create_file(
+    onedrive_path: str, local_file_path: str, account_id: str
+) -> dict[str, Any]:
+    """Upload a local file to OneDrive"""
+    path = pl.Path(local_file_path).expanduser().resolve()
+    data = path.read_bytes()
+    result = graph.upload_large_file(
+        f"/me/drive/root:/{onedrive_path}:", data, account_id
+    )
     if not result:
-        raise ValueError(f"Failed to create file at path: {path}")
+        raise ValueError(f"Failed to create file at path: {onedrive_path}")
     return result
 
 
 @mcp.tool
-def update_file(file_id: str, content_base64: str, account_id: str) -> dict[str, Any]:
-    """Update file content"""
-    data = base64.b64decode(content_base64)
+def update_file(file_id: str, local_file_path: str, account_id: str) -> dict[str, Any]:
+    """Update OneDrive file content from a local file"""
+    path = pl.Path(local_file_path).expanduser().resolve()
+    data = path.read_bytes()
     result = graph.upload_large_file(f"/me/drive/items/{file_id}", data, account_id)
     if not result:
         raise ValueError(f"Failed to update file with ID: {file_id}")
@@ -756,9 +790,9 @@ def delete_file(file_id: str, account_id: str) -> dict[str, str]:
 
 @mcp.tool
 def get_attachment(
-    email_id: str, attachment_id: str, account_id: str
+    email_id: str, attachment_id: str, save_path: str, account_id: str
 ) -> dict[str, Any]:
-    """Get email attachment details and content"""
+    """Download email attachment to a specified file path"""
     result = graph.request(
         "GET", f"/me/messages/{email_id}/attachments/{attachment_id}", account_id
     )
@@ -769,11 +803,17 @@ def get_attachment(
     if "contentBytes" not in result:
         raise ValueError("Attachment content not available")
 
+    # Save attachment to file
+    path = pl.Path(save_path).expanduser().resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content_bytes = base64.b64decode(result["contentBytes"])
+    path.write_bytes(content_bytes)
+
     return {
         "name": result.get("name", "unknown"),
         "content_type": result.get("contentType", "application/octet-stream"),
         "size": result.get("size", 0),
-        "content_base64": result["contentBytes"],
+        "saved_to": str(path),
     }
 
 

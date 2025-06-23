@@ -716,17 +716,26 @@ async def test_get_file():
     async for session in get_session():
         account_info = await get_account_info(session)
         test_content = "Test file content"
-        content_b64 = base64.b64encode(test_content.encode()).decode()
         test_filename = f"mcp-test-get-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
-
-        create_result = await session.call_tool(
-            "create_file",
-            {
-                "account_id": account_info["account_id"],
-                "path": test_filename,
-                "content_base64": content_b64,
-            },
-        )
+        
+        # Create a temporary local file
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as local_file:
+            local_file.write(test_content)
+            local_file_path = local_file.name
+        
+        try:
+            create_result = await session.call_tool(
+                "create_file",
+                {
+                    "account_id": account_info["account_id"],
+                    "onedrive_path": test_filename,
+                    "local_file_path": local_file_path,
+                },
+            )
+        finally:
+            # Clean up local file
+            if os.path.exists(local_file_path):
+                os.unlink(local_file_path)
         file_data = parse_result(create_result)
         file_id = file_data.get("id")
 
@@ -772,19 +781,29 @@ async def test_create_file():
     async for session in get_session():
         account_info = await get_account_info(session)
         test_content = f"MCP Integration Test\nTimestamp: {datetime.now().isoformat()}"
-        content_b64 = base64.b64encode(test_content.encode()).decode()
         test_filename = (
             f"mcp-test-create-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
         )
-
-        result = await session.call_tool(
-            "create_file",
-            {
-                "account_id": account_info["account_id"],
-                "path": test_filename,
-                "content_base64": content_b64,
-            },
-        )
+        
+        # Create a temporary local file
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as local_file:
+            local_file.write(test_content)
+            local_file_path = local_file.name
+        
+        try:
+            result = await session.call_tool(
+                "create_file",
+                {
+                    "account_id": account_info["account_id"],
+                    "onedrive_path": test_filename,
+                    "local_file_path": local_file_path,
+                },
+            )
+        finally:
+            # Clean up local file
+            if os.path.exists(local_file_path):
+                os.unlink(local_file_path)
         assert not result.isError
         upload_result = parse_result(result)
         assert upload_result is not None
@@ -804,33 +823,52 @@ async def test_update_file():
     async for session in get_session():
         account_info = await get_account_info(session)
         test_content = "Original content"
-        content_b64 = base64.b64encode(test_content.encode()).decode()
         test_filename = (
             f"mcp-test-update-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
         )
-
-        create_result = await session.call_tool(
-            "create_file",
-            {
-                "account_id": account_info["account_id"],
-                "path": test_filename,
-                "content_base64": content_b64,
-            },
-        )
+        
+        # Create a temporary local file
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as local_file:
+            local_file.write(test_content)
+            local_file_path = local_file.name
+        
+        try:
+            create_result = await session.call_tool(
+                "create_file",
+                {
+                    "account_id": account_info["account_id"],
+                    "onedrive_path": test_filename,
+                    "local_file_path": local_file_path,
+                },
+            )
+        finally:
+            # Clean up local file
+            if os.path.exists(local_file_path):
+                os.unlink(local_file_path)
         file_data = parse_result(create_result)
         file_id = file_data.get("id")
 
         updated_content = f"Updated content at {datetime.now().isoformat()}"
-        updated_b64 = base64.b64encode(updated_content.encode()).decode()
-
-        result = await session.call_tool(
-            "update_file",
-            {
-                "account_id": account_info["account_id"],
-                "file_id": file_id,
-                "content_base64": updated_b64,
-            },
-        )
+        
+        # Create a temporary local file with updated content
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as updated_file:
+            updated_file.write(updated_content)
+            updated_file_path = updated_file.name
+        
+        try:
+            result = await session.call_tool(
+                "update_file",
+                {
+                    "account_id": account_info["account_id"],
+                    "file_id": file_id,
+                    "local_file_path": updated_file_path,
+                },
+            )
+        finally:
+            # Clean up local file
+            if os.path.exists(updated_file_path):
+                os.unlink(updated_file_path)
         assert not result.isError
 
         delete_result = await session.call_tool(
@@ -846,19 +884,29 @@ async def test_delete_file():
     async for session in get_session():
         account_info = await get_account_info(session)
         test_content = "File to be deleted"
-        content_b64 = base64.b64encode(test_content.encode()).decode()
         test_filename = (
             f"mcp-test-delete-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
         )
-
-        create_result = await session.call_tool(
-            "create_file",
-            {
-                "account_id": account_info["account_id"],
-                "path": test_filename,
-                "content_base64": content_b64,
-            },
-        )
+        
+        # Create a temporary local file
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as local_file:
+            local_file.write(test_content)
+            local_file_path = local_file.name
+        
+        try:
+            create_result = await session.call_tool(
+                "create_file",
+                {
+                    "account_id": account_info["account_id"],
+                    "onedrive_path": test_filename,
+                    "local_file_path": local_file_path,
+                },
+            )
+        finally:
+            # Clean up local file
+            if os.path.exists(local_file_path):
+                os.unlink(local_file_path)
         file_data = parse_result(create_result)
         file_id = file_data.get("id")
 
@@ -879,21 +927,33 @@ async def test_get_attachment():
         account_info = await get_account_info(session)
 
         # First create an email with an attachment
-        test_attachment_content = base64.b64encode(
-            b"This is a test attachment content"
-        ).decode()
-        draft_result = await session.call_tool(
-            "create_email_draft",
-            {
-                "account_id": account_info["account_id"],
-                "to": account_info["email"],
-                "subject": "MCP Test Email with Attachment",
-                "body": "This email contains a test attachment",
-                "attachments": [
-                    {"name": "test_file.txt", "content_base64": test_attachment_content}
-                ],
-            },
-        )
+        import tempfile
+        import os
+        
+        # Create a temporary directory and file with specific name
+        temp_dir = tempfile.mkdtemp()
+        temp_file_path = os.path.join(temp_dir, "test_file.txt")
+        
+        with open(temp_file_path, 'w') as f:
+            f.write("This is a test attachment content")
+        
+        try:
+            draft_result = await session.call_tool(
+                "create_email_draft",
+                {
+                    "account_id": account_info["account_id"],
+                    "to": account_info["email"],
+                    "subject": "MCP Test Email with Attachment",
+                    "body": "This email contains a test attachment",
+                    "attachments": [temp_file_path],
+                },
+            )
+        finally:
+            # Clean up temp file and directory
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+            if os.path.exists(temp_dir):
+                os.rmdir(temp_dir)
         assert not draft_result.isError
         draft_data = parse_result(draft_result)
         email_id = draft_data["id"]
@@ -912,19 +972,35 @@ async def test_get_attachment():
         attachment = email_detail["attachments"][0]
 
         # Test getting the attachment
-        result = await session.call_tool(
-            "get_attachment",
-            {
-                "email_id": email_id,
-                "account_id": account_info["account_id"],
-                "attachment_id": attachment["id"],
-            },
-        )
-        assert not result.isError
-        attachment_data = parse_result(result)
-        assert attachment_data is not None
-        assert attachment_data["name"] == "test_file.txt"
-        assert "content_base64" in attachment_data
+        with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as save_file:
+            save_path = save_file.name
+        
+        try:
+            result = await session.call_tool(
+                "get_attachment",
+                {
+                    "email_id": email_id,
+                    "account_id": account_info["account_id"],
+                    "attachment_id": attachment["id"],
+                    "save_path": save_path,
+                },
+            )
+            assert not result.isError
+            attachment_data = parse_result(result)
+            assert attachment_data is not None
+            assert attachment_data["name"] == "test_file.txt"
+            assert "saved_to" in attachment_data
+            assert attachment_data["saved_to"] == save_path
+            
+            # Verify file was saved
+            assert os.path.exists(save_path)
+            with open(save_path, 'r') as f:
+                content = f.read()
+                assert content == "This is a test attachment content"
+        finally:
+            # Clean up saved file
+            if os.path.exists(save_path):
+                os.unlink(save_path)
 
         # Clean up - delete the draft
         await session.call_tool(

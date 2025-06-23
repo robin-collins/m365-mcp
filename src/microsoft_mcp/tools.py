@@ -216,9 +216,9 @@ def create_email_draft(
     subject: str,
     body: str,
     cc: list[str] | None = None,
-    attachments: list[str] | None = None,
+    attachments: str | list[str] | None = None,
 ) -> dict[str, Any]:
-    """Create an email draft with file paths as attachments"""
+    """Create an email draft with file path(s) as attachments"""
     to_list = [to] if isinstance(to, str) else to
 
     message = {
@@ -234,7 +234,9 @@ def create_email_draft(
     large_attachments = []
 
     if attachments:
-        for file_path in attachments:
+        # Convert single path to list
+        attachment_paths = [attachments] if isinstance(attachments, str) else attachments
+        for file_path in attachment_paths:
             path = pl.Path(file_path).expanduser().resolve()
             content_bytes = path.read_bytes()
             att_size = len(content_bytes)
@@ -285,9 +287,9 @@ def send_email(
     subject: str,
     body: str,
     cc: list[str] | None = None,
-    attachments: list[str] | None = None,
+    attachments: str | list[str] | None = None,
 ) -> dict[str, str]:
-    """Send an email immediately with file paths as attachments"""
+    """Send an email immediately with file path(s) as attachments"""
     to_list = [to] if isinstance(to, str) else to
 
     message = {
@@ -304,7 +306,9 @@ def send_email(
     processed_attachments = []
 
     if attachments:
-        for file_path in attachments:
+        # Convert single path to list
+        attachment_paths = [attachments] if isinstance(attachments, str) else attachments
+        for file_path in attachment_paths:
             path = pl.Path(file_path).expanduser().resolve()
             content_bytes = path.read_bytes()
             att_size = len(content_bytes)

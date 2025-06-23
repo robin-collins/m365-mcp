@@ -215,7 +215,7 @@ def create_email_draft(
     to: str | list[str],
     subject: str,
     body: str,
-    cc: list[str] | None = None,
+    cc: str | list[str] | None = None,
     attachments: str | list[str] | None = None,
 ) -> dict[str, Any]:
     """Create an email draft with file path(s) as attachments"""
@@ -228,14 +228,19 @@ def create_email_draft(
     }
 
     if cc:
-        message["ccRecipients"] = [{"emailAddress": {"address": addr}} for addr in cc]
+        cc_list = [cc] if isinstance(cc, str) else cc
+        message["ccRecipients"] = [
+            {"emailAddress": {"address": addr}} for addr in cc_list
+        ]
 
     small_attachments = []
     large_attachments = []
 
     if attachments:
         # Convert single path to list
-        attachment_paths = [attachments] if isinstance(attachments, str) else attachments
+        attachment_paths = (
+            [attachments] if isinstance(attachments, str) else attachments
+        )
         for file_path in attachment_paths:
             path = pl.Path(file_path).expanduser().resolve()
             content_bytes = path.read_bytes()
@@ -286,7 +291,7 @@ def send_email(
     to: str | list[str],
     subject: str,
     body: str,
-    cc: list[str] | None = None,
+    cc: str | list[str] | None = None,
     attachments: str | list[str] | None = None,
 ) -> dict[str, str]:
     """Send an email immediately with file path(s) as attachments"""
@@ -299,7 +304,10 @@ def send_email(
     }
 
     if cc:
-        message["ccRecipients"] = [{"emailAddress": {"address": addr}} for addr in cc]
+        cc_list = [cc] if isinstance(cc, str) else cc
+        message["ccRecipients"] = [
+            {"emailAddress": {"address": addr}} for addr in cc_list
+        ]
 
     # Check if we have large attachments
     has_large_attachments = False
@@ -307,7 +315,9 @@ def send_email(
 
     if attachments:
         # Convert single path to list
-        attachment_paths = [attachments] if isinstance(attachments, str) else attachments
+        attachment_paths = (
+            [attachments] if isinstance(attachments, str) else attachments
+        )
         for file_path in attachment_paths:
             path = pl.Path(file_path).expanduser().resolve()
             content_bytes = path.read_bytes()
@@ -347,8 +357,9 @@ def send_email(
             "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_list],
         }
         if cc:
+            cc_list = [cc] if isinstance(cc, str) else cc
             message["ccRecipients"] = [
-                {"emailAddress": {"address": addr}} for addr in cc
+                {"emailAddress": {"address": addr}} for addr in cc_list
             ]
 
         result = graph.request("POST", "/me/messages", account_id, json=message)
@@ -511,7 +522,7 @@ def create_event(
     end: str,
     location: str | None = None,
     body: str | None = None,
-    attendees: list[str] | None = None,
+    attendees: str | list[str] | None = None,
     timezone: str = "UTC",
 ) -> dict[str, Any]:
     """Create a calendar event"""
@@ -528,8 +539,9 @@ def create_event(
         event["body"] = {"contentType": "Text", "content": body}
 
     if attendees:
+        attendees_list = [attendees] if isinstance(attendees, str) else attendees
         event["attendees"] = [
-            {"emailAddress": {"address": a}, "type": "required"} for a in attendees
+            {"emailAddress": {"address": a}, "type": "required"} for a in attendees_list
         ]
 
     result = graph.request("POST", "/me/events", account_id, json=event)
@@ -601,7 +613,7 @@ def check_availability(
     account_id: str,
     start: str,
     end: str,
-    attendees: list[str] | None = None,
+    attendees: str | list[str] | None = None,
 ) -> dict[str, Any]:
     """Check calendar availability for scheduling"""
     me_info = graph.request("GET", "/me", account_id)
@@ -609,7 +621,8 @@ def check_availability(
         raise ValueError("Failed to get user email address")
     schedules = [me_info["mail"]]
     if attendees:
-        schedules.extend(attendees)
+        attendees_list = [attendees] if isinstance(attendees, str) else attendees
+        schedules.extend(attendees_list)
 
     payload = {
         "schedules": schedules,
@@ -650,7 +663,7 @@ def create_contact(
     account_id: str,
     given_name: str,
     surname: str | None = None,
-    email_addresses: list[str] | None = None,
+    email_addresses: str | list[str] | None = None,
     phone_numbers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Create a new contact"""
@@ -660,9 +673,12 @@ def create_contact(
         contact["surname"] = surname
 
     if email_addresses:
+        email_list = (
+            [email_addresses] if isinstance(email_addresses, str) else email_addresses
+        )
         contact["emailAddresses"] = [
             {"address": email, "name": f"{given_name} {surname or ''}".strip()}
-            for email in email_addresses
+            for email in email_list
         ]
 
     if phone_numbers:
@@ -737,7 +753,7 @@ def get_file(file_id: str, account_id: str, download_path: str) -> dict[str, Any
     metadata = graph.request("GET", f"/me/drive/items/{file_id}", account_id)
     if not metadata:
         raise ValueError(f"File with ID {file_id} not found")
-        
+
     download_url = metadata.get("@microsoft.graph.downloadUrl")
     if not download_url:
         raise ValueError("No download URL available for this file")

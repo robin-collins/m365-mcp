@@ -1,7 +1,6 @@
 import os
 import asyncio
 import json
-import base64
 from datetime import datetime, timedelta, timezone
 import pytest
 from mcp import ClientSession, StdioServerParameters
@@ -945,7 +944,7 @@ async def test_get_attachment():
                     "to": account_info["email"],
                     "subject": "MCP Test Email with Attachment",
                     "body": "This email contains a test attachment",
-                    "attachments": [temp_file_path],
+                    "attachments": temp_file_path,  # Test with single path
                 },
             )
         finally:

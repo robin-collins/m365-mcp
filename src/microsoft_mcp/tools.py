@@ -457,7 +457,9 @@ def list_events(
         params["$select"] = "id,subject,start,end,location,organizer,seriesMasterId"
 
     # Use calendarView to get recurring event instances
-    events = list(graph.request_paginated("/me/calendarView", account_id, params=params))
+    events = list(
+        graph.request_paginated("/me/calendarView", account_id, params=params)
+    )
 
     return events
 
@@ -698,12 +700,31 @@ def list_files(
 
 
 @mcp.tool
-def get_file(file_id: str, account_id: str) -> dict[str, Any]:
-    """Get file metadata and content as base64"""
-    metadata = graph.request("GET", f"/me/drive/items/{file_id}", account_id)
-    content = graph.download_raw(f"/me/drive/items/{file_id}/content", account_id)
+def get_file(file_id: str, account_id: str, download_path: str) -> dict[str, Any]:
+    """Download a file from OneDrive to local path"""
+    import subprocess
 
-    return {"metadata": metadata, "content_base64": base64.b64encode(content).decode()}
+    metadata = graph.request("GET", f"/me/drive/items/{file_id}", account_id)
+    download_url = metadata.get("@microsoft.graph.downloadUrl")
+
+    if not download_url:
+        raise ValueError("No download URL available for this file")
+
+    try:
+        subprocess.run(
+            ["curl", "-L", "-o", download_path, download_url],
+            check=True,
+            capture_output=True,
+        )
+
+        return {
+            "path": download_path,
+            "name": metadata.get("name"),
+            "size_mb": round(metadata.get("size", 0) / (1024 * 1024), 2),
+            "mime_type": metadata.get("file", {}).get("mimeType"),
+        }
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Failed to download file: {e.stderr.decode()}")
 
 
 @mcp.tool

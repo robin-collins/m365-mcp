@@ -711,6 +711,8 @@ async def test_list_files():
 @pytest.mark.asyncio
 async def test_get_file():
     """Test get_file tool"""
+    import tempfile
+
     async for session in get_session():
         account_info = await get_account_info(session)
         test_content = "Test file content"
@@ -728,17 +730,34 @@ async def test_get_file():
         file_data = parse_result(create_result)
         file_id = file_data.get("id")
 
-        result = await session.call_tool(
-            "get_file", {"file_id": file_id, "account_id": account_info["account_id"]}
-        )
-        assert not result.isError
-        retrieved_file = parse_result(result)
-        assert retrieved_file is not None
-        assert "metadata" in retrieved_file
-        assert "content_base64" in retrieved_file
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+            tmp_path = tmp_file.name
 
-        downloaded_content = base64.b64decode(retrieved_file["content_base64"]).decode()
-        assert downloaded_content == test_content
+        try:
+            result = await session.call_tool(
+                "get_file",
+                {
+                    "file_id": file_id,
+                    "account_id": account_info["account_id"],
+                    "download_path": tmp_path,
+                },
+            )
+            assert not result.isError
+            retrieved_file = parse_result(result)
+            assert retrieved_file is not None
+            assert "path" in retrieved_file
+            assert retrieved_file["path"] == tmp_path
+            assert "name" in retrieved_file
+            assert retrieved_file["name"] == test_filename
+            assert "size_mb" in retrieved_file
+
+            with open(tmp_path, "r") as f:
+                downloaded_content = f.read()
+            assert downloaded_content == test_content
+
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
         delete_result = await session.call_tool(
             "delete_file",

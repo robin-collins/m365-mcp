@@ -132,12 +132,33 @@ def complete_authentication(flow_cache: str) -> dict[str, str]:
 @mcp.tool
 def list_emails(
     account_id: str,
-    folder: str = "inbox",
+    folder: str | None = None,
+    folder_id: str | None = None,
     limit: int = 10,
     include_body: bool = True,
 ) -> list[dict[str, Any]]:
-    """List emails from specified folder"""
-    folder_path = FOLDERS.get(folder.casefold(), folder)
+    """List emails from specified folder by name or ID
+
+    Args:
+        account_id: Microsoft account ID
+        folder: Folder name (inbox, sent, drafts, etc.) - legacy support
+        folder_id: Direct folder ID - takes precedence over folder name
+        limit: Maximum emails to return
+        include_body: Whether to include email body content
+
+    Returns:
+        List of email messages
+    """
+    # Determine which folder to use
+    if folder_id:
+        # Direct folder ID takes precedence
+        folder_path = folder_id
+    elif folder:
+        # Use folder name mapping
+        folder_path = FOLDERS.get(folder.casefold(), folder)
+    else:
+        # Default to inbox
+        folder_path = "inbox"
 
     if include_body:
         select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead"
@@ -160,6 +181,143 @@ def list_emails(
     )
 
     return emails
+
+
+def _list_mail_folders_impl(
+    account_id: str,
+    parent_folder_id: str | None = None,
+    include_hidden: bool = False,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Internal implementation for listing mail folders"""
+    if parent_folder_id:
+        endpoint = f"/me/mailFolders/{parent_folder_id}/childFolders"
+    else:
+        endpoint = "/me/mailFolders"
+
+    params = {
+        "$select": "id,displayName,childFolderCount,unreadItemCount,totalItemCount,parentFolderId,isHidden",
+        "$top": min(limit, 100),
+    }
+
+    if include_hidden:
+        params["includeHiddenFolders"] = "true"
+
+    folders = list(
+        graph.request_paginated(endpoint, account_id, params=params, limit=limit)
+    )
+
+    return folders
+
+
+@mcp.tool
+def list_mail_folders(
+    account_id: str,
+    parent_folder_id: str | None = None,
+    include_hidden: bool = False,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """List mail folders - root folders or child folders of a specific parent
+
+    Args:
+        account_id: Microsoft account ID
+        parent_folder_id: If None, lists root folders. If provided, lists child folders.
+        include_hidden: Whether to include hidden folders
+        limit: Maximum number of folders to return
+
+    Returns:
+        List of folder objects with: id, displayName, childFolderCount,
+        unreadItemCount, totalItemCount, parentFolderId, isHidden
+    """
+    return _list_mail_folders_impl(account_id, parent_folder_id, include_hidden, limit)
+
+
+@mcp.tool
+def get_mail_folder(
+    folder_id: str,
+    account_id: str,
+) -> dict[str, Any]:
+    """Get detailed information about a specific mail folder
+
+    Args:
+        folder_id: The folder ID to retrieve
+        account_id: Microsoft account ID
+
+    Returns:
+        Folder object with full metadata including id, displayName,
+        childFolderCount, unreadItemCount, totalItemCount
+    """
+    result = graph.request("GET", f"/me/mailFolders/{folder_id}", account_id)
+    if not result:
+        raise ValueError(f"Mail folder with ID {folder_id} not found")
+    return result
+
+
+@mcp.tool
+def get_mail_folder_tree(
+    account_id: str,
+    parent_folder_id: str | None = None,
+    max_depth: int = 10,
+    include_hidden: bool = False,
+) -> dict[str, Any]:
+    """Recursively build a tree of mail folders
+
+    Args:
+        account_id: Microsoft account ID
+        parent_folder_id: Root folder to start from (None = root)
+        max_depth: Maximum recursion depth to prevent infinite loops
+        include_hidden: Whether to include hidden folders
+
+    Returns:
+        Nested tree structure with folders and their children
+    """
+
+    def _build_folder_tree(
+        folder_id: str | None, current_depth: int
+    ) -> list[dict[str, Any]]:
+        """Internal recursive helper to build folder tree"""
+        if current_depth >= max_depth:
+            return []
+
+        # Get folders at this level
+        folders = _list_mail_folders_impl(
+            account_id=account_id,
+            parent_folder_id=folder_id,
+            include_hidden=include_hidden,
+            limit=1000,  # Large limit to get all folders at this level
+        )
+
+        result = []
+        for folder in folders:
+            folder_node = {
+                "id": folder["id"],
+                "displayName": folder.get("displayName", ""),
+                "childFolderCount": folder.get("childFolderCount", 0),
+                "unreadItemCount": folder.get("unreadItemCount", 0),
+                "totalItemCount": folder.get("totalItemCount", 0),
+                "parentFolderId": folder.get("parentFolderId"),
+                "isHidden": folder.get("isHidden", False),
+                "children": [],
+            }
+
+            # Recursively get children if this folder has child folders
+            if folder.get("childFolderCount", 0) > 0:
+                folder_node["children"] = _build_folder_tree(
+                    folder["id"], current_depth + 1
+                )
+
+            result.append(folder_node)
+
+        return result
+
+    # Build tree starting from specified parent or root
+    tree_data = _build_folder_tree(parent_folder_id, 0)
+
+    return {
+        "root_folder_id": parent_folder_id,
+        "max_depth": max_depth,
+        "folders": tree_data,
+    }
 
 
 @mcp.tool
@@ -472,6 +630,283 @@ def reply_all_email(account_id: str, email_id: str, body: str) -> dict[str, str]
 
 
 @mcp.tool
+def list_message_rules(account_id: str) -> list[dict[str, Any]]:
+    """List all inbox message rules (email filters) for the account
+
+    Message rules automatically process incoming emails based on conditions.
+    Rules are executed in sequence order (1, 2, 3...).
+
+    Returns:
+        List of rules with: id, displayName, sequence, isEnabled, conditions, actions
+    """
+    result = graph.request("GET", "/me/mailFolders/inbox/messageRules", account_id)
+    if not result or "value" not in result:
+        return []
+    return result["value"]
+
+
+@mcp.tool
+def get_message_rule(rule_id: str, account_id: str) -> dict[str, Any]:
+    """Get details of a specific message rule
+
+    Args:
+        rule_id: The message rule ID
+        account_id: Microsoft account ID
+
+    Returns:
+        Rule details including conditions, actions, sequence, and enabled status
+    """
+    result = graph.request(
+        "GET", f"/me/mailFolders/inbox/messageRules/{rule_id}", account_id
+    )
+    if not result:
+        raise ValueError(f"Message rule with ID {rule_id} not found")
+    return result
+
+
+@mcp.tool
+def create_message_rule(
+    account_id: str,
+    display_name: str,
+    conditions: dict[str, Any],
+    actions: dict[str, Any],
+    sequence: int = 1,
+    is_enabled: bool = True,
+    exceptions: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create a new inbox message rule to automatically process emails
+
+    Args:
+        account_id: Microsoft account ID
+        display_name: Name for the rule (e.g., "Move work emails to Projects")
+        conditions: Conditions that trigger the rule
+        actions: Actions to perform when conditions match
+        sequence: Rule execution order (lower numbers execute first)
+        is_enabled: Whether the rule is active
+        exceptions: Optional conditions that prevent rule execution
+
+    Conditions examples:
+        {"fromAddresses": [{"address": "john@example.com"}]}
+        {"subjectContains": ["urgent", "important"]}
+        {"senderContains": ["@company.com"]}
+        {"hasAttachments": true}
+
+    Actions examples:
+        {"moveToFolder": "folder_id"}
+        {"markAsRead": true}
+        {"forwardTo": [{"emailAddress": {"address": "manager@example.com"}}]}
+        {"assignCategories": ["Red category"]}
+        {"delete": true}
+
+    Returns:
+        Created rule with its ID and full configuration
+    """
+    rule_data = {
+        "displayName": display_name,
+        "sequence": sequence,
+        "isEnabled": is_enabled,
+        "conditions": conditions,
+        "actions": actions,
+    }
+
+    if exceptions:
+        rule_data["exceptions"] = exceptions
+
+    result = graph.request(
+        "POST", "/me/mailFolders/inbox/messageRules", account_id, json=rule_data
+    )
+    if not result:
+        raise ValueError("Failed to create message rule")
+    return result
+
+
+@mcp.tool
+def update_message_rule(
+    rule_id: str,
+    account_id: str,
+    display_name: str | None = None,
+    conditions: dict[str, Any] | None = None,
+    actions: dict[str, Any] | None = None,
+    sequence: int | None = None,
+    is_enabled: bool | None = None,
+    exceptions: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Update an existing message rule
+
+    Args:
+        rule_id: The message rule ID to update
+        account_id: Microsoft account ID
+        display_name: New name for the rule
+        conditions: New conditions
+        actions: New actions
+        sequence: New execution order
+        is_enabled: Enable or disable the rule
+        exceptions: New exception conditions
+
+    Returns:
+        Updated rule configuration
+    """
+    updates = {}
+    if display_name is not None:
+        updates["displayName"] = display_name
+    if conditions is not None:
+        updates["conditions"] = conditions
+    if actions is not None:
+        updates["actions"] = actions
+    if sequence is not None:
+        updates["sequence"] = sequence
+    if is_enabled is not None:
+        updates["isEnabled"] = is_enabled
+    if exceptions is not None:
+        updates["exceptions"] = exceptions
+
+    if not updates:
+        raise ValueError("At least one field must be provided to update")
+
+    result = graph.request(
+        "PATCH",
+        f"/me/mailFolders/inbox/messageRules/{rule_id}",
+        account_id,
+        json=updates,
+    )
+    if not result:
+        raise ValueError(f"Failed to update message rule {rule_id}")
+    return result
+
+
+@mcp.tool
+def delete_message_rule(rule_id: str, account_id: str) -> dict[str, str]:
+    """Delete a message rule
+
+    Args:
+        rule_id: The message rule ID to delete
+        account_id: Microsoft account ID
+
+    Returns:
+        Status confirmation
+    """
+    graph.request("DELETE", f"/me/mailFolders/inbox/messageRules/{rule_id}", account_id)
+    return {"status": "deleted", "rule_id": rule_id}
+
+
+@mcp.tool
+def move_rule_to_top(rule_id: str, account_id: str) -> dict[str, Any]:
+    """Move a message rule to the top of the execution order (sequence = 1)
+
+    Rules execute in sequence order. Moving to top means it runs before all other rules.
+
+    Args:
+        rule_id: The message rule ID to move
+        account_id: Microsoft account ID
+
+    Returns:
+        Updated rule with new sequence number
+    """
+    result = graph.request(
+        "PATCH",
+        f"/me/mailFolders/inbox/messageRules/{rule_id}",
+        account_id,
+        json={"sequence": 1},
+    )
+    if not result:
+        raise ValueError(f"Failed to move rule {rule_id} to top")
+    return result
+
+
+@mcp.tool
+def move_rule_to_bottom(rule_id: str, account_id: str) -> dict[str, Any]:
+    """Move a message rule to the bottom of the execution order
+
+    Args:
+        rule_id: The message rule ID to move
+        account_id: Microsoft account ID
+
+    Returns:
+        Updated rule with new sequence number
+    """
+    # Get all rules to find the highest sequence number
+    all_rules = list_message_rules(account_id)
+    if not all_rules:
+        raise ValueError("No rules found")
+
+    max_sequence = max(rule.get("sequence", 1) for rule in all_rules)
+    new_sequence = max_sequence + 1
+
+    result = graph.request(
+        "PATCH",
+        f"/me/mailFolders/inbox/messageRules/{rule_id}",
+        account_id,
+        json={"sequence": new_sequence},
+    )
+    if not result:
+        raise ValueError(f"Failed to move rule {rule_id} to bottom")
+    return result
+
+
+@mcp.tool
+def move_rule_up(rule_id: str, account_id: str) -> dict[str, Any]:
+    """Move a message rule up one position in the execution order (decrease sequence by 1)
+
+    Rules execute in sequence order. Moving up means it runs earlier.
+
+    Args:
+        rule_id: The message rule ID to move
+        account_id: Microsoft account ID
+
+    Returns:
+        Updated rule with new sequence number
+    """
+    # Get current rule
+    current_rule = get_message_rule(rule_id, account_id)
+    current_sequence = current_rule.get("sequence", 1)
+
+    if current_sequence <= 1:
+        raise ValueError("Rule is already at the top (sequence = 1)")
+
+    new_sequence = current_sequence - 1
+
+    result = graph.request(
+        "PATCH",
+        f"/me/mailFolders/inbox/messageRules/{rule_id}",
+        account_id,
+        json={"sequence": new_sequence},
+    )
+    if not result:
+        raise ValueError(f"Failed to move rule {rule_id} up")
+    return result
+
+
+@mcp.tool
+def move_rule_down(rule_id: str, account_id: str) -> dict[str, Any]:
+    """Move a message rule down one position in the execution order (increase sequence by 1)
+
+    Rules execute in sequence order. Moving down means it runs later.
+
+    Args:
+        rule_id: The message rule ID to move
+        account_id: Microsoft account ID
+
+    Returns:
+        Updated rule with new sequence number
+    """
+    # Get current rule
+    current_rule = get_message_rule(rule_id, account_id)
+    current_sequence = current_rule.get("sequence", 1)
+
+    new_sequence = current_sequence + 1
+
+    result = graph.request(
+        "PATCH",
+        f"/me/mailFolders/inbox/messageRules/{rule_id}",
+        account_id,
+        json={"sequence": new_sequence},
+    )
+    if not result:
+        raise ValueError(f"Failed to move rule {rule_id} down")
+    return result
+
+
+@mcp.tool
 def list_events(
     account_id: str,
     days_ahead: int = 7,
@@ -715,14 +1150,36 @@ def delete_contact(contact_id: str, account_id: str) -> dict[str, str]:
 
 @mcp.tool
 def list_files(
-    account_id: str, path: str = "/", limit: int = 50
+    account_id: str,
+    path: str = "/",
+    folder_id: str | None = None,
+    limit: int = 50,
+    type_filter: str = "all",
 ) -> list[dict[str, Any]]:
-    """List files and folders in OneDrive"""
-    endpoint = (
-        "/me/drive/root/children"
-        if path == "/"
-        else f"/me/drive/root:/{path}:/children"
-    )
+    """List files and/or folders in OneDrive
+
+    Args:
+        account_id: Microsoft account ID
+        path: Path to list from
+        folder_id: Direct folder ID (takes precedence over path)
+        limit: Maximum items to return
+        type_filter: Filter by type - "all", "files", or "folders"
+
+    Returns:
+        List of items matching the filter criteria
+    """
+    # Validate type_filter
+    if type_filter not in ["all", "files", "folders"]:
+        raise ValueError("type_filter must be one of: 'all', 'files', 'folders'")
+
+    # Determine endpoint
+    if folder_id:
+        endpoint = f"/me/drive/items/{folder_id}/children"
+    elif path == "/":
+        endpoint = "/me/drive/root/children"
+    else:
+        endpoint = f"/me/drive/root:/{path}:/children"
+
     params = {
         "$top": min(limit, 100),
         "$select": "id,name,size,lastModifiedDateTime,folder,file,@microsoft.graph.downloadUrl",
@@ -732,17 +1189,30 @@ def list_files(
         graph.request_paginated(endpoint, account_id, params=params, limit=limit)
     )
 
-    return [
-        {
-            "id": item["id"],
-            "name": item["name"],
-            "type": "folder" if "folder" in item else "file",
-            "size": item.get("size", 0),
-            "modified": item.get("lastModifiedDateTime"),
-            "download_url": item.get("@microsoft.graph.downloadUrl"),
-        }
-        for item in items
-    ]
+    # Apply type filtering
+    result = []
+    for item in items:
+        is_folder = "folder" in item
+        is_file = "file" in item
+
+        # Filter based on type_filter
+        if type_filter == "folders" and not is_folder:
+            continue
+        if type_filter == "files" and not is_file:
+            continue
+
+        result.append(
+            {
+                "id": item["id"],
+                "name": item["name"],
+                "type": "folder" if is_folder else "file",
+                "size": item.get("size", 0),
+                "modified": item.get("lastModifiedDateTime"),
+                "download_url": item.get("@microsoft.graph.downloadUrl"),
+            }
+        )
+
+    return result
 
 
 @mcp.tool
@@ -806,6 +1276,187 @@ def delete_file(file_id: str, account_id: str) -> dict[str, str]:
     """Delete a file or folder"""
     graph.request("DELETE", f"/me/drive/items/{file_id}", account_id)
     return {"status": "deleted"}
+
+
+def _list_folders_impl(
+    account_id: str,
+    path: str = "/",
+    folder_id: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Internal implementation for listing OneDrive folders"""
+    if folder_id:
+        endpoint = f"/me/drive/items/{folder_id}/children"
+    elif path == "/":
+        endpoint = "/me/drive/root/children"
+    else:
+        endpoint = f"/me/drive/root:/{path}:/children"
+
+    params = {
+        "$top": min(limit, 100),
+        "$select": "id,name,folder,parentReference,size,lastModifiedDateTime",
+    }
+
+    items = list(
+        graph.request_paginated(endpoint, account_id, params=params, limit=limit)
+    )
+
+    # Filter to only return folders
+    folders = []
+    for item in items:
+        if "folder" in item:
+            folders.append(
+                {
+                    "id": item["id"],
+                    "name": item["name"],
+                    "childCount": item.get("folder", {}).get("childCount", 0),
+                    "path": item.get("parentReference", {}).get("path", ""),
+                    "parentId": item.get("parentReference", {}).get("id"),
+                    "modified": item.get("lastModifiedDateTime"),
+                }
+            )
+
+    return folders
+
+
+@mcp.tool
+def list_folders(
+    account_id: str,
+    path: str = "/",
+    folder_id: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """List only folders (not files) in OneDrive location
+
+    Args:
+        account_id: Microsoft account ID
+        path: Path to list folders from (e.g., "/Documents")
+        folder_id: Direct folder ID (takes precedence over path)
+        limit: Maximum folders to return
+
+    Returns:
+        List of folder objects with: id, name, childCount, path, parentId
+    """
+    return _list_folders_impl(account_id, path, folder_id, limit)
+
+
+@mcp.tool
+def get_folder(
+    account_id: str,
+    folder_id: str | None = None,
+    path: str | None = None,
+) -> dict[str, Any]:
+    """Get metadata for a specific OneDrive folder
+
+    Args:
+        account_id: Microsoft account ID
+        folder_id: Folder ID (takes precedence)
+        path: Folder path (e.g., "/Documents/Projects")
+
+    Returns:
+        Folder metadata including childCount
+    """
+    if not folder_id and not path:
+        raise ValueError("Either folder_id or path must be provided")
+
+    if folder_id:
+        endpoint = f"/me/drive/items/{folder_id}"
+    elif path == "/":
+        endpoint = "/me/drive/root"
+    else:
+        endpoint = f"/me/drive/root:/{path}"
+
+    result = graph.request("GET", endpoint, account_id)
+    if not result:
+        raise ValueError("Folder not found")
+
+    # Validate it's actually a folder
+    if "folder" not in result:
+        raise ValueError("Item at specified location is not a folder")
+
+    return {
+        "id": result["id"],
+        "name": result["name"],
+        "childCount": result.get("folder", {}).get("childCount", 0),
+        "path": result.get("parentReference", {}).get("path", ""),
+        "parentId": result.get("parentReference", {}).get("id"),
+        "modified": result.get("lastModifiedDateTime"),
+        "webUrl": result.get("webUrl"),
+    }
+
+
+@mcp.tool
+def get_folder_tree(
+    account_id: str,
+    path: str = "/",
+    folder_id: str | None = None,
+    max_depth: int = 10,
+) -> dict[str, Any]:
+    """Recursively build a tree of OneDrive folders
+
+    Args:
+        account_id: Microsoft account ID
+        path: Starting path (default root)
+        folder_id: Starting folder ID (takes precedence over path)
+        max_depth: Maximum recursion depth
+
+    Returns:
+        Nested tree structure with folders and their children
+    """
+
+    def _build_drive_folder_tree(
+        item_id: str | None, item_path: str, current_depth: int
+    ) -> list[dict[str, Any]]:
+        """Internal recursive helper to build OneDrive folder tree"""
+        if current_depth >= max_depth:
+            return []
+
+        # Get folders at this level
+        folders = _list_folders_impl(
+            account_id=account_id,
+            path=item_path if not item_id else None,
+            folder_id=item_id,
+            limit=1000,  # Large limit to get all folders at this level
+        )
+
+        result = []
+        for folder in folders:
+            folder_node = {
+                "id": folder["id"],
+                "name": folder["name"],
+                "childCount": folder.get("childCount", 0),
+                "path": folder.get("path", ""),
+                "parentId": folder.get("parentId"),
+                "modified": folder.get("modified"),
+                "children": [],
+            }
+
+            # Recursively get children if this folder has subfolders
+            if folder.get("childCount", 0) > 0:
+                folder_node["children"] = _build_drive_folder_tree(
+                    folder["id"], None, current_depth + 1
+                )
+
+            result.append(folder_node)
+
+        return result
+
+    # Build tree starting from specified location
+    if folder_id:
+        start_id = folder_id
+        start_path = None
+    else:
+        start_id = None
+        start_path = path
+
+    tree_data = _build_drive_folder_tree(start_id, start_path, 0)
+
+    return {
+        "root_folder_id": folder_id,
+        "root_path": path if not folder_id else None,
+        "max_depth": max_depth,
+        "folders": tree_data,
+    }
 
 
 @mcp.tool

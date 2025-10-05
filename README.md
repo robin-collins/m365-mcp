@@ -11,7 +11,29 @@ Powerful MCP server for Microsoft Graph API - a complete AI assistant toolkit fo
 - **Multi-Account**: Support for multiple Microsoft accounts (personal, work, school)
 - **Unified Search**: Search across emails, files, events, and people
 
-## Quick Start with Claude Desktop
+## Quick Start
+
+**📚 See [QUICKSTART.md](QUICKSTART.md) for complete installation and setup guide.**
+
+### TL;DR
+
+```bash
+# 1. Install
+git clone https://github.com/elyxlz/microsoft-mcp.git
+cd microsoft-mcp && uv sync
+
+# 2. Configure (use .env.example template)
+cp .env.example .env
+# Edit .env with your MICROSOFT_MCP_CLIENT_ID
+
+# 3. Authenticate
+uv run authenticate.py
+
+# 4. Run
+uv run microsoft-mcp
+```
+
+### Claude Desktop
 
 ```bash
 # Add Microsoft MCP server (replace with your Azure app ID)
@@ -164,6 +186,58 @@ Or for local development:
   }
 }
 ```
+
+## Transport Modes
+
+Microsoft MCP supports two transport modes for different use cases:
+
+### stdio (Default) - For Desktop Apps
+
+**Use for:** Claude Desktop, local MCP clients
+
+**Security:** Inherently secure through process isolation (no authentication required)
+
+```bash
+# Default mode - no configuration needed
+export MICROSOFT_MCP_CLIENT_ID="your-app-id"
+uv run microsoft-mcp
+```
+
+### Streamable HTTP - For Web/API Access
+
+**Use for:** Web applications, remote access, multi-client scenarios
+
+**Security:** ⚠️ **Requires authentication** (bearer token or OAuth)
+
+**Protocol:** Uses MCP Streamable HTTP (spec 2025-03-26+)
+
+```bash
+# Generate secure token
+export MCP_AUTH_TOKEN=$(openssl rand -hex 32)
+
+# Configure Streamable HTTP with bearer authentication
+export MICROSOFT_MCP_CLIENT_ID="your-app-id"
+export MCP_TRANSPORT="http"
+export MCP_AUTH_METHOD="bearer"
+export MCP_HOST="127.0.0.1"
+export MCP_PORT="8000"
+
+# Start server
+uv run microsoft-mcp
+```
+
+**Client connection:**
+```python
+from mcp.client.http import http_client
+
+async with http_client(
+    "http://localhost:8000/mcp",
+    headers={"Authorization": f"Bearer {your_token}"}
+) as (read, write):
+    # Use the session...
+```
+
+**📚 See [SECURITY.md](SECURITY.md) for complete security guide and authentication options**
 
 ## Multi-Account Support
 

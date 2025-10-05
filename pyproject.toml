@@ -1,5 +1,5 @@
 [project]
-name = "m365-mcp"
+name = "microsoft-mcp"
 version = "0.1.1"
 description = "Microsoft Graph MCP server for Outlook, Calendar, and OneDrive with multi-account support"
 readme = "README.md"
@@ -13,10 +13,12 @@ dependencies = [
     "httpx>=0.28.1",
     "msal>=1.32.3",
     "python-dotenv>=1.1.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
 ]
 
 [project.scripts]
-m365-mcp = "microsoft_mcp.server:main"
+microsoft-mcp = "microsoft_mcp.server:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -19,7 +19,7 @@ Powerful MCP server for Microsoft Graph API - a complete AI assistant toolkit fo
 
 ```bash
 # 1. Install
-git clone https://github.com/elyxlz/microsoft-mcp.git
+git clone https://github.com/robin-collins/m365-mcp.git
 cd microsoft-mcp && uv sync
 
 # 2. Configure (use .env.example template)
@@ -37,7 +37,7 @@ uv run microsoft-mcp
 
 ```bash
 # Add Microsoft MCP server (replace with your Azure app ID)
-claude mcp add microsoft-mcp -e MICROSOFT_MCP_CLIENT_ID=your-app-id-here -- uvx --from git+https://github.com/elyxlz/microsoft-mcp.git microsoft-mcp
+claude mcp add microsoft-mcp -e MICROSOFT_MCP_CLIENT_ID=your-app-id-here -- uvx --from git+https://github.com/robin-collins/m365-mcp.git microsoft-mcp
 
 # Start Claude Desktop
 claude
@@ -133,7 +133,7 @@ claude
 ### 2. Installation
 
 ```bash
-git clone https://github.com/elyxlz/microsoft-mcp.git
+git clone https://github.com/robin-collins/m365-mcp.git
 cd microsoft-mcp
 uv sync
 ```
@@ -162,7 +162,7 @@ Add to your Claude Desktop configuration:
   "mcpServers": {
     "microsoft": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/elyxlz/microsoft-mcp.git", "microsoft-mcp"],
+      "args": ["--from", "git+https://github.com/robin-collins/m365-mcp.git", "microsoft-mcp"],
       "env": {
         "MICROSOFT_MCP_CLIENT_ID": "your-app-id-here"
       }

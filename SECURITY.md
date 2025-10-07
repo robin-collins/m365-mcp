@@ -39,7 +39,7 @@ uv run microsoft-mcp
   "mcpServers": {
     "microsoft-mcp": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/elyxlz/microsoft-mcp.git", "microsoft-mcp"],
+      "args": ["--from", "git+https://github.com/robin-collins/m365-mcp.git", "microsoft-mcp"],
       "env": {
         "MICROSOFT_MCP_CLIENT_ID": "your-app-id-here"
       }

@@ -191,6 +191,17 @@ Starting MCP server with Streamable HTTP transport on 127.0.0.1:8000
 
 ---
 
+## 🗂️ Secure File Operations
+
+- `file_get` validates that the Graph-provided `@microsoft.graph.downloadUrl` resolves to an approved Microsoft domain before initiating a download (prevents SSRF).
+- File downloads are limited to paths verified by `ensure_safe_path`, which restricts writes to the current workspace, system temp directories, or explicit whitelisted roots defined via environment variables.
+- Partial downloads are streamed to disk with automatic cleanup on failure, and existing files are never overwritten without confirmation.
+- Download size and timeout safeguards are configurable:
+  - `MCP_FILE_DOWNLOAD_MAX_MB` (default `512`) caps download size before the transfer starts.
+  - `MCP_FILE_DOWNLOAD_TIMEOUT` (seconds, default `60.0`) controls per-request timeouts.
+  - `MCP_FILE_DOWNLOAD_CHUNK_SIZE` tunes streaming chunk size (bytes, default `1048576`).
+  - `MCP_FILE_ALLOWED_ROOTS` extends the allow-list of writable directories (use OS path separator).
+
 ## 🔐 Environment Variables Reference
 
 ### Required (All Modes)

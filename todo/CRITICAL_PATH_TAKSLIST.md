@@ -1,0 +1,241 @@
+# Critical Path Tasklist
+
+Comprehensive breakdown of the must-complete-first items from the parameter validation program. All subtasks are intentionally granular to keep implementation, reviews, and verification aligned with the steering documents.
+
+## 1. Security Fix — Replace `subprocess` in `file.py:get_file`
+
+- [ ] **Context Review**
+  - [ ] Identify all call sites of `file_get` and dependent utilities.
+  - [ ] Confirm existing behaviour: headers, redirect handling, streaming expectations.
+  - [ ] Capture current error messages and logging to preserve usability.
+  - [ ] **Document that download_url comes from Graph API response (not user input)** to assess actual injection risk.
+- [ ] **HTTP Client Selection & Design**
+  - [ ] Evaluate whether existing `graph` client (httpx) can be reused for file downloads.
+  - [ ] Decide on sync vs async handling; document rationale.
+  - [ ] Specify timeout, retry, and chunk size configurations per `.projects/steering/tech.md`.
+  - [ ] Define structured error messages for network, timeout, and status-code failures.
+  - [ ] **Add configurable timeout for large file downloads.**
+- [ ] **URL & Path Validation**
+  - [ ] **Verify download_url is from graph.microsoft.com domain (SSRF prevention).**
+  - [ ] **Validate download_path using ensure_safe_path helper (created in task 2).**
+  - [ ] **Add file size limit check BEFORE starting download (memory exhaustion prevention).**
+  - [ ] **Prevent overwriting existing files without explicit confirmation.**
+- [ ] **Implementation**
+  - [ ] Replace `subprocess.run(["curl", ...])` with chosen HTTP client.
+  - [ ] Stream response to disk in chunks to avoid memory exhaustion.
+  - [ ] Ensure destination directory creation mirrors previous behaviour.
+  - [ ] Preserve metadata return shape (`name`, `path`, `size_mb`, `mime_type`).
+  - [ ] Implement explicit cleanup on partial downloads (delete incomplete files).
+  - [ ] **Add retry logic for transient network failures (3 retries with exponential backoff).**
+- [ ] **Error Handling & Logging**
+  - [ ] Raise precise `ValueError`/`RuntimeError` messages with actionable guidance.
+  - [ ] Integrate structured logging via `mcp_logger` where appropriate.
+  - [ ] Guard against HTTP redirects to untrusted hosts (document behaviour).
+- [ ] **Documentation & Docstrings**
+  - [ ] Update docstring to reflect new streaming behaviour and error scenarios.
+  - [ ] Document timeout and size constraints in README/QUICKSTART if user-facing.
+  - [ ] **Document that download_url is Graph-provided (not user-controlled) in security notes.**
+- [ ] **Verification**
+  - [ ] Add unit tests mocking HTTP client to cover success, timeout, 4xx, and 5xx.
+  - [ ] Add regression tests for metadata formatting.
+  - [ ] Validate large-file scenario using fake stream generator.
+  - [ ] **Add tests for SSRF prevention (non-Graph URLs rejected).**
+  - [ ] **Add tests for file size limit enforcement.**
+  - [ ] Run pyright/ruff/pytest to ensure integration compatibility.
+
+## 2. Security Fix — Add Path Traversal Protection to File Operations
+
+- [ ] **Scope Identification**
+  - [ ] Enumerate all file tools touching local paths (`file_get`, `file_create`, `file_update`, `email_get_attachment`, etc.).
+  - [ ] Inspect shared helpers for reused path logic.
+  - [ ] **Identify OneDrive path parameters requiring separate validation (`onedrive_path` in `file_create`).**
+- [ ] **Threat Model & Requirements**
+  - [ ] Define allowed root directories (workspace, temp dirs) per platform.
+  - [ ] Specify disallowed patterns (`..`, absolute paths outside workspace, symlinks).
+  - [ ] Determine behaviour for existing legitimate use cases requiring absolute paths.
+  - [ ] **Define Windows-specific restrictions:**
+    - [ ] **UNC path handling (`\\server\share`) - block or allow with whitelist.**
+    - [ ] **Windows drive letter restrictions (only allow current drive or whitelist).**
+    - [ ] **Alternate data streams (`:` in filenames) - block on Windows.**
+    - [ ] **Reserved filenames (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`) - block.**
+- [ ] **Helper Development**
+  - [ ] Design `ensure_safe_path` API signature and return type.
+  - [ ] Implement canonicalisation using `pathlib.Path.resolve()`.
+  - [ ] Add checks for directory existence, readability/writability, and symlink traversal.
+  - [ ] Provide option to allow configurable whitelist via environment or settings.
+  - [ ] **Add `validate_onedrive_path` helper for OneDrive path format validation:**
+    - [ ] **Must start with `/`**
+    - [ ] **No `..` segments**
+    - [ ] **No Windows reserved characters if applicable**
+    - [ ] **Return normalized path**
+- [ ] **Integration into Tools**
+  - [ ] Refactor each tool to call `ensure_safe_path` before file I/O.
+  - [ ] **Refactor `file_create` and similar tools to call `validate_onedrive_path` for OneDrive paths.**
+  - [ ] Ensure directories are created safely after validation.
+  - [ ] Add explicit errors for unsafe paths with remediation guidance.
+- [ ] **Testing**
+  - [ ] Add unit tests for helper covering relative, absolute, symlink, network shares.
+  - [ ] **Add tests for Windows reserved filenames (CON, PRN, AUX, NUL, COM1, etc.).**
+  - [ ] **Add tests for UNC paths (`\\server\share`).**
+  - [ ] **Add tests for alternate data streams (`file.txt:stream`).**
+  - [ ] Add tool-level tests to confirm rejection of malicious paths.
+  - [ ] Verify compatibility with Windows and POSIX path semantics.
+  - [ ] **Add tests for OneDrive path validation (valid: `/folder/file`, invalid: `../file`, `folder/file`).**
+- [ ] **Documentation**
+  - [ ] Update docstrings with allowed path formats.
+  - [ ] Add SECURITY.md note explaining traversal mitigation and user configuration.
+  - [ ] **Document OneDrive path format requirements in tool docstrings.**
+
+## 3. Create `src/microsoft_mcp/validators.py` with Shared Helpers
+
+- [ ] **Design Alignment**
+  - [ ] Review existing validation snippets to avoid regressions.
+  - [ ] Confirm helper list (per plan) and final names/classification.
+  - [ ] Decide on sync vs async APIs and state-free implementation.
+  - [ ] **Establish consistent exception types and message templates:**
+    - [ ] **Define error message format: `"Invalid {param_name} '{value}': {reason}. Expected: {guidance}"`**
+    - [ ] **Create `ValidationError` exception class (inherits from ValueError) for consistency**
+    - [ ] **Create message factory helper: `_validation_error(param: str, value: Any, reason: str, expected: str) -> str`**
+- [ ] **Module Structure**
+  - [ ] Set up module-level constants (e.g., allowed tool names, email regex).
+  - [ ] **Add constants for Microsoft Graph domains for SSRF prevention.**
+  - [ ] Implement core validators:
+    - [ ] `validate_account_id`
+    - [ ] `validate_confirmation_flag`
+    - [ ] `require_confirm`
+    - [ ] `validate_positive_int`
+    - [ ] `validate_limit`
+    - [ ] `validate_email_format`
+    - [ ] `normalize_recipients`
+    - [ ] `validate_iso_datetime`
+    - [ ] `validate_datetime_window`
+    - [ ] `validate_timezone`
+    - [ ] `validate_datetime_ordering`
+    - [ ] `validate_folder_choice`
+    - [ ] `validate_attachments`
+    - [ ] `validate_json_payload`
+    - [ ] `validate_request_size`
+    - [ ] **`validate_microsoft_graph_id` - Format validation for Graph API IDs**
+    - [ ] **`validate_onedrive_path` - OneDrive path format validation (from task 2)**
+    - [ ] **`validate_graph_url` - Ensure URLs are from Microsoft Graph domain (SSRF prevention)**
+    - [ ] `ensure_safe_path` (from task 2)
+    - [ ] **DEFER to Phase 2:** `validate_bearer_token_scopes` (requires OAuth library integration)
+    - [ ] Additional helpers discovered during refactor.
+  - [ ] Include detailed Google-style docstrings and type hints.
+  - [ ] Provide reusable error message factory for consistency.
+- [ ] **Cross-Cutting Concerns**
+  - [ ] **Logging Strategy:**
+    - [ ] **Define when to log validation failures (recommend: only at WARNING level for security-critical validations)**
+    - [ ] **Ensure PII (emails, file paths, tokens) are NOT logged in validation errors**
+    - [ ] **Use structured logging per `.projects/steering/python.md`**
+  - [ ] **Performance Benchmarks:**
+    - [ ] **Add simple performance tests for expensive validators (path canonicalization, regex matching)**
+    - [ ] **Document expected performance characteristics in docstrings**
+- [ ] **Integration Hooks**
+  - [ ] Export helpers via `src/microsoft_mcp/__init__.py` if needed.
+  - [ ] Update modules to import from validators instead of duplicating logic (incremental PRs).
+  - [ ] Ensure no circular dependencies with `graph` or `auth`.
+- [ ] **Static Analysis**
+  - [ ] Run pyright to confirm type completeness.
+  - [ ] Run ruff to enforce formatting and lint rules.
+- [ ] **Documentation**
+  - [ ] Document helper usage patterns in README/DEV notes.
+  - [ ] Update FILETREE.md to include new module.
+
+## 4. Create `tests/conftest.py` with Graph API Fixtures
+
+- [ ] **Fixture Requirements Gathering**
+  - [ ] List shared mocks needed for validation tests (Graph request, pagination, uploads).
+  - [ ] Determine whether patching should use pytest-mock or unittest.mock.
+  - [ ] Decide on auto-use fixtures vs explicit imports for clarity.
+- [ ] **Core API Fixtures**
+  - [ ] Implement `mock_graph_request` fixture yielding patched `graph.request`.
+  - [ ] Implement `mock_graph_paginated` fixture for paginated responses.
+  - [ ] Provide helper factories for fake Graph JSON payloads.
+  - [ ] Create fixtures for file system sandboxing (tmp_path) with safe defaults.
+  - [ ] Ensure fixtures clean up patches after use (yield-based design).
+- [ ] **Data & Identity Fixtures**
+  - [ ] **`mock_account_id` - Fixture returning valid test account ID(s)**
+  - [ ] **`mock_email_data` - Factory for Graph email response JSON**
+  - [ ] **`mock_file_metadata` - Factory for Graph file response JSON**
+  - [ ] **`mock_calendar_event` - Factory for Graph calendar event JSON**
+  - [ ] **`mock_contact_data` - Factory for Graph contact response JSON**
+- [ ] **File System Fixtures**
+  - [ ] **`temp_safe_dir` - Sandboxed temporary directory with automatic cleanup**
+  - [ ] **`mock_download_file` - Fixture for simulating file downloads without network**
+  - [ ] Add helper to simulate HTTP streaming responses for file downloads.
+- [ ] **Time & Datetime Fixtures**
+  - [ ] **`freeze_time` - Fixture for freezing time in datetime validation tests (consider `freezegun` library)**
+  - [ ] **`sample_iso_datetimes` - Fixture providing valid/invalid ISO datetime strings**
+- [ ] **Utility Helpers**
+  - [ ] Provide factory to generate sample account IDs and validation data.
+  - [ ] **Add parametrize helper for common validation test patterns (valid/invalid inputs)**
+- [ ] **Documentation**
+  - [ ] Add module docstring explaining available fixtures.
+  - [ ] Update testing README (if present) with instructions on usage.
+  - [ ] **Document fixture naming conventions and when to use each fixture.**
+- [ ] **Verification**
+  - [ ] Write smoke test to confirm fixtures integrate with existing tests.
+  - [ ] Validate no fixture conflicts with integration suite.
+  - [ ] **Verify fixtures work on both Windows and POSIX systems.**
+
+## 5. Write Comprehensive Tests for `validators.py` (Target: 100% Coverage)
+
+- [ ] **Test Plan Definition**
+  - [ ] Map each helper to required test cases (valid, invalid, edge).
+  - [ ] Record boundary conditions (e.g., max limit, datetime equality).
+  - [ ] Identify external dependencies to mock (timezone DB, account cache).
+  - [ ] **Create test matrix documenting all validators and their test scenarios.**
+- [ ] **Test Suite Structure**
+  - [ ] Create `tests/test_validators.py` (dedicated path for validator unit tests).
+  - [ ] Organise tests by helper function with descriptive class/group names.
+  - [ ] Use `pytest.mark.parametrize` for bulk input coverage.
+  - [ ] Include property-based tests where beneficial (e.g., hypothesis for email formats) if allowed.
+- [ ] **Coverage Execution - Core Validators**
+  - [ ] Test `validate_account_id` (empty, None, whitespace, valid)
+  - [ ] Test `validate_confirmation_flag` (True, False, None, non-bool)
+  - [ ] Test `require_confirm` (confirm True/False, action string, error cases)
+  - [ ] Test `validate_positive_int` (negative, zero, positive, non-int)
+  - [ ] Test `validate_limit` (below min, above max, valid range, non-int)
+- [ ] **Coverage Execution - Email & Communication**
+  - [ ] Test `validate_email_format` (valid, invalid, edge cases like `user+tag@domain`)
+  - [ ] Test `normalize_recipients` (string, list, empty, invalid emails)
+  - [ ] Test `validate_attachments` (count limits, size limits, missing fields)
+- [ ] **Coverage Execution - DateTime**
+  - [ ] Test `validate_iso_datetime` (valid ISO, invalid formats, date-only vs datetime)
+  - [ ] Test `validate_datetime_window` (start > end, equal dates, timezone handling)
+  - [ ] Test `validate_timezone` (valid IANA, invalid strings, empty)
+- [ ] **Coverage Execution - Path & Resource**
+  - [ ] Test `ensure_safe_path` (traversal attempts, symlinks, UNC paths, reserved names)
+  - [ ] Test `validate_onedrive_path` (valid `/path`, invalid `path`, `../path`)
+  - [ ] Test `validate_graph_url` (Graph domains, external URLs, malformed URLs)
+  - [ ] Test `validate_microsoft_graph_id` (valid format, invalid characters, empty)
+- [ ] **Coverage Execution - Complex Validators**
+  - [ ] Test `validate_folder_choice` (known folders, unknown folders, case sensitivity)
+  - [ ] Test `validate_json_payload` (required keys, extra keys, type validation)
+  - [ ] Test `validate_request_size` (under limit, over limit, edge cases)
+- [ ] **Error Message Validation**
+  - [ ] Ensure every branch of error handling raises expected exception and message.
+  - [ ] Add regression tests for message formatting consistency.
+  - [ ] **Verify error messages follow template: `"Invalid {param} '{value}': {reason}. Expected: {guidance}"`**
+  - [ ] **Verify no PII in error messages (emails should be masked/truncated).**
+- [ ] **Integration & Interoperability**
+  - [ ] Validate helper interoperability (e.g., `normalize_recipients` feeding into `validate_email_format`).
+  - [ ] **Test validators work correctly when called from actual tool functions (integration tests).**
+- [ ] **Performance & Resilience**
+  - [ ] Test large dataset handling (e.g., 1000+ attachment lists) without timeouts.
+  - [ ] Include timezone validation tests against known good/bad tz strings.
+  - [ ] **Benchmark expensive validators (path canonicalization, regex matching).**
+- [ ] **Platform Compatibility**
+  - [ ] **Test path validators on both Windows and POSIX systems.**
+  - [ ] **Test reserved filename detection on Windows.**
+  - [ ] **Test UNC path handling on Windows.**
+- [ ] **Automation**
+  - [ ] Run tests with coverage report ensuring 100% for validators module.
+  - [ ] Integrate coverage threshold in pytest configuration (fail under 100% for module).
+  - [ ] Update CI configs (if applicable) to include new tests.
+  - [ ] **Set up pre-commit hook to run validator tests before commit.**
+- [ ] **Documentation & Maintenance**
+  - [ ] Comment complex test scenarios for future maintainers.
+  - [ ] Document how to extend test suite when new validators are added.
+  - [ ] **Create testing guide documenting test patterns and conventions.**

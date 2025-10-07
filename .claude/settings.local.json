@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ast-grep:*)",
+      "Bash(uvx ruff format:*)",
+      "Bash(uvx ruff check:*)",
+      "Bash(uv run:*)",
+      "Bash(python3:*)",
+      "Bash(chmod:*)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "WebFetch(domain:gofastmcp.com)",
+      "WebFetch(domain:gyliu513.medium.com)",
+      "Read(//home/tech/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

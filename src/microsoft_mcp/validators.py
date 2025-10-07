@@ -86,7 +86,7 @@ def _mask_value(value: Any) -> str:
     return str(value)
 
 
-def _validation_error(
+def format_validation_error(
     param: str,
     value: Any,
     reason: str,
@@ -115,7 +115,7 @@ def validate_account_id(account_id: str, param_name: str = "account_id") -> str:
         reason = "must be a string"
         _log_failure(param_name, reason, account_id)
         raise ValidationError(
-            _validation_error(param_name, account_id, reason, "non-empty string")
+            format_validation_error(param_name, account_id, reason, "non-empty string")
         )
 
     trimmed = account_id.strip()
@@ -123,7 +123,7 @@ def validate_account_id(account_id: str, param_name: str = "account_id") -> str:
         reason = "cannot be empty"
         _log_failure(param_name, reason, account_id)
         raise ValidationError(
-            _validation_error(param_name, account_id, reason, "non-empty string")
+            format_validation_error(param_name, account_id, reason, "non-empty string")
         )
 
     return trimmed
@@ -137,12 +137,10 @@ def validate_confirmation_flag(
 ) -> bool:
     """Ensure destructive operations require explicit confirmation."""
     if confirm is not True:
-        reason = (
-            f"{operation} on {resource_type} requires confirm=True to proceed"
-        )
+        reason = f"{operation} on {resource_type} requires confirm=True to proceed"
         _log_failure(param_name, reason, confirm)
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 confirm,
                 reason,
@@ -163,13 +161,13 @@ def validate_positive_int(value: Any, name: str) -> int:
         reason = "must be an integer"
         _log_failure(name, reason, value)
         raise ValidationError(
-            _validation_error(name, value, reason, "Positive integer")
+            format_validation_error(name, value, reason, "Positive integer")
         )
     if value <= 0:
         reason = "must be greater than zero"
         _log_failure(name, reason, value)
         raise ValidationError(
-            _validation_error(name, value, reason, "Positive integer (> 0)")
+            format_validation_error(name, value, reason, "Positive integer (> 0)")
         )
     return value
 
@@ -185,13 +183,13 @@ def validate_limit(
         reason = "must be an integer"
         _log_failure(param_name, reason, limit)
         raise ValidationError(
-            _validation_error(param_name, limit, reason, f"{minimum}-{maximum}")
+            format_validation_error(param_name, limit, reason, f"{minimum}-{maximum}")
         )
     if limit < minimum or limit > maximum:
         reason = f"must be between {minimum} and {maximum}"
         _log_failure(param_name, reason, limit)
         raise ValidationError(
-            _validation_error(param_name, limit, reason, f"{minimum}-{maximum}")
+            format_validation_error(param_name, limit, reason, f"{minimum}-{maximum}")
         )
     return limit
 
@@ -202,7 +200,7 @@ def validate_email_format(email: str, param_name: str = "email") -> str:
         reason = "must be a string"
         _log_failure(param_name, reason, email)
         raise ValidationError(
-            _validation_error(param_name, email, reason, "Valid email address")
+            format_validation_error(param_name, email, reason, "Valid email address")
         )
     trimmed = email.strip()
     match = EMAIL_PATTERN.match(trimmed)
@@ -210,7 +208,9 @@ def validate_email_format(email: str, param_name: str = "email") -> str:
         reason = "does not match email format"
         _log_failure(param_name, reason, email)
         raise ValidationError(
-            _validation_error(param_name, email, reason, "name@example.com pattern")
+            format_validation_error(
+                param_name, email, reason, "name@example.com pattern"
+            )
         )
     return trimmed.lower()
 
@@ -238,7 +238,7 @@ def normalize_recipients(
         reason = "must include at least one valid email"
         _log_failure(param_name, reason, recipients)
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 recipients,
                 reason,
@@ -258,7 +258,7 @@ def validate_iso_datetime(
         reason = "must be a string"
         _log_failure(param_name, reason, value)
         raise ValidationError(
-            _validation_error(param_name, value, reason, "ISO-8601 string")
+            format_validation_error(param_name, value, reason, "ISO-8601 string")
         )
 
     trimmed = value.strip()
@@ -266,7 +266,7 @@ def validate_iso_datetime(
         reason = "cannot be empty"
         _log_failure(param_name, reason, value)
         raise ValidationError(
-            _validation_error(param_name, value, reason, "ISO-8601 string")
+            format_validation_error(param_name, value, reason, "ISO-8601 string")
         )
 
     try:
@@ -275,7 +275,7 @@ def validate_iso_datetime(
         reason = f"invalid ISO-8601 datetime ({exc})"
         _log_failure(param_name, reason, value)
         raise ValidationError(
-            _validation_error(param_name, value, reason, "YYYY-MM-DDTHH:MM:SS+TZ")
+            format_validation_error(param_name, value, reason, "YYYY-MM-DDTHH:MM:SS+TZ")
         ) from exc
 
     if parsed.tzinfo is None:
@@ -284,7 +284,9 @@ def validate_iso_datetime(
         reason = "timezone information required"
         _log_failure(param_name, reason, value)
         raise ValidationError(
-            _validation_error(param_name, value, reason, "Timezone-aware datetime")
+            format_validation_error(
+                param_name, value, reason, "Timezone-aware datetime"
+            )
         )
 
     return parsed
@@ -296,14 +298,14 @@ def validate_timezone(tz: str, param_name: str = "timezone") -> str:
         reason = "must be a string"
         _log_failure(param_name, reason, tz)
         raise ValidationError(
-            _validation_error(param_name, tz, reason, "Valid IANA timezone name")
+            format_validation_error(param_name, tz, reason, "Valid IANA timezone name")
         )
     trimmed = tz.strip()
     if not trimmed:
         reason = "cannot be empty"
         _log_failure(param_name, reason, tz)
         raise ValidationError(
-            _validation_error(param_name, tz, reason, "Valid IANA timezone name")
+            format_validation_error(param_name, tz, reason, "Valid IANA timezone name")
         )
     try:
         ZoneInfo(trimmed)
@@ -311,7 +313,7 @@ def validate_timezone(tz: str, param_name: str = "timezone") -> str:
         reason = "unknown timezone"
         _log_failure(param_name, reason, tz)
         raise ValidationError(
-            _validation_error(param_name, tz, reason, "Valid IANA timezone name")
+            format_validation_error(param_name, tz, reason, "Valid IANA timezone name")
         ) from exc
     return trimmed
 
@@ -333,7 +335,7 @@ def validate_datetime_window(
         reason = "start must be earlier than end"
         _log_failure("datetime_window", reason, f"{start_dt}->{end_dt}")
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 "datetime_window",
                 f"{_mask_value(start)}→{_mask_value(end)}",
                 reason,
@@ -353,7 +355,7 @@ def validate_datetime_ordering(
         reason = "first datetime must not be after second"
         _log_failure(param_name, reason, f"{first}->{second}")
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 f"{first.isoformat()}→{second.isoformat()}",
                 reason,
@@ -372,7 +374,7 @@ def validate_folder_choice(
         reason = "must be a string"
         _log_failure(param_name, reason, value)
         raise ValidationError(
-            _validation_error(param_name, value, reason, f"One of {allowed}")
+            format_validation_error(param_name, value, reason, f"One of {allowed}")
         )
     normalised = value.strip()
     allowed_lower = {item.lower(): item for item in allowed}
@@ -380,7 +382,9 @@ def validate_folder_choice(
         reason = "not in allowed set"
         _log_failure(param_name, reason, value)
         raise ValidationError(
-            _validation_error(param_name, value, reason, f"One of {sorted(allowed)}")
+            format_validation_error(
+                param_name, value, reason, f"One of {sorted(allowed)}"
+            )
         )
     return allowed_lower[normalised.lower()]
 
@@ -396,7 +400,7 @@ def validate_json_payload(
         reason = "must be a JSON object"
         _log_failure(param_name, reason, payload)
         raise ValidationError(
-            _validation_error(param_name, payload, reason, "Dictionary value")
+            format_validation_error(param_name, payload, reason, "Dictionary value")
         )
 
     if required_keys:
@@ -405,7 +409,7 @@ def validate_json_payload(
             reason = f"missing keys {missing}"
             _log_failure(param_name, reason, payload)
             raise ValidationError(
-                _validation_error(
+                format_validation_error(
                     param_name,
                     payload,
                     reason,
@@ -426,19 +430,23 @@ def validate_request_size(
         reason = "must be integer number of bytes"
         _log_failure(param_name, reason, size_bytes)
         raise ValidationError(
-            _validation_error(param_name, size_bytes, reason, "Integer bytes value")
+            format_validation_error(
+                param_name, size_bytes, reason, "Integer bytes value"
+            )
         )
     if size_bytes < 0:
         reason = "cannot be negative"
         _log_failure(param_name, reason, size_bytes)
         raise ValidationError(
-            _validation_error(param_name, size_bytes, reason, "0 or positive integer")
+            format_validation_error(
+                param_name, size_bytes, reason, "0 or positive integer"
+            )
         )
     if size_bytes > limit_bytes:
         reason = f"exceeds limit of {limit_bytes} bytes"
         _log_failure(param_name, reason, size_bytes)
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 size_bytes,
                 reason,
@@ -457,7 +465,7 @@ def validate_microsoft_graph_id(
         reason = "must be a string"
         _log_failure(param_name, reason, identifier)
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 identifier,
                 reason,
@@ -469,13 +477,13 @@ def validate_microsoft_graph_id(
         reason = "cannot be empty"
         _log_failure(param_name, reason, identifier)
         raise ValidationError(
-            _validation_error(param_name, identifier, reason, "Non-empty string")
+            format_validation_error(param_name, identifier, reason, "Non-empty string")
         )
     if not re.fullmatch(r"[A-Za-z0-9\-._!]{1,256}", trimmed):
         reason = "contains unsupported characters"
         _log_failure(param_name, reason, identifier)
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 identifier,
                 reason,
@@ -494,7 +502,7 @@ def validate_onedrive_path(
         reason = "must be a string"
         _log_failure(param_name, reason, onedrive_path)
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 onedrive_path,
                 reason,
@@ -506,7 +514,7 @@ def validate_onedrive_path(
         reason = "must start with '/'"
         _log_failure(param_name, reason, onedrive_path)
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 onedrive_path,
                 reason,
@@ -520,7 +528,7 @@ def validate_onedrive_path(
             reason = "parent directory segments are not allowed"
             _log_failure(param_name, reason, onedrive_path)
             raise ValidationError(
-                _validation_error(
+                format_validation_error(
                     param_name,
                     onedrive_path,
                     reason,
@@ -531,11 +539,11 @@ def validate_onedrive_path(
             reason = "contains reserved characters"
             _log_failure(param_name, reason, onedrive_path)
             raise ValidationError(
-                _validation_error(
+                format_validation_error(
                     param_name,
                     onedrive_path,
                     reason,
-                    "Path without < > : \" | ? * characters",
+                    'Path without < > : " | ? * characters',
                 )
             )
         if os.name == "nt":
@@ -544,7 +552,7 @@ def validate_onedrive_path(
                 reason = "contains Windows reserved filename"
                 _log_failure(param_name, reason, onedrive_path)
                 raise ValidationError(
-                    _validation_error(
+                    format_validation_error(
                         param_name,
                         onedrive_path,
                         reason,
@@ -600,7 +608,7 @@ def ensure_safe_path(
             reason = "UNC paths are not allowed"
             _log_failure(param_name, reason, candidate_str)
             raise ValidationError(
-                _validation_error(
+                format_validation_error(
                     param_name,
                     candidate_str,
                     reason,
@@ -614,7 +622,7 @@ def ensure_safe_path(
         reason = "parent directory segments are not allowed"
         _log_failure(param_name, reason, candidate_str)
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 candidate_str,
                 reason,
@@ -627,7 +635,7 @@ def ensure_safe_path(
         reason = "path escapes allowed directories"
         _log_failure(param_name, reason, candidate_str)
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 candidate_str,
                 reason,
@@ -643,7 +651,7 @@ def ensure_safe_path(
                 reason = "alternate data streams are not allowed"
                 _log_failure(param_name, reason, candidate_str)
                 raise ValidationError(
-                    _validation_error(
+                    format_validation_error(
                         param_name,
                         candidate_str,
                         reason,
@@ -655,7 +663,7 @@ def ensure_safe_path(
                 reason = "contains Windows reserved filename"
                 _log_failure(param_name, reason, candidate_str)
                 raise ValidationError(
-                    _validation_error(
+                    format_validation_error(
                         param_name,
                         candidate_str,
                         reason,
@@ -668,7 +676,7 @@ def ensure_safe_path(
             reason = "expected file path but found directory"
             _log_failure(param_name, reason, candidate_str)
             raise ValidationError(
-                _validation_error(
+                format_validation_error(
                     param_name,
                     candidate_str,
                     reason,
@@ -679,7 +687,7 @@ def ensure_safe_path(
             reason = "would overwrite existing file"
             _log_failure(param_name, reason, candidate_str)
             raise ValidationError(
-                _validation_error(
+                format_validation_error(
                     param_name,
                     candidate_str,
                     reason,
@@ -690,7 +698,7 @@ def ensure_safe_path(
         reason = "path does not exist"
         _log_failure(param_name, reason, candidate_str)
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 candidate_str,
                 reason,
@@ -706,7 +714,7 @@ def ensure_safe_path(
                 reason = "parent directory traversal detected"
                 _log_failure(param_name, reason, candidate_str)
                 raise ValidationError(
-                    _validation_error(
+                    format_validation_error(
                         param_name,
                         candidate_str,
                         reason,
@@ -720,7 +728,7 @@ def ensure_safe_path(
         reason = "symlinks are not allowed"
         _log_failure(param_name, reason, candidate_str)
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 candidate_str,
                 reason,
@@ -742,7 +750,7 @@ def validate_graph_url(
         reason = "must be a string"
         _log_failure(param_name, reason, url)
         raise ValidationError(
-            _validation_error(param_name, url, reason, "HTTPS URL")
+            format_validation_error(param_name, url, reason, "HTTPS URL")
         )
 
     trimmed = url.strip()
@@ -750,7 +758,7 @@ def validate_graph_url(
         reason = "cannot be empty"
         _log_failure(param_name, reason, url)
         raise ValidationError(
-            _validation_error(param_name, url, reason, "HTTPS URL")
+            format_validation_error(param_name, url, reason, "HTTPS URL")
         )
 
     parsed = urlparse(trimmed)
@@ -758,7 +766,7 @@ def validate_graph_url(
         reason = "must use HTTPS"
         _log_failure(param_name, reason, url)
         raise ValidationError(
-            _validation_error(param_name, url, reason, "HTTPS URL")
+            format_validation_error(param_name, url, reason, "HTTPS URL")
         )
 
     host = parsed.hostname or ""
@@ -770,7 +778,7 @@ def validate_graph_url(
         reason = "host is not an approved Microsoft domain"
         _log_failure(param_name, reason, host_lower)
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 url,
                 reason,
@@ -783,7 +791,7 @@ def validate_graph_url(
         reason = "embedded credentials are not allowed"
         _log_failure(param_name, reason, url)
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 url,
                 reason,
@@ -817,7 +825,7 @@ def validate_attachments(
         reason = "attachment list cannot be empty"
         _log_failure(param_name, reason, attachments)
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 attachments,
                 reason,
@@ -829,7 +837,7 @@ def validate_attachments(
         reason = f"exceeds limit of {max_attachments} attachments"
         _log_failure(param_name, reason, len(values))
         raise ValidationError(
-            _validation_error(
+            format_validation_error(
                 param_name,
                 len(values),
                 reason,
@@ -849,4 +857,3 @@ def validate_attachments(
         validate_request_size(size, max_inline_size_bytes, f"{param_name}_size")
         validated.append(path)
     return validated
-

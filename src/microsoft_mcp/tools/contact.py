@@ -1,7 +1,113 @@
 from typing import Any
 from ..mcp_instance import mcp
 from .. import graph
-from ..validators import require_confirm
+from ..validators import (
+    ValidationError,
+    format_validation_error,
+    require_confirm,
+    validate_email_format,
+    validate_json_payload,
+    validate_limit,
+)
+
+ALLOWED_CONTACT_UPDATE_KEYS = {
+    "givenName",
+    "surname",
+    "displayName",
+    "emailAddresses",
+    "businessPhones",
+    "homePhones",
+    "mobilePhone",
+    "jobTitle",
+    "companyName",
+    "department",
+}
+
+
+def _normalise_phone_list(phones: Any, param_name: str) -> list[str]:
+    """Validate and normalise phone number lists."""
+    if not isinstance(phones, list):
+        raise ValidationError(
+            format_validation_error(
+                param_name,
+                phones,
+                "must be a list of phone numbers",
+                "List of non-empty strings",
+            )
+        )
+    normalised: list[str] = []
+    for index, phone in enumerate(phones):
+        if not isinstance(phone, str):
+            raise ValidationError(
+                format_validation_error(
+                    f"{param_name}[{index}]",
+                    phone,
+                    "must be a string",
+                    "Phone number string",
+                )
+            )
+        trimmed = phone.strip()
+        if not trimmed:
+            raise ValidationError(
+                format_validation_error(
+                    f"{param_name}[{index}]",
+                    phone,
+                    "cannot be empty",
+                    "Non-empty phone number",
+                )
+            )
+        normalised.append(trimmed)
+    return normalised
+
+
+def _normalise_email_addresses(addresses: Any) -> list[dict[str, str]]:
+    """Validate and normalise contact email addresses."""
+    if not isinstance(addresses, list):
+        raise ValidationError(
+            format_validation_error(
+                "updates.emailAddresses",
+                addresses,
+                "must be a list of email objects",
+                "List of {'address': str, 'name': str?}",
+            )
+        )
+    result: list[dict[str, str]] = []
+    for index, entry in enumerate(addresses):
+        if isinstance(entry, str):
+            result.append(
+                {
+                    "address": validate_email_format(
+                        entry,
+                        f"updates.emailAddresses[{index}]",
+                    ),
+                }
+            )
+            continue
+        entry_payload = validate_json_payload(
+            entry,
+            required_keys=("address",),
+            allowed_keys=("address", "name"),
+            param_name=f"updates.emailAddresses[{index}]",
+        )
+        address = validate_email_format(
+            entry_payload["address"],
+            f"updates.emailAddresses[{index}].address",
+        )
+        normalised_entry: dict[str, str] = {"address": address}
+        if "name" in entry_payload:
+            name_value = entry_payload["name"]
+            if not isinstance(name_value, str):
+                raise ValidationError(
+                    format_validation_error(
+                        f"updates.emailAddresses[{index}].name",
+                        name_value,
+                        "must be a string",
+                        "Display name string",
+                    )
+                )
+            normalised_entry["name"] = name_value.strip()
+        result.append(normalised_entry)
+    return result
 
 
 # contact_list
@@ -23,12 +129,13 @@ def contact_list(account_id: str, limit: int = 50) -> list[dict[str, Any]]:
 
     Args:
         account_id: Microsoft account ID
-        limit: Maximum contacts to return (default: 50)
+        limit: Maximum contacts to return (1-500, default: 50)
 
     Returns:
         List of contact objects
     """
-    params = {"$top": min(limit, 100)}
+    limit = validate_limit(limit, 1, 500, "limit")
+    params = {"$top": limit}
 
     contacts = list(
         graph.request_paginated("/me/contacts", account_id, params=params, limit=limit)
@@ -147,6 +254,9 @@ def contact_update(
 
     Modifies contact fields like name, email, or phone numbers.
 
+    Allowed update keys: givenName, surname, displayName, emailAddresses,
+    businessPhones, homePhones, mobilePhone, jobTitle, companyName, department.
+
     Args:
         contact_id: The contact ID to update
         updates: Dictionary with fields to update
@@ -155,8 +265,89 @@ def contact_update(
     Returns:
         Updated contact object
     """
+    payload = validate_json_payload(
+        updates,
+        allowed_keys=ALLOWED_CONTACT_UPDATE_KEYS,
+        param_name="updates",
+    )
+    if not payload:
+        raise ValidationError(
+            format_validation_error(
+                "updates",
+                payload,
+                "must include at least one field",
+                f"Subset of {sorted(ALLOWED_CONTACT_UPDATE_KEYS)}",
+            )
+        )
+
+    graph_updates: dict[str, Any] = {}
+
+    for field in (
+        "givenName",
+        "surname",
+        "displayName",
+        "jobTitle",
+        "companyName",
+        "department",
+    ):
+        if field in payload:
+            value = payload[field]
+            if not isinstance(value, str):
+                raise ValidationError(
+                    format_validation_error(
+                        f"updates.{field}",
+                        value,
+                        "must be a string",
+                        "Text value",
+                    )
+                )
+            graph_updates[field] = value.strip()
+
+    if "emailAddresses" in payload:
+        graph_updates["emailAddresses"] = _normalise_email_addresses(
+            payload["emailAddresses"]
+        )
+
+    if "businessPhones" in payload:
+        graph_updates["businessPhones"] = _normalise_phone_list(
+            payload["businessPhones"],
+            "updates.businessPhones",
+        )
+
+    if "homePhones" in payload:
+        graph_updates["homePhones"] = _normalise_phone_list(
+            payload["homePhones"],
+            "updates.homePhones",
+        )
+
+    if "mobilePhone" in payload:
+        mobile_phone = payload["mobilePhone"]
+        if mobile_phone is None:
+            graph_updates["mobilePhone"] = None
+        elif not isinstance(mobile_phone, str):
+            raise ValidationError(
+                format_validation_error(
+                    "updates.mobilePhone",
+                    mobile_phone,
+                    "must be a string",
+                    "Phone number string",
+                )
+            )
+        else:
+            trimmed = mobile_phone.strip()
+            if not trimmed:
+                raise ValidationError(
+                    format_validation_error(
+                        "updates.mobilePhone",
+                        mobile_phone,
+                        "cannot be empty",
+                        "Non-empty phone number",
+                    )
+                )
+            graph_updates["mobilePhone"] = trimmed
+
     result = graph.request(
-        "PATCH", f"/me/contacts/{contact_id}", account_id, json=updates
+        "PATCH", f"/me/contacts/{contact_id}", account_id, json=graph_updates
     )
     return result or {"status": "updated"}
 

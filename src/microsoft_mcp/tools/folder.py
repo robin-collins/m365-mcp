@@ -1,13 +1,14 @@
 from typing import Any
 from ..mcp_instance import mcp
 from .. import graph
+from ..validators import validate_limit
 
 
 def _list_folders_impl(
     account_id: str,
     path: str | None = "/",
     folder_id: str | None = None,
-    limit: int = 50,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """Internal implementation for listing OneDrive folders"""
     if folder_id:
@@ -17,8 +18,9 @@ def _list_folders_impl(
     else:
         endpoint = f"/me/drive/root:/{path}:/children"
 
+    page_size = limit if limit is not None else 500
     params = {
-        "$top": min(limit, 100),
+        "$top": page_size,
         "$select": "id,name,folder,parentReference,size,lastModifiedDateTime",
     }
 
@@ -70,11 +72,12 @@ def folder_list(
         account_id: Microsoft account ID
         path: Path to list folders from (e.g., "/Documents", default: "/")
         folder_id: Direct folder ID (takes precedence over path)
-        limit: Maximum folders to return (default: 50)
+        limit: Maximum folders to return (1-500, default: 50)
 
     Returns:
         List of folder objects with: id, name, childCount, path, parentId
     """
+    limit = validate_limit(limit, 1, 500, "limit")
     return _list_folders_impl(
         account_id=account_id,
         path=path,
@@ -168,11 +171,12 @@ def folder_get_tree(
         account_id: Microsoft account ID
         path: Starting path (default: "/")
         folder_id: Starting folder ID (takes precedence over path)
-        max_depth: Maximum recursion depth (default: 10)
+        max_depth: Maximum recursion depth (1-25, default: 10)
 
     Returns:
         Nested tree structure with folders and their children
     """
+    max_depth = validate_limit(max_depth, 1, 25, "max_depth")
 
     def _build_drive_folder_tree(
         item_id: str | None, item_path: str | None, current_depth: int
@@ -186,7 +190,7 @@ def folder_get_tree(
             account_id=account_id,
             path=item_path if not item_id else None,
             folder_id=item_id,
-            limit=1000,  # Large limit to get all folders at this level
+            limit=None,
         )
 
         result = []

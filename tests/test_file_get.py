@@ -53,7 +53,9 @@ def test_file_get_downloads_file_successfully(
     _register_metadata(mock_graph_request, metadata)
     record_stream_calls([b"hello world"])
 
-    result = file_tools._file_get_impl(metadata["id"], mock_account_id, str(destination))
+    result = file_tools._file_get_impl(
+        metadata["id"], mock_account_id, str(destination)
+    )
 
     assert destination.exists()
     assert destination.read_bytes() == b"hello world"
@@ -114,12 +116,14 @@ def test_file_get_cleans_up_on_http_error(
     _register_metadata(mock_graph_request, metadata)
     request = httpx.Request("GET", metadata["@microsoft.graph.downloadUrl"])
     response = httpx.Response(500, request=request)
-    record_stream_calls([
-        httpx.HTTPStatusError("server error", request=request, response=response),
-        httpx.HTTPStatusError("server error", request=request, response=response),
-        httpx.HTTPStatusError("server error", request=request, response=response),
-        httpx.HTTPStatusError("server error", request=request, response=response),
-    ])
+    record_stream_calls(
+        [
+            httpx.HTTPStatusError("server error", request=request, response=response),
+            httpx.HTTPStatusError("server error", request=request, response=response),
+            httpx.HTTPStatusError("server error", request=request, response=response),
+            httpx.HTTPStatusError("server error", request=request, response=response),
+        ]
+    )
 
     with pytest.raises(RuntimeError):
         file_tools._file_get_impl(metadata["id"], mock_account_id, str(destination))
@@ -139,12 +143,16 @@ def test_file_get_retries_then_succeeds(
     _register_metadata(mock_graph_request, metadata)
     request = httpx.Request("GET", metadata["@microsoft.graph.downloadUrl"])
     response = httpx.Response(503, request=request)
-    record_stream_calls([
-        httpx.HTTPStatusError("transient", request=request, response=response),
-        b"final-chunk",
-    ])
+    record_stream_calls(
+        [
+            httpx.HTTPStatusError("transient", request=request, response=response),
+            b"final-chunk",
+        ]
+    )
 
-    result = file_tools._file_get_impl(metadata["id"], mock_account_id, str(destination))
+    result = file_tools._file_get_impl(
+        metadata["id"], mock_account_id, str(destination)
+    )
 
     payload = destination.read_bytes()
     assert payload == b"final-chunk"
@@ -168,3 +176,8 @@ def test_file_get_timeout_raises_runtime_error(
         file_tools._file_get_impl(metadata["id"], mock_account_id, str(destination))
 
     assert not destination.exists()
+
+
+def test_file_list_rejects_invalid_limit(mock_account_id: str) -> None:
+    with pytest.raises(ValidationError):
+        file_tools.file_list.fn(account_id=mock_account_id, limit=0)

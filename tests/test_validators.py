@@ -51,3 +51,23 @@ def test_validate_request_size_enforces_limit() -> None:
     validators.validate_request_size(1024, 4096)
     with pytest.raises(validators.ValidationError):
         validators.validate_request_size(8192, 4096)
+
+
+def test_validate_choices_accepts_case_insensitive_value() -> None:
+    result = validators.validate_choices("ACCEPT", {"accept", "decline"}, "response")
+    assert result == "accept"
+
+
+def test_validate_choices_rejects_invalid_value() -> None:
+    with pytest.raises(validators.ValidationError):
+        validators.validate_choices("maybe", {"accept", "decline"}, "response")
+
+
+def test_validate_json_payload_rejects_unknown_keys() -> None:
+    with pytest.raises(validators.ValidationError):
+        validators.validate_json_payload({"foo": 1}, allowed_keys=("bar",))
+
+
+def test_validate_json_payload_allows_allowed_keys() -> None:
+    payload = validators.validate_json_payload({"bar": 1}, allowed_keys=("bar",))
+    assert payload == {"bar": 1}

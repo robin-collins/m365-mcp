@@ -8,7 +8,7 @@ import re
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Collection, Iterable, Sequence
 from urllib.parse import urljoin, urlparse
 
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -248,6 +248,44 @@ def normalize_recipients(
     return normalised
 
 
+def validate_choices(
+    value: str,
+    allowed: Collection[str],
+    param_name: str = "value",
+) -> str:
+    """Validate that a string value is within an allowed set (case-insensitive)."""
+    if not isinstance(value, str):
+        reason = "must be a string"
+        _log_failure(param_name, reason, value)
+        raise ValidationError(
+            format_validation_error(
+                param_name, value, reason, f"One of {sorted(allowed)}"
+            )
+        )
+
+    trimmed = value.strip()
+    if not trimmed:
+        reason = "cannot be empty"
+        _log_failure(param_name, reason, value)
+        raise ValidationError(
+            format_validation_error(
+                param_name, value, reason, f"One of {sorted(allowed)}"
+            )
+        )
+
+    allowed_map = {item.casefold(): item for item in allowed}
+    matched = allowed_map.get(trimmed.casefold())
+    if matched is None:
+        reason = "not in allowed set"
+        _log_failure(param_name, reason, value)
+        raise ValidationError(
+            format_validation_error(
+                param_name, value, reason, f"One of {sorted(allowed)}"
+            )
+        )
+    return matched
+
+
 def validate_iso_datetime(
     value: str,
     param_name: str,
@@ -393,9 +431,10 @@ def validate_json_payload(
     payload: Any,
     *,
     required_keys: Sequence[str] | None = None,
+    allowed_keys: Sequence[str] | None = None,
     param_name: str = "payload",
 ) -> dict[str, Any]:
-    """Ensure payloads are JSON-like dictionaries with required keys."""
+    """Ensure payloads are JSON-like dictionaries with required/allowed keys."""
     if not isinstance(payload, dict):
         reason = "must be a JSON object"
         _log_failure(param_name, reason, payload)
@@ -414,6 +453,21 @@ def validate_json_payload(
                     payload,
                     reason,
                     f"Include keys {sorted(required_keys)}",
+                )
+            )
+
+    if allowed_keys is not None:
+        allowed_set = set(allowed_keys)
+        unknown = sorted(key for key in payload if key not in allowed_set)
+        if unknown:
+            reason = f"contains unsupported keys {unknown}"
+            _log_failure(param_name, reason, payload)
+            raise ValidationError(
+                format_validation_error(
+                    param_name,
+                    payload,
+                    reason,
+                    f"Only keys {sorted(allowed_set)}",
                 )
             )
 

@@ -1,6 +1,7 @@
 import base64
 import logging
 import pathlib as pl
+from datetime import datetime
 from typing import Any
 
 from .. import graph
@@ -9,10 +10,16 @@ from ..validators import (
     ValidationError,
     ensure_safe_path,
     format_validation_error,
+    normalize_recipients,
     require_confirm,
     validate_account_id,
+    validate_choices,
+    validate_iso_datetime,
+    validate_json_payload,
+    validate_limit,
     validate_microsoft_graph_id,
     validate_request_size,
+    validate_timezone,
 )
 
 LOGGER = logging.getLogger("microsoft_mcp.tools.email")
@@ -30,6 +37,109 @@ FOLDERS = {
 }
 
 MAX_ATTACHMENT_DOWNLOAD_BYTES = 25 * 1024 * 1024
+MAX_EMAIL_RECIPIENTS = 500
+ALLOWED_EMAIL_UPDATE_KEYS = {
+    "isRead",
+    "categories",
+    "importance",
+    "flag",
+    "inferenceClassification",
+}
+EMAIL_IMPORTANCE_CHOICES = {"low", "normal", "high"}
+INFERENCE_CLASSIFICATIONS = {"focused", "other"}
+ALLOWED_EMAIL_FLAG_KEYS = {
+    "flagStatus",
+    "startDateTime",
+    "dueDateTime",
+    "completedDateTime",
+}
+ALLOWED_FLAG_DATETIME_KEYS = {"dateTime", "timeZone"}
+FLAG_STATUS_CHOICES = {"notFlagged", "flagged", "complete"}
+
+
+def _validate_flag_datetime_section(
+    payload: Any,
+    section_name: str,
+) -> tuple[dict[str, str], datetime]:
+    """Validate the datetime payload within a message flag section."""
+    section = validate_json_payload(
+        payload,
+        required_keys=("dateTime", "timeZone"),
+        allowed_keys=ALLOWED_FLAG_DATETIME_KEYS,
+        param_name=section_name,
+    )
+    timestamp = validate_iso_datetime(
+        section["dateTime"],
+        f"{section_name}.dateTime",
+    )
+    timezone_name = validate_timezone(
+        section["timeZone"],
+        f"{section_name}.timeZone",
+    )
+    return {"dateTime": section["dateTime"], "timeZone": timezone_name}, timestamp
+
+
+def _validate_flag_payload(flag: Any) -> dict[str, Any]:
+    """Validate the flag payload for email updates."""
+    validated = validate_json_payload(
+        flag,
+        allowed_keys=ALLOWED_EMAIL_FLAG_KEYS,
+        param_name="flag",
+    )
+    if not validated:
+        raise ValidationError(
+            format_validation_error(
+                "flag",
+                flag,
+                "must include at least one field",
+                f"Subset of {sorted(ALLOWED_EMAIL_FLAG_KEYS)}",
+            )
+        )
+
+    result: dict[str, Any] = {}
+    start_dt: datetime | None = None
+    due_dt: datetime | None = None
+
+    if "flagStatus" in validated:
+        status = validate_choices(
+            validated["flagStatus"],
+            FLAG_STATUS_CHOICES,
+            "flag.flagStatus",
+        )
+        result["flagStatus"] = status
+
+    if "startDateTime" in validated:
+        start_section, start_dt = _validate_flag_datetime_section(
+            validated["startDateTime"],
+            "flag.startDateTime",
+        )
+        result["startDateTime"] = start_section
+
+    if "dueDateTime" in validated:
+        due_section, due_dt = _validate_flag_datetime_section(
+            validated["dueDateTime"],
+            "flag.dueDateTime",
+        )
+        result["dueDateTime"] = due_section
+
+    if start_dt and due_dt and start_dt > due_dt:
+        raise ValidationError(
+            format_validation_error(
+                "flag.dueDateTime",
+                flag,
+                "must be later than startDateTime",
+                "dueDateTime >= startDateTime",
+            )
+        )
+
+    if "completedDateTime" in validated:
+        completed_section, _ = _validate_flag_datetime_section(
+            validated["completedDateTime"],
+            "flag.completedDateTime",
+        )
+        result["completedDateTime"] = completed_section
+
+    return result
 
 
 # email_list
@@ -59,12 +169,13 @@ def email_list(
         account_id: Microsoft account ID
         folder: Folder name (inbox, sent, drafts, deleted, junk, archive)
         folder_id: Direct folder ID - takes precedence over folder name
-        limit: Maximum emails to return (default: 10)
+        limit: Maximum emails to return (1-200, default: 10)
         include_body: Whether to include email body content (default: True)
 
     Returns:
         List of email messages with metadata and optionally body content
     """
+    limit = validate_limit(limit, 1, 200, "limit")
     # Determine which folder to use
     if folder_id:
         # Direct folder ID takes precedence
@@ -82,7 +193,7 @@ def email_list(
         select_fields = "id,subject,from,toRecipients,receivedDateTime,hasAttachments,conversationId,isRead"
 
     params = {
-        "$top": min(limit, 100),
+        "$top": limit,
         "$select": select_fields,
         "$orderby": "receivedDateTime desc",
     }
@@ -103,7 +214,7 @@ def _list_mail_folders_impl(
     account_id: str,
     parent_folder_id: str | None = None,
     include_hidden: bool = False,
-    limit: int = 100,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """Internal implementation for listing mail folders"""
     if parent_folder_id:
@@ -111,9 +222,10 @@ def _list_mail_folders_impl(
     else:
         endpoint = "/me/mailFolders"
 
+    page_size = limit if limit is not None else 250
     params = {
         "$select": "id,displayName,childFolderCount,unreadItemCount,totalItemCount,parentFolderId,isHidden",
-        "$top": min(limit, 100),
+        "$top": page_size,
     }
 
     if include_hidden:
@@ -154,9 +266,10 @@ def email_get(
         email_id: The email ID
         account_id: The account ID
         include_body: Whether to include the email body (default: True)
-        body_max_length: Maximum characters for body content (default: 50000)
+        body_max_length: Maximum characters for body content (1-500000, default: 50000)
         include_attachments: Whether to include attachment metadata (default: True)
     """
+    body_max_length = validate_limit(body_max_length, 1, 500_000, "body_max_length")
     params = {}
     if include_attachments:
         params["$expand"] = "attachments($select=id,name,size,contentType)"
@@ -319,7 +432,9 @@ def email_send(
     WARNING: Email will be sent immediately upon execution.
     This action cannot be undone.
 
-    Supports multiple recipients, CC, BCC, attachments, and HTML formatting.
+    Supports multiple recipients, CC, attachments, and HTML formatting.
+    Addresses are validated, deduplicated across To/CC, and limited to
+    500 unique recipients in total.
 
     Args:
         account_id: Microsoft account ID
@@ -332,23 +447,58 @@ def email_send(
 
     Returns:
         Status confirmation
+
+    Raises:
+        ValidationError: If recipients are invalid, exceed limits,
+            or confirm is False.
     """
+    to_normalized = normalize_recipients(to, "to")
+    cc_normalized = normalize_recipients(cc, "cc") if cc else []
+
+    seen: set[str] = set()
+    to_unique: list[str] = []
+    cc_unique: list[str] = []
+
+    for address in to_normalized:
+        key = address.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        to_unique.append(address)
+
+    for address in cc_normalized:
+        key = address.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        cc_unique.append(address)
+
+    total_unique = len(to_unique) + len(cc_unique)
+    if total_unique > MAX_EMAIL_RECIPIENTS:
+        reason = f"must not exceed {MAX_EMAIL_RECIPIENTS} unique recipients"
+        raise ValidationError(
+            format_validation_error(
+                "recipients",
+                total_unique,
+                reason,
+                f"≤ {MAX_EMAIL_RECIPIENTS}",
+            )
+        )
+
     require_confirm(confirm, "send email")
-    to_list = [to] if isinstance(to, str) else to
 
-    message = {
-        "subject": subject,
-        "body": {"contentType": "Text", "content": body},
-        "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_list],
-    }
+    def build_message() -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "subject": subject,
+            "body": {"contentType": "Text", "content": body},
+            "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_unique],
+        }
+        if cc_unique:
+            payload["ccRecipients"] = [
+                {"emailAddress": {"address": addr}} for addr in cc_unique
+            ]
+        return payload
 
-    if cc:
-        cc_list = [cc] if isinstance(cc, str) else cc
-        message["ccRecipients"] = [
-            {"emailAddress": {"address": addr}} for addr in cc_list
-        ]
-
-    # Check if we have large attachments
     has_large_attachments = False
     processed_attachments = []
 
@@ -376,6 +526,7 @@ def email_send(
                 has_large_attachments = True
 
     if not has_large_attachments and processed_attachments:
+        message = build_message()
         message["attachments"] = [
             {
                 "@odata.type": "#microsoft.graph.fileAttachment",
@@ -389,18 +540,7 @@ def email_send(
     elif has_large_attachments:
         # Create draft first, then add large attachments, then send
         # We need to handle large attachments manually here
-        to_list = [to] if isinstance(to, str) else to
-        message = {
-            "subject": subject,
-            "body": {"contentType": "Text", "content": body},
-            "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_list],
-        }
-        if cc:
-            cc_list = [cc] if isinstance(cc, str) else cc
-            message["ccRecipients"] = [
-                {"emailAddress": {"address": addr}} for addr in cc_list
-            ]
-
+        message = build_message()
         result = graph.request("POST", "/me/messages", account_id, json=message)
         if not result:
             raise ValueError("Failed to create email draft")
@@ -434,7 +574,9 @@ def email_send(
         graph.request("POST", f"/me/messages/{message_id}/send", account_id)
         return {"status": "sent"}
     else:
-        graph.request("POST", "/me/sendMail", account_id, json={"message": message})
+        graph.request(
+            "POST", "/me/sendMail", account_id, json={"message": build_message()}
+        )
         return {"status": "sent"}
 
 
@@ -462,6 +604,8 @@ def email_update(
         email_update(email_id, {"isRead": True}, account_id)
         email_update(email_id, {"categories": ["Important"]}, account_id)
 
+    Allowed update keys: isRead, categories, importance, flag, inferenceClassification.
+
     Args:
         email_id: The email ID to update
         updates: Dictionary of properties to update
@@ -470,8 +614,92 @@ def email_update(
     Returns:
         Updated email object
     """
+    payload = validate_json_payload(
+        updates,
+        allowed_keys=ALLOWED_EMAIL_UPDATE_KEYS,
+        param_name="updates",
+    )
+    if not payload:
+        raise ValidationError(
+            format_validation_error(
+                "updates",
+                payload,
+                "must include at least one field",
+                f"Subset of {sorted(ALLOWED_EMAIL_UPDATE_KEYS)}",
+            )
+        )
+
+    graph_updates: dict[str, Any] = {}
+
+    if "isRead" in payload:
+        is_read = payload["isRead"]
+        if not isinstance(is_read, bool):
+            raise ValidationError(
+                format_validation_error(
+                    "updates.isRead",
+                    is_read,
+                    "must be a boolean value",
+                    "True or False",
+                )
+            )
+        graph_updates["isRead"] = is_read
+
+    if "categories" in payload:
+        categories_raw = payload["categories"]
+        if not isinstance(categories_raw, list):
+            raise ValidationError(
+                format_validation_error(
+                    "updates.categories",
+                    categories_raw,
+                    "must be a list of category names",
+                    "List of non-empty strings",
+                )
+            )
+        normalised_categories: list[str] = []
+        for index, category in enumerate(categories_raw):
+            if not isinstance(category, str):
+                raise ValidationError(
+                    format_validation_error(
+                        f"updates.categories[{index}]",
+                        category,
+                        "must be a string",
+                        "Category name string",
+                    )
+                )
+            trimmed = category.strip()
+            if not trimmed:
+                raise ValidationError(
+                    format_validation_error(
+                        f"updates.categories[{index}]",
+                        category,
+                        "cannot be empty",
+                        "Non-empty category name",
+                    )
+                )
+            normalised_categories.append(trimmed)
+        graph_updates["categories"] = normalised_categories
+
+    if "importance" in payload:
+        importance = validate_choices(
+            payload["importance"],
+            EMAIL_IMPORTANCE_CHOICES,
+            "updates.importance",
+        )
+        graph_updates["importance"] = importance
+
+    if "flag" in payload:
+        graph_updates["flag"] = _validate_flag_payload(payload["flag"])
+
+    if "inferenceClassification" in payload:
+        inference = validate_choices(
+            payload["inferenceClassification"],
+            INFERENCE_CLASSIFICATIONS,
+            "updates.inferenceClassification",
+        )
+        graph_updates["inferenceClassification"] = inference
+
     result = graph.request(
-        "PATCH", f"/me/messages/{email_id}", account_id, json=updates
+        "PATCH", f"/me/messages/{email_id}", account_id, json=graph_updates
     )
     if not result:
         raise ValueError(f"Failed to update email {email_id} - no response")
@@ -598,6 +826,9 @@ def email_reply(
     WARNING: Reply will be sent immediately to the original sender.
     This action cannot be undone.
 
+    Body content is stripped of surrounding whitespace and must not be
+    empty before sending.
+
     Args:
         account_id: Microsoft account ID
         email_id: The email ID to reply to
@@ -606,10 +837,27 @@ def email_reply(
 
     Returns:
         Status confirmation
+
+    Raises:
+        ValidationError: If the reply body is empty/whitespace or confirm
+            is False.
     """
+    if not isinstance(body, str):
+        reason = "must be a string"
+        raise ValidationError(
+            format_validation_error("body", body, reason, "Non-empty reply body")
+        )
+
+    body_stripped = body.strip()
+    if not body_stripped:
+        reason = "cannot be empty"
+        raise ValidationError(
+            format_validation_error("body", body, reason, "Non-empty reply body")
+        )
+
     require_confirm(confirm, "reply to email")
     endpoint = f"/me/messages/{email_id}/reply"
-    payload = {"message": {"body": {"contentType": "Text", "content": body}}}
+    payload = {"message": {"body": {"contentType": "Text", "content": body_stripped}}}
     graph.request("POST", endpoint, account_id, json=payload)
     return {"status": "sent"}
 

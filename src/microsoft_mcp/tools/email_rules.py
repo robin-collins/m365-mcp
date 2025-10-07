@@ -1,7 +1,321 @@
 from typing import Any
 from ..mcp_instance import mcp
 from .. import graph
-from ..validators import require_confirm
+from ..validators import (
+    ValidationError,
+    format_validation_error,
+    require_confirm,
+    validate_choices,
+    validate_email_format,
+    validate_json_payload,
+)
+
+RULE_FLAG_STATUS_CHOICES = {"notFlagged", "flagged", "complete"}
+RULE_IMPORTANCE_CHOICES = {"low", "normal", "high"}
+RULE_SENSITIVITY_CHOICES = {"normal", "personal", "private", "confidential"}
+RULE_MEETING_TYPES = {
+    "meetingRequest",
+    "meetingCancelled",
+    "meetingAccepted",
+    "meetingTentativelyAccepted",
+    "meetingDeclined",
+}
+
+RULE_PREDICATE_STRING_LIST_KEYS = {
+    "categories",
+    "subjectContains",
+    "bodyContains",
+    "bodyOrSubjectContains",
+    "senderContains",
+    "recipientContains",
+    "senderAddressContains",
+    "recipientAddressContains",
+    "headers",
+    "headerContains",
+    "searchTerms",
+}
+RULE_PREDICATE_RECIPIENT_KEYS = {
+    "fromAddresses",
+    "sentToAddresses",
+}
+RULE_PREDICATE_BOOL_KEYS = {
+    "hasAttachments",
+    "stopProcessingRules",
+}
+RULE_PREDICATE_CHOICE_MAP = {
+    "importance": RULE_IMPORTANCE_CHOICES,
+    "sensitivity": RULE_SENSITIVITY_CHOICES,
+}
+ALLOWED_RULE_PREDICATE_KEYS = (
+    RULE_PREDICATE_STRING_LIST_KEYS
+    | RULE_PREDICATE_RECIPIENT_KEYS
+    | RULE_PREDICATE_BOOL_KEYS
+    | set(RULE_PREDICATE_CHOICE_MAP.keys())
+    | {
+        "withinSizeRange",
+        "messageActionFlag",
+        "meetingMessageType",
+    }
+)
+
+RULE_ACTION_STRING_LIST_KEYS = {"assignCategories"}
+RULE_ACTION_STRING_KEYS = {"copyToFolder", "moveToFolder"}
+RULE_ACTION_RECIPIENT_KEYS = {
+    "forwardTo",
+    "forwardAsAttachmentTo",
+    "redirectTo",
+}
+RULE_ACTION_BOOL_KEYS = {
+    "markAsRead",
+    "stopProcessingRules",
+    "delete",
+    "permanentDelete",
+}
+RULE_ACTION_CHOICE_MAP = {"markImportance": RULE_IMPORTANCE_CHOICES}
+ALLOWED_RULE_ACTION_KEYS = (
+    RULE_ACTION_STRING_LIST_KEYS
+    | RULE_ACTION_STRING_KEYS
+    | RULE_ACTION_RECIPIENT_KEYS
+    | RULE_ACTION_BOOL_KEYS
+    | set(RULE_ACTION_CHOICE_MAP.keys())
+)
+
+
+def _validate_bool(value: Any, param_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValidationError(
+            format_validation_error(
+                param_name,
+                value,
+                "must be a boolean",
+                "True or False",
+            )
+        )
+    return value
+
+
+def _validate_string_list(values: Any, param_name: str) -> list[str]:
+    if not isinstance(values, list):
+        raise ValidationError(
+            format_validation_error(
+                param_name,
+                values,
+                "must be a list of strings",
+                "List of non-empty strings",
+            )
+        )
+    normalised: list[str] = []
+    for index, item in enumerate(values):
+        if not isinstance(item, str):
+            raise ValidationError(
+                format_validation_error(
+                    f"{param_name}[{index}]",
+                    item,
+                    "must be a string",
+                    "Text value",
+                )
+            )
+        trimmed = item.strip()
+        if not trimmed:
+            raise ValidationError(
+                format_validation_error(
+                    f"{param_name}[{index}]",
+                    item,
+                    "cannot be empty",
+                    "Non-empty string",
+                )
+            )
+        normalised.append(trimmed)
+    return normalised
+
+
+def _normalise_rule_recipients(
+    recipients: Any,
+    param_name: str,
+) -> list[dict[str, dict[str, str]]]:
+    if not isinstance(recipients, list):
+        raise ValidationError(
+            format_validation_error(
+                param_name,
+                recipients,
+                "must be a list of recipient objects",
+                "List of email addresses",
+            )
+        )
+    result: list[dict[str, dict[str, str]]] = []
+    for index, entry in enumerate(recipients):
+        if isinstance(entry, str):
+            email = validate_email_format(
+                entry,
+                f"{param_name}[{index}]",
+            )
+            result.append({"emailAddress": {"address": email}})
+            continue
+        if not isinstance(entry, dict):
+            raise ValidationError(
+                format_validation_error(
+                    f"{param_name}[{index}]",
+                    entry,
+                    "must be a recipient dictionary",
+                    "{'emailAddress': {'address': str}}",
+                )
+            )
+        if "emailAddress" in entry and isinstance(entry["emailAddress"], dict):
+            email_address = entry["emailAddress"].get("address")
+            email = validate_email_format(
+                email_address,
+                f"{param_name}[{index}].emailAddress.address",
+            )
+            result.append({"emailAddress": {"address": email}})
+            continue
+        if "address" in entry:
+            email = validate_email_format(
+                entry["address"],
+                f"{param_name}[{index}].address",
+            )
+            result.append({"emailAddress": {"address": email}})
+            continue
+        raise ValidationError(
+            format_validation_error(
+                f"{param_name}[{index}]",
+                entry,
+                "must include an email address",
+                "{'emailAddress': {'address': str}}",
+            )
+        )
+    return result
+
+
+def _validate_size_range(value: Any, param_name: str) -> dict[str, int]:
+    payload = validate_json_payload(
+        value,
+        allowed_keys=("minimumSize", "maximumSize"),
+        param_name=param_name,
+    )
+    validated: dict[str, int] = {}
+    for key in ("minimumSize", "maximumSize"):
+        if key in payload:
+            amount = payload[key]
+            if not isinstance(amount, int):
+                raise ValidationError(
+                    format_validation_error(
+                        f"{param_name}.{key}",
+                        amount,
+                        "must be an integer number of bytes",
+                        "Integer value ≥ 0",
+                    )
+                )
+            if amount < 0:
+                raise ValidationError(
+                    format_validation_error(
+                        f"{param_name}.{key}",
+                        amount,
+                        "cannot be negative",
+                        "Value ≥ 0",
+                    )
+                )
+            validated[key] = amount
+    if (
+        "minimumSize" in validated
+        and "maximumSize" in validated
+        and validated["minimumSize"] > validated["maximumSize"]
+    ):
+        raise ValidationError(
+            format_validation_error(
+                param_name,
+                value,
+                "minimumSize cannot exceed maximumSize",
+                "minimumSize ≤ maximumSize",
+            )
+        )
+    return validated
+
+
+def _validate_rule_predicates(
+    predicates: Any,
+    param_name: str,
+) -> dict[str, Any]:
+    payload = validate_json_payload(
+        predicates,
+        allowed_keys=ALLOWED_RULE_PREDICATE_KEYS,
+        param_name=param_name,
+    )
+    validated: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key in RULE_PREDICATE_STRING_LIST_KEYS:
+            validated[key] = _validate_string_list(value, f"{param_name}.{key}")
+        elif key in RULE_PREDICATE_RECIPIENT_KEYS:
+            validated[key] = _normalise_rule_recipients(value, f"{param_name}.{key}")
+        elif key in RULE_PREDICATE_BOOL_KEYS:
+            validated[key] = _validate_bool(value, f"{param_name}.{key}")
+        elif key in RULE_PREDICATE_CHOICE_MAP:
+            validated[key] = validate_choices(
+                value,
+                RULE_PREDICATE_CHOICE_MAP[key],
+                f"{param_name}.{key}",
+            )
+        elif key == "withinSizeRange":
+            validated[key] = _validate_size_range(value, f"{param_name}.{key}")
+        elif key == "messageActionFlag":
+            validated[key] = validate_choices(
+                value,
+                RULE_FLAG_STATUS_CHOICES,
+                f"{param_name}.messageActionFlag",
+            )
+        elif key == "meetingMessageType":
+            validated[key] = validate_choices(
+                value,
+                RULE_MEETING_TYPES,
+                f"{param_name}.meetingMessageType",
+            )
+    return validated
+
+
+def _validate_rule_actions(
+    actions: Any,
+    param_name: str,
+) -> dict[str, Any]:
+    payload = validate_json_payload(
+        actions,
+        allowed_keys=ALLOWED_RULE_ACTION_KEYS,
+        param_name=param_name,
+    )
+    validated: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key in RULE_ACTION_STRING_LIST_KEYS:
+            validated[key] = _validate_string_list(value, f"{param_name}.{key}")
+        elif key in RULE_ACTION_STRING_KEYS:
+            if not isinstance(value, str):
+                raise ValidationError(
+                    format_validation_error(
+                        f"{param_name}.{key}",
+                        value,
+                        "must be a string",
+                        "Identifier or folder ID string",
+                    )
+                )
+            trimmed = value.strip()
+            if not trimmed:
+                raise ValidationError(
+                    format_validation_error(
+                        f"{param_name}.{key}",
+                        value,
+                        "cannot be empty",
+                        "Non-empty string",
+                    )
+                )
+            validated[key] = trimmed
+        elif key in RULE_ACTION_RECIPIENT_KEYS:
+            validated[key] = _normalise_rule_recipients(value, f"{param_name}.{key}")
+        elif key in RULE_ACTION_BOOL_KEYS:
+            validated[key] = _validate_bool(value, f"{param_name}.{key}")
+        elif key in RULE_ACTION_CHOICE_MAP:
+            validated[key] = validate_choices(
+                value,
+                RULE_ACTION_CHOICE_MAP[key],
+                f"{param_name}.{key}",
+            )
+    return validated
 
 
 def _emailrules_list_impl(account_id: str) -> list[dict[str, Any]]:
@@ -170,6 +484,9 @@ def emailrules_update(
     Modifies rule properties, conditions, actions, or execution order.
     At least one field must be provided to update.
 
+    Allowed parameters: display_name, conditions, actions, sequence,
+    is_enabled, exceptions.
+
     Args:
         rule_id: The message rule ID to update
         account_id: Microsoft account ID
@@ -183,22 +500,72 @@ def emailrules_update(
     Returns:
         Updated rule configuration
     """
-    updates = {}
+    updates: dict[str, Any] = {}
+
     if display_name is not None:
-        updates["displayName"] = display_name
+        if not isinstance(display_name, str):
+            raise ValidationError(
+                format_validation_error(
+                    "display_name",
+                    display_name,
+                    "must be a string",
+                    "Rule display name",
+                )
+            )
+        trimmed = display_name.strip()
+        if not trimmed:
+            raise ValidationError(
+                format_validation_error(
+                    "display_name",
+                    display_name,
+                    "cannot be empty",
+                    "Non-empty rule name",
+                )
+            )
+        updates["displayName"] = trimmed
+
     if conditions is not None:
-        updates["conditions"] = conditions
+        updates["conditions"] = _validate_rule_predicates(conditions, "conditions")
+
     if actions is not None:
-        updates["actions"] = actions
+        updates["actions"] = _validate_rule_actions(actions, "actions")
+
     if sequence is not None:
+        if not isinstance(sequence, int):
+            raise ValidationError(
+                format_validation_error(
+                    "sequence",
+                    sequence,
+                    "must be an integer",
+                    "Integer value ≥ 1",
+                )
+            )
+        if sequence < 1:
+            raise ValidationError(
+                format_validation_error(
+                    "sequence",
+                    sequence,
+                    "must be at least 1",
+                    "Integer value ≥ 1",
+                )
+            )
         updates["sequence"] = sequence
+
     if is_enabled is not None:
-        updates["isEnabled"] = is_enabled
+        updates["isEnabled"] = _validate_bool(is_enabled, "is_enabled")
+
     if exceptions is not None:
-        updates["exceptions"] = exceptions
+        updates["exceptions"] = _validate_rule_predicates(exceptions, "exceptions")
 
     if not updates:
-        raise ValueError("At least one field must be provided to update")
+        raise ValidationError(
+            format_validation_error(
+                "updates",
+                {},
+                "must include at least one update field",
+                "Provide one or more allowed parameters",
+            )
+        )
 
     result = graph.request(
         "PATCH",

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 3 Validation Tests**: Added targeted suites covering update dictionary guards, pagination limits, and search date windows (`tests/test_contact_validation.py`, `tests/test_email_rules_validation.py`, `tests/test_search_validation.py`, `tests/test_folder_validation.py`).
 - **Phase 1 Confirmation Regression Tests**: Added `tests/test_tool_confirmation.py` to assert the shared `require_confirm` validator guards all destructive and dangerous Phase 1 tools (email_send, email_reply, email_delete, file_delete, contact_delete, calendar_delete_event, emailrules_delete).
 - **Parameter Validation Phase 1 Tasklist Review**: Comprehensive review and update of Phase 1 implementation plan
   - **Review Summary**: Created `reports/todo/PHASE1_REVIEW_SUMMARY.md` documenting critical findings
@@ -18,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - 2 Dangerous (Send/Reply): email_send, email_reply
   - **Prerequisites Added**: Explicit dependencies on Critical Path Sections 3-5 completion
   - **Status**: ✅ Ready for implementation after validators.py is complete
+- **Phase 2 Validation Tests**: Added dedicated suites
+  (`tests/test_email_validation.py`, `tests/test_calendar_validation.py`)
+  covering recipient normalization, reply body enforcement, calendar response
+  enums, and datetime windows.
+
+### Changed
+
+- Hardened moderate operations as part of Phase 3: enforced strict whitelist validation for `email_update`, `calendar_update_event`, `contact_update`, and `emailrules_update`; applied explicit limit bounds across email, folder, contact, file, and search tools; added day-range validation to `search_events`; normalised error handling to emit `ValidationError` for rejected input.
+- Hardened dangerous email and calendar tools with Phase 2 parameter
+  validation: recipient normalization/deduplication with limits, reply body
+  checks, calendar response enum enforcement, attendee validation, and ISO
+  datetime/timezone verification.
 
 - **Parameter Validation Critical Path Tasklist Review**: Comprehensive review and enhancement of validation implementation plan
   - **Review Summary**: Created `reports/todo/CRITICAL_PATH_REVIEW_SUMMARY.md` documenting findings and updates

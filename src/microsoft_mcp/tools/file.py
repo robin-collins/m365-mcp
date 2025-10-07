@@ -15,8 +15,8 @@ from ..validators import (
     ValidationError,
     ensure_safe_path,
     format_validation_error,
+    require_confirm,
     validate_account_id,
-    validate_confirmation_flag,
     validate_graph_url,
     validate_limit,
     validate_microsoft_graph_id,
@@ -398,7 +398,7 @@ def file_update(file_id: str, local_file_path: str, account_id: str) -> dict[str
 def file_delete(file_id: str, account_id: str, confirm: bool = False) -> dict[str, str]:
     """Delete a OneDrive file or folder after explicit confirmation."""
 
-    validate_confirmation_flag(confirm, "delete", "OneDrive item")
+    require_confirm(confirm, "delete OneDrive item")
     account = validate_account_id(account_id)
     graph_file_id = validate_microsoft_graph_id(file_id, "file_id")
     graph.request("DELETE", f"/me/drive/items/{graph_file_id}", account)

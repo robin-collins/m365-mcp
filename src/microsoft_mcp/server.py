@@ -77,7 +77,7 @@ def main() -> None:
 
 def _run_http_with_bearer_auth(host: str, port: int, path: str) -> None:
     """Run Streamable HTTP server with bearer token authentication"""
-    from fastapi import FastAPI, Request, HTTPException
+    from fastapi import FastAPI, Request
     import uvicorn
 
     auth_token = os.getenv("MCP_AUTH_TOKEN")
@@ -125,7 +125,9 @@ def _run_http_with_bearer_auth(host: str, port: int, path: str) -> None:
         if not auth_header.startswith("Bearer "):
             return JSONResponse(
                 status_code=401,
-                content={"detail": "Invalid Authorization header format. Expected: Bearer <token>"},
+                content={
+                    "detail": "Invalid Authorization header format. Expected: Bearer <token>"
+                },
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
@@ -149,7 +151,7 @@ def _run_http_with_bearer_auth(host: str, port: int, path: str) -> None:
 
     # Important: Pass the lifespan context from the MCP app to the FastAPI app
     # This ensures FastMCP's session manager is properly initialized
-    if hasattr(http_app, 'router') and hasattr(http_app.router, 'lifespan_context'):
+    if hasattr(http_app, "router") and hasattr(http_app.router, "lifespan_context"):
         app.router.lifespan_context = http_app.router.lifespan_context
 
     app.mount(path, http_app)

@@ -22,11 +22,11 @@ def parse_result(result, tool_name=None):
         data = json.loads(text)
         # FastMCP seems to unwrap single-element lists, so rewrap for consistency
         list_tools = {
-            "list_accounts",
-            "list_emails",
-            "list_events",
-            "list_contacts",
-            "list_files",
+            "account_list",
+            "email_list",
+            "calendar_list_events",
+            "contact_list",
+            "file_list",
         }
         if tool_name in list_tools and isinstance(data, dict):
             return [data]
@@ -53,9 +53,9 @@ async def get_session():
 
 async def get_account_info(session):
     """Get account info"""
-    result = await session.call_tool("list_accounts", {})
+    result = await session.call_tool("account_list", {})
     assert not result.isError
-    accounts = parse_result(result, "list_accounts")
+    accounts = parse_result(result, "account_list")
     assert accounts and len(accounts) > 0, (
         "No accounts found - please authenticate first"
     )
@@ -67,9 +67,9 @@ async def get_account_info(session):
 async def test_list_accounts():
     """Test list_accounts tool"""
     async for session in get_session():
-        result = await session.call_tool("list_accounts", {})
+        result = await session.call_tool("account_list", {})
         assert not result.isError
-        accounts = parse_result(result, "list_accounts")
+        accounts = parse_result(result, "account_list")
         assert accounts is not None
         assert len(accounts) > 0
         assert "username" in accounts[0]
@@ -82,7 +82,7 @@ async def test_list_emails():
     async for session in get_session():
         account_info = await get_account_info(session)
         result = await session.call_tool(
-            "list_emails",
+            "email_list",
             {
                 "account_id": account_info["account_id"],
                 "limit": 3,
@@ -90,7 +90,7 @@ async def test_list_emails():
             },
         )
         assert not result.isError
-        emails = parse_result(result, "list_emails")
+        emails = parse_result(result, "email_list")
         assert emails is not None
         if len(emails) > 0:
             assert "id" in emails[0]
@@ -104,7 +104,7 @@ async def test_list_emails_without_body():
     async for session in get_session():
         account_info = await get_account_info(session)
         result = await session.call_tool(
-            "list_emails",
+            "email_list",
             {
                 "account_id": account_info["account_id"],
                 "limit": 3,
@@ -112,7 +112,7 @@ async def test_list_emails_without_body():
             },
         )
         assert not result.isError
-        emails = parse_result(result, "list_emails")
+        emails = parse_result(result, "email_list")
         assert emails is not None
         if len(emails) > 0:
             assert "body" not in emails[0]
@@ -124,14 +124,14 @@ async def test_get_email():
     async for session in get_session():
         account_info = await get_account_info(session)
         list_result = await session.call_tool(
-            "list_emails", {"account_id": account_info["account_id"], "limit": 1}
+            "email_list", {"account_id": account_info["account_id"], "limit": 1}
         )
-        emails = parse_result(list_result, "list_emails")
+        emails = parse_result(list_result, "email_list")
 
         if emails and len(emails) > 0:
             email_id = emails[0].get("id")
             result = await session.call_tool(
-                "get_email",
+                "email_get",
                 {"email_id": email_id, "account_id": account_info["account_id"]},
             )
             assert not result.isError
@@ -147,7 +147,7 @@ async def test_create_email_draft():
     async for session in get_session():
         account_info = await get_account_info(session)
         result = await session.call_tool(
-            "create_email_draft",
+            "email_create_draft",
             {
                 "account_id": account_info["account_id"],
                 "to": account_info["email"],
@@ -162,7 +162,7 @@ async def test_create_email_draft():
 
         draft_id = draft_data.get("id")
         delete_result = await session.call_tool(
-            "delete_email",
+            "email_delete",
             {"email_id": draft_id, "account_id": account_info["account_id"]},
         )
         assert not delete_result.isError
@@ -174,16 +174,16 @@ async def test_update_email():
     async for session in get_session():
         account_info = await get_account_info(session)
         list_result = await session.call_tool(
-            "list_emails", {"account_id": account_info["account_id"], "limit": 1}
+            "email_list", {"account_id": account_info["account_id"], "limit": 1}
         )
-        emails = parse_result(list_result, "list_emails")
+        emails = parse_result(list_result, "email_list")
 
         if emails and len(emails) > 0:
             email_id = emails[0].get("id")
             original_read_state = emails[0].get("isRead", True)
 
             result = await session.call_tool(
-                "update_email",
+                "email_update",
                 {
                     "email_id": email_id,
                     "account_id": account_info["account_id"],
@@ -193,7 +193,7 @@ async def test_update_email():
             assert not result.isError
 
             restore_result = await session.call_tool(
-                "update_email",
+                "email_update",
                 {
                     "email_id": email_id,
                     "account_id": account_info["account_id"],
@@ -209,7 +209,7 @@ async def test_delete_email():
     async for session in get_session():
         account_info = await get_account_info(session)
         draft_result = await session.call_tool(
-            "create_email_draft",
+            "email_create_draft",
             {
                 "account_id": account_info["account_id"],
                 "to": account_info["email"],
@@ -220,7 +220,7 @@ async def test_delete_email():
         draft_data = parse_result(draft_result)
         if draft_data and "id" in draft_data:
             result = await session.call_tool(
-                "delete_email",
+                "email_delete",
                 {
                     "email_id": draft_data.get("id"),
                     "account_id": account_info["account_id"],
@@ -238,15 +238,15 @@ async def test_move_email():
     async for session in get_session():
         account_info = await get_account_info(session)
         list_result = await session.call_tool(
-            "list_emails",
+            "email_list",
             {"account_id": account_info["account_id"], "folder": "inbox", "limit": 1},
         )
-        emails = parse_result(list_result, "list_emails")
+        emails = parse_result(list_result, "email_list")
 
         if emails and len(emails) > 0:
             email_id = emails[0].get("id")
             result = await session.call_tool(
-                "move_email",
+                "email_move",
                 {
                     "email_id": email_id,
                     "account_id": account_info["account_id"],
@@ -255,11 +255,11 @@ async def test_move_email():
             )
             assert not result.isError
 
-            move_result = parse_result(result, "move_email")
+            move_result = parse_result(result, "email_move")
             new_email_id = move_result.get("new_id", email_id)
 
             restore_result = await session.call_tool(
-                "move_email",
+                "email_move",
                 {
                     "email_id": new_email_id,
                     "account_id": account_info["account_id"],
@@ -276,9 +276,9 @@ async def test_reply_to_email():
         account_info = await get_account_info(session)
         await asyncio.sleep(2)
         list_result = await session.call_tool(
-            "list_emails", {"account_id": account_info["account_id"], "limit": 5}
+            "email_list", {"account_id": account_info["account_id"], "limit": 5}
         )
-        emails = parse_result(list_result, "list_emails")
+        emails = parse_result(list_result, "email_list")
 
         test_email = None
         if emails:
@@ -289,7 +289,7 @@ async def test_reply_to_email():
 
         if test_email:
             result = await session.call_tool(
-                "reply_to_email",
+                "email_reply",
                 {
                     "account_id": account_info["account_id"],
                     "email_id": test_email.get("id"),
@@ -309,9 +309,9 @@ async def test_reply_all_email():
         account_info = await get_account_info(session)
         await asyncio.sleep(2)
         list_result = await session.call_tool(
-            "list_emails", {"account_id": account_info["account_id"], "limit": 5}
+            "email_list", {"account_id": account_info["account_id"], "limit": 5}
         )
-        emails = parse_result(list_result, "list_emails")
+        emails = parse_result(list_result, "email_list")
 
         test_email = None
         if emails:
@@ -341,7 +341,7 @@ async def test_list_events():
     async for session in get_session():
         account_info = await get_account_info(session)
         result = await session.call_tool(
-            "list_events",
+            "calendar_list_events",
             {
                 "account_id": account_info["account_id"],
                 "days_ahead": 14,
@@ -349,7 +349,7 @@ async def test_list_events():
             },
         )
         assert not result.isError
-        events = parse_result(result, "list_events")
+        events = parse_result(result, "calendar_list_events")
         assert events is not None
         if len(events) > 0:
             assert "id" in events[0]
@@ -364,14 +364,14 @@ async def test_get_event():
     async for session in get_session():
         account_info = await get_account_info(session)
         list_result = await session.call_tool(
-            "list_events", {"account_id": account_info["account_id"], "days_ahead": 30}
+            "calendar_list_events", {"account_id": account_info["account_id"], "days_ahead": 30}
         )
-        events = parse_result(list_result, "list_events")
+        events = parse_result(list_result, "calendar_list_events")
 
         if events and len(events) > 0:
             event_id = events[0].get("id")
             result = await session.call_tool(
-                "get_event",
+                "calendar_get_event",
                 {"event_id": event_id, "account_id": account_info["account_id"]},
             )
             assert not result.isError
@@ -390,7 +390,7 @@ async def test_create_event():
         end_time = start_time + timedelta(hours=1)
 
         result = await session.call_tool(
-            "create_event",
+            "calendar_create_event",
             {
                 "account_id": account_info["account_id"],
                 "subject": "MCP Integration Test Event",
@@ -408,7 +408,7 @@ async def test_create_event():
 
         event_id = event_data.get("id")
         delete_result = await session.call_tool(
-            "delete_event",
+            "calendar_delete_event",
             {
                 "account_id": account_info["account_id"],
                 "event_id": event_id,
@@ -427,7 +427,7 @@ async def test_update_event():
         end_time = start_time + timedelta(hours=1)
 
         create_result = await session.call_tool(
-            "create_event",
+            "calendar_create_event",
             {
                 "account_id": account_info["account_id"],
                 "subject": "MCP Test Event for Update",
@@ -443,7 +443,7 @@ async def test_update_event():
         new_end = new_start + timedelta(hours=1)
 
         result = await session.call_tool(
-            "update_event",
+            "calendar_update_event",
             {
                 "event_id": event_id,
                 "account_id": account_info["account_id"],
@@ -458,7 +458,7 @@ async def test_update_event():
         assert not result.isError
 
         delete_result = await session.call_tool(
-            "delete_event",
+            "calendar_delete_event",
             {
                 "account_id": account_info["account_id"],
                 "event_id": event_id,
@@ -477,7 +477,7 @@ async def test_delete_event():
         end_time = start_time + timedelta(hours=1)
 
         create_result = await session.call_tool(
-            "create_event",
+            "calendar_create_event",
             {
                 "account_id": account_info["account_id"],
                 "subject": "MCP Test Event for Deletion",
@@ -490,7 +490,7 @@ async def test_delete_event():
         event_id = event_data.get("id")
 
         result = await session.call_tool(
-            "delete_event",
+            "calendar_delete_event",
             {
                 "account_id": account_info["account_id"],
                 "event_id": event_id,
@@ -509,9 +509,9 @@ async def test_respond_event():
     async for session in get_session():
         account_info = await get_account_info(session)
         list_result = await session.call_tool(
-            "list_events", {"account_id": account_info["account_id"], "days_ahead": 30}
+            "calendar_list_events", {"account_id": account_info["account_id"], "days_ahead": 30}
         )
-        events = parse_result(list_result, "list_events")
+        events = parse_result(list_result, "calendar_list_events")
 
         if events:
             invite_event = next(
@@ -520,7 +520,7 @@ async def test_respond_event():
             )
             if invite_event:
                 result = await session.call_tool(
-                    "respond_event",
+                    "calendar_respond_event",
                     {
                         "account_id": account_info["account_id"],
                         "event_id": invite_event.get("id"),
@@ -551,7 +551,7 @@ async def test_check_availability():
         )
 
         result = await session.call_tool(
-            "check_availability",
+            "calendar_check_availability",
             {
                 "account_id": account_info["account_id"],
                 "start": check_start,
@@ -570,10 +570,10 @@ async def test_list_contacts():
     async for session in get_session():
         account_info = await get_account_info(session)
         result = await session.call_tool(
-            "list_contacts", {"account_id": account_info["account_id"], "limit": 10}
+            "contact_list", {"account_id": account_info["account_id"], "limit": 10}
         )
         assert not result.isError
-        contacts = parse_result(result, "list_contacts")
+        contacts = parse_result(result, "contact_list")
         assert contacts is not None
         if len(contacts) > 0:
             assert "id" in contacts[0]
@@ -585,14 +585,14 @@ async def test_get_contact():
     async for session in get_session():
         account_info = await get_account_info(session)
         list_result = await session.call_tool(
-            "list_contacts", {"account_id": account_info["account_id"], "limit": 1}
+            "contact_list", {"account_id": account_info["account_id"], "limit": 1}
         )
         assert not list_result.isError
-        contacts = parse_result(list_result, "list_contacts")
+        contacts = parse_result(list_result, "contact_list")
         if contacts and len(contacts) > 0:
             contact_id = contacts[0].get("id")
             result = await session.call_tool(
-                "get_contact",
+                "contact_get",
                 {"contact_id": contact_id, "account_id": account_info["account_id"]},
             )
             assert not result.isError
@@ -607,7 +607,7 @@ async def test_create_contact():
     async for session in get_session():
         account_info = await get_account_info(session)
         result = await session.call_tool(
-            "create_contact",
+            "contact_create",
             {
                 "account_id": account_info["account_id"],
                 "given_name": "MCP",
@@ -623,7 +623,7 @@ async def test_create_contact():
 
         contact_id = new_contact.get("id")
         delete_result = await session.call_tool(
-            "delete_contact",
+            "contact_delete",
             {"contact_id": contact_id, "account_id": account_info["account_id"]},
         )
         assert not delete_result.isError
@@ -635,7 +635,7 @@ async def test_update_contact():
     async for session in get_session():
         account_info = await get_account_info(session)
         create_result = await session.call_tool(
-            "create_contact",
+            "contact_create",
             {
                 "account_id": account_info["account_id"],
                 "given_name": "MCPUpdate",
@@ -647,7 +647,7 @@ async def test_update_contact():
         contact_id = new_contact.get("id")
 
         result = await session.call_tool(
-            "update_contact",
+            "contact_update",
             {
                 "contact_id": contact_id,
                 "account_id": account_info["account_id"],
@@ -657,7 +657,7 @@ async def test_update_contact():
         assert not result.isError
 
         delete_result = await session.call_tool(
-            "delete_contact",
+            "contact_delete",
             {"contact_id": contact_id, "account_id": account_info["account_id"]},
         )
         assert not delete_result.isError
@@ -669,7 +669,7 @@ async def test_delete_contact():
     async for session in get_session():
         account_info = await get_account_info(session)
         create_result = await session.call_tool(
-            "create_contact",
+            "contact_create",
             {
                 "account_id": account_info["account_id"],
                 "given_name": "MCPDelete",
@@ -681,7 +681,7 @@ async def test_delete_contact():
         contact_id = new_contact.get("id")
 
         result = await session.call_tool(
-            "delete_contact",
+            "contact_delete",
             {"contact_id": contact_id, "account_id": account_info["account_id"]},
         )
         assert not result.isError
@@ -696,7 +696,7 @@ async def test_list_files():
     async for session in get_session():
         account_info = await get_account_info(session)
         result = await session.call_tool(
-            "list_files", {"account_id": account_info["account_id"]}
+            "file_list", {"account_id": account_info["account_id"]}
         )
         assert not result.isError
         files = parse_result(result)
@@ -724,7 +724,7 @@ async def test_get_file():
         
         try:
             create_result = await session.call_tool(
-                "create_file",
+                "file_create",
                 {
                     "account_id": account_info["account_id"],
                     "onedrive_path": test_filename,
@@ -743,7 +743,7 @@ async def test_get_file():
 
         try:
             result = await session.call_tool(
-                "get_file",
+                "file_get",
                 {
                     "file_id": file_id,
                     "account_id": account_info["account_id"],
@@ -768,7 +768,7 @@ async def test_get_file():
                 os.unlink(tmp_path)
 
         delete_result = await session.call_tool(
-            "delete_file",
+            "file_delete",
             {"file_id": file_id, "account_id": account_info["account_id"]},
         )
         assert not delete_result.isError
@@ -792,7 +792,7 @@ async def test_create_file():
         
         try:
             result = await session.call_tool(
-                "create_file",
+                "file_create",
                 {
                     "account_id": account_info["account_id"],
                     "onedrive_path": test_filename,
@@ -810,7 +810,7 @@ async def test_create_file():
 
         file_id = upload_result.get("id")
         delete_result = await session.call_tool(
-            "delete_file",
+            "file_delete",
             {"file_id": file_id, "account_id": account_info["account_id"]},
         )
         assert not delete_result.isError
@@ -834,7 +834,7 @@ async def test_update_file():
         
         try:
             create_result = await session.call_tool(
-                "create_file",
+                "file_create",
                 {
                     "account_id": account_info["account_id"],
                     "onedrive_path": test_filename,
@@ -857,7 +857,7 @@ async def test_update_file():
         
         try:
             result = await session.call_tool(
-                "update_file",
+                "file_update",
                 {
                     "account_id": account_info["account_id"],
                     "file_id": file_id,
@@ -871,7 +871,7 @@ async def test_update_file():
         assert not result.isError
 
         delete_result = await session.call_tool(
-            "delete_file",
+            "file_delete",
             {"file_id": file_id, "account_id": account_info["account_id"]},
         )
         assert not delete_result.isError
@@ -895,7 +895,7 @@ async def test_delete_file():
         
         try:
             create_result = await session.call_tool(
-                "create_file",
+                "file_create",
                 {
                     "account_id": account_info["account_id"],
                     "onedrive_path": test_filename,
@@ -910,7 +910,7 @@ async def test_delete_file():
         file_id = file_data.get("id")
 
         result = await session.call_tool(
-            "delete_file",
+            "file_delete",
             {"file_id": file_id, "account_id": account_info["account_id"]},
         )
         assert not result.isError
@@ -938,7 +938,7 @@ async def test_get_attachment():
         
         try:
             draft_result = await session.call_tool(
-                "create_email_draft",
+                "email_create_draft",
                 {
                     "account_id": account_info["account_id"],
                     "to": account_info["email"],
@@ -959,7 +959,7 @@ async def test_get_attachment():
 
         # Get the email to retrieve attachment details
         email_result = await session.call_tool(
-            "get_email",
+            "email_get",
             {
                 "email_id": email_id,
                 "account_id": account_info["account_id"],
@@ -976,7 +976,7 @@ async def test_get_attachment():
         
         try:
             result = await session.call_tool(
-                "get_attachment",
+                "email_get_attachment",
                 {
                     "email_id": email_id,
                     "account_id": account_info["account_id"],
@@ -1003,7 +1003,7 @@ async def test_get_attachment():
 
         # Clean up - delete the draft
         await session.call_tool(
-            "delete_email",
+            "email_delete",
             {
                 "email_id": email_id,
                 "account_id": account_info["account_id"],
@@ -1079,7 +1079,7 @@ async def test_send_email():
         await asyncio.sleep(2)
 
         result = await session.call_tool(
-            "send_email",
+            "email_send",
             {
                 "account_id": account_info["account_id"],
                 "to": account_info["email"],
@@ -1100,7 +1100,7 @@ async def test_unified_search():
         account_info = await get_account_info(session)
 
         result = await session.call_tool(
-            "unified_search",
+            "search_unified",
             {
                 "account_id": account_info["account_id"],
                 "query": "test",

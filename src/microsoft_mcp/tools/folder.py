@@ -5,14 +5,14 @@ from .. import graph
 
 def _list_folders_impl(
     account_id: str,
-    path: str = "/",
+    path: str | None = "/",
     folder_id: str | None = None,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
     """Internal implementation for listing OneDrive folders"""
     if folder_id:
         endpoint = f"/me/drive/items/{folder_id}/children"
-    elif path == "/":
+    elif path in (None, "/"):
         endpoint = "/me/drive/root/children"
     else:
         endpoint = f"/me/drive/root:/{path}:/children"
@@ -75,7 +75,12 @@ def folder_list(
     Returns:
         List of folder objects with: id, name, childCount, path, parentId
     """
-    return _list_folders_impl(account_id, path, folder_id, limit)
+    return _list_folders_impl(
+        account_id=account_id,
+        path=path,
+        folder_id=folder_id,
+        limit=limit,
+    )
 
 
 # folder_get
@@ -170,7 +175,7 @@ def folder_get_tree(
     """
 
     def _build_drive_folder_tree(
-        item_id: str | None, item_path: str, current_depth: int
+        item_id: str | None, item_path: str | None, current_depth: int
     ) -> list[dict[str, Any]]:
         """Internal recursive helper to build OneDrive folder tree"""
         if current_depth >= max_depth:

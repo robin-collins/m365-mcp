@@ -1,7 +1,35 @@
-import pathlib as pl
+from __future__ import annotations
+
+import logging
+import os
+import time
+from pathlib import Path
 from typing import Any
-from ..mcp_instance import mcp
+from urllib.parse import urljoin
+
+import httpx
+
 from .. import graph
+from ..mcp_instance import mcp
+from ..validators import (
+    ValidationError,
+    ensure_safe_path,
+    format_validation_error,
+    validate_account_id,
+    validate_confirmation_flag,
+    validate_graph_url,
+    validate_limit,
+    validate_microsoft_graph_id,
+    validate_onedrive_path,
+    validate_request_size,
+)
+
+LOGGER = logging.getLogger("microsoft_mcp.tools.file")
+
+DEFAULT_DOWNLOAD_TIMEOUT = float(os.getenv("MCP_FILE_DOWNLOAD_TIMEOUT", "60.0"))
+DEFAULT_CHUNK_SIZE = int(os.getenv("MCP_FILE_DOWNLOAD_CHUNK_SIZE", "1048576"))
+MAX_DOWNLOAD_MIB = int(os.getenv("MCP_FILE_DOWNLOAD_MAX_MB", "512"))
+MAX_REDIRECTS = 3
 
 
 # file_list
@@ -37,9 +65,17 @@ def file_list(
     Returns:
         List of items matching the filter criteria
     """
-    # Validate type_filter
+    validate_account_id(account_id)
+    limit = validate_limit(limit, 1, 1000)
     if type_filter not in ["all", "files", "folders"]:
-        raise ValueError("type_filter must be one of: 'all', 'files', 'folders'")
+        raise ValidationError(
+            format_validation_error(
+                "type_filter",
+                type_filter,
+                "unsupported value",
+                "'all', 'files', or 'folders'",
+            )
+        )
 
     # Determine endpoint
     if folder_id:
@@ -84,7 +120,147 @@ def file_list(
     return result
 
 
-# file_get
+def _stream_download(
+    url: str,
+    destination: Path,
+    *,
+    timeout: float,
+    chunk_size: int,
+) -> None:
+    """Stream file contents from a validated URL to destination path."""
+    target_url = url
+    for redirect in range(MAX_REDIRECTS + 1):
+        with httpx.Client(timeout=timeout, follow_redirects=False) as client:
+            with client.stream("GET", target_url) as response:
+                if response.status_code in {301, 302, 303, 307, 308}:
+                    location = response.headers.get("Location")
+                    if not location:
+                        raise RuntimeError("Redirect response missing Location header")
+                    next_url = urljoin(target_url, location)
+                    target_url = validate_graph_url(next_url, "redirect_url")
+                    continue
+
+                response.raise_for_status()
+                with destination.open("wb") as output:
+                    for chunk in response.iter_bytes(chunk_size):
+                        if chunk:
+                            output.write(chunk)
+                return
+    raise RuntimeError("Exceeded redirect limit during download")
+
+
+def _download_with_retries(
+    url: str,
+    destination: Path,
+    *,
+    timeout: float,
+    chunk_size: int,
+    retries: int,
+) -> None:
+    """Download with exponential backoff retry strategy."""
+    attempt = 0
+    backoff = 1.0
+    last_error: Exception | None = None
+    while attempt <= retries:
+        try:
+            _stream_download(
+                url,
+                destination,
+                timeout=timeout,
+                chunk_size=chunk_size,
+            )
+            return
+        except (httpx.HTTPError, OSError, RuntimeError) as exc:
+            last_error = exc
+            LOGGER.warning(
+                "file_get download attempt failed",
+                extra={
+                    "attempt": attempt + 1,
+                    "retries": retries,
+                    "reason": str(exc),
+                },
+            )
+            if destination.exists():
+                destination.unlink(missing_ok=True)
+            if attempt >= retries:
+                break
+            time.sleep(backoff)
+            backoff *= 2
+            attempt += 1
+    assert last_error is not None
+    raise RuntimeError(f"Failed to download file after retries: {last_error}") from (
+        last_error
+    )
+
+
+def _file_get_impl(file_id: str, account_id: str, download_path: str) -> dict[str, Any]:
+    account = validate_account_id(account_id)
+    graph_file_id = validate_microsoft_graph_id(file_id, "file_id")
+    destination = ensure_safe_path(download_path, allow_overwrite=False)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    metadata = graph.request("GET", f"/me/drive/items/{graph_file_id}", account)
+    if not metadata:
+        raise ValidationError(
+            format_validation_error(
+                "file_id",
+                graph_file_id,
+                "not found in OneDrive",
+                "Existing file identifier",
+            )
+        )
+
+    size_bytes = metadata.get("size", 0) or 0
+    size_limit = MAX_DOWNLOAD_MIB * 1024 * 1024
+    validate_request_size(size_bytes, size_limit, "download_size")
+
+    download_url = metadata.get("@microsoft.graph.downloadUrl")
+    if not download_url:
+        raise RuntimeError("No download URL available for this file")
+    safe_url = validate_graph_url(download_url, "download_url")
+
+    LOGGER.info(
+        "Initiating file download",
+        extra={
+            "file_id": graph_file_id,
+            "account_id": account,
+            "destination": str(destination),
+            "expected_size": size_bytes,
+        },
+    )
+
+    try:
+        _download_with_retries(
+            safe_url,
+            destination,
+            timeout=max(DEFAULT_DOWNLOAD_TIMEOUT, 1.0),
+            chunk_size=max(DEFAULT_CHUNK_SIZE, 65536),
+            retries=3,
+        )
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.error(
+            "file_get download failed",
+            extra={
+                "file_id": graph_file_id,
+                "account_id": account,
+                "destination": str(destination),
+            },
+        )
+        if destination.exists():
+            destination.unlink(missing_ok=True)
+        if isinstance(exc, ValidationError):
+            raise
+        raise RuntimeError(f"Failed to download file: {exc}") from exc
+
+    actual_size = destination.stat().st_size
+    return {
+        "path": str(destination),
+        "name": metadata.get("name", "unknown"),
+        "size_mb": round(actual_size / (1024 * 1024), 2),
+        "mime_type": metadata.get("file", {}).get("mimeType") if metadata else None,
+    }
+
+
 @mcp.tool(
     name="file_get",
     annotations={
@@ -97,46 +273,30 @@ def file_list(
     meta={"category": "file", "safety_level": "moderate"},
 )
 def file_get(file_id: str, account_id: str, download_path: str) -> dict[str, Any]:
-    """⚠️ Download a file from OneDrive to local path (requires user confirmation recommended)
+    """Download a OneDrive file to a validated local path.
 
-    IMPORTANT: Large files may take significant time to download.
-    Ensure sufficient local disk space is available.
-
-    Files are downloaded in chunks for reliability.
+    The download URL is supplied by Microsoft Graph (never user input) and is
+    validated against an allow-list of Microsoft domains before use. The file
+    is streamed to disk in configurable chunks with retry behaviour to protect
+    against transient failures. Download size and timeouts respect the
+    environment variables `MCP_FILE_DOWNLOAD_MAX_MB` and
+    `MCP_FILE_DOWNLOAD_TIMEOUT`.
 
     Args:
-        file_id: The file ID to download
-        account_id: Microsoft account ID
-        download_path: Local path to save the file
+        file_id: The Microsoft Graph file identifier to download.
+        account_id: Microsoft account identifier associated with the file.
+        download_path: Absolute path where the file will be stored locally.
+            Must reside within an allowed root directory.
 
     Returns:
-        File metadata including path, size, and MIME type
+        Dictionary containing download metadata (name, size_mb, mime_type).
+
+    Raises:
+        ValidationError: If input parameters are invalid.
+        RuntimeError: If all download attempts fail.
     """
-    import subprocess
 
-    metadata = graph.request("GET", f"/me/drive/items/{file_id}", account_id)
-    if not metadata:
-        raise ValueError(f"File with ID {file_id} not found")
-
-    download_url = metadata.get("@microsoft.graph.downloadUrl")
-    if not download_url:
-        raise ValueError("No download URL available for this file")
-
-    try:
-        subprocess.run(
-            ["curl", "-L", "-o", download_path, download_url],
-            check=True,
-            capture_output=True,
-        )
-
-        return {
-            "path": download_path,
-            "name": metadata.get("name", "unknown"),
-            "size_mb": round(metadata.get("size", 0) / (1024 * 1024), 2),
-            "mime_type": metadata.get("file", {}).get("mimeType") if metadata else None,
-        }
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Failed to download file: {e.stderr.decode()}")
+    return _file_get_impl(file_id, account_id, download_path)
 
 
 # file_create
@@ -154,25 +314,28 @@ def file_get(file_id: str, account_id: str, download_path: str) -> dict[str, Any
 def file_create(
     onedrive_path: str, local_file_path: str, account_id: str
 ) -> dict[str, Any]:
-    """✏️ Upload a local file to OneDrive (requires user confirmation recommended)
-
-    Files >4.8MB automatically use chunked upload for reliability.
+    """Upload a validated local file to OneDrive.
 
     Args:
-        onedrive_path: Destination path in OneDrive (e.g., "/Documents/file.pdf")
-        local_file_path: Local file path to upload
-        account_id: Microsoft account ID
+        onedrive_path: Destination path within OneDrive (must start with '/').
+        local_file_path: Absolute path to the local file to upload. Paths are
+            validated via `ensure_safe_path` to prevent traversal and
+            restrict uploads to trusted directories.
+        account_id: Microsoft account identifier.
 
     Returns:
-        Created file object with ID and metadata
+        Metadata for the created OneDrive file.
     """
-    path = pl.Path(local_file_path).expanduser().resolve()
-    data = path.read_bytes()
-    result = graph.upload_large_file(
-        f"/me/drive/root:/{onedrive_path}:", data, account_id
+    account = validate_account_id(account_id)
+    target = validate_onedrive_path(onedrive_path)
+    source_path = ensure_safe_path(
+        local_file_path, must_exist=True, allow_overwrite=True
     )
+
+    data = source_path.read_bytes()
+    result = graph.upload_large_file(f"/me/drive/root:{target}:", data, account)
     if not result:
-        raise ValueError(f"Failed to create file at path: {onedrive_path}")
+        raise RuntimeError(f"Failed to create file at path: {target}")
     return result
 
 
@@ -189,24 +352,30 @@ def file_create(
     meta={"category": "file", "safety_level": "moderate"},
 )
 def file_update(file_id: str, local_file_path: str, account_id: str) -> dict[str, Any]:
-    """✏️ Update OneDrive file content from local file (requires user confirmation recommended)
-
-    Replaces the file content with new content from local file.
-    Files >4.8MB automatically use chunked upload.
+    """Replace OneDrive file content from a validated local source.
 
     Args:
-        file_id: The OneDrive file ID to update
-        local_file_path: Local file path with new content
-        account_id: Microsoft account ID
+        file_id: Target OneDrive file identifier to replace.
+        local_file_path: Absolute path to the replacement file. Validated via
+            `ensure_safe_path` to block traversal and enforce workspace roots.
+        account_id: Microsoft account identifier.
 
     Returns:
-        Updated file object
+        Updated file metadata returned by Microsoft Graph.
     """
-    path = pl.Path(local_file_path).expanduser().resolve()
-    data = path.read_bytes()
-    result = graph.upload_large_file(f"/me/drive/items/{file_id}", data, account_id)
+    account = validate_account_id(account_id)
+    graph_file_id = validate_microsoft_graph_id(file_id, "file_id")
+    source_path = ensure_safe_path(
+        local_file_path, must_exist=True, allow_overwrite=True
+    )
+    data = source_path.read_bytes()
+    result = graph.upload_large_file(
+        f"/me/drive/items/{graph_file_id}",
+        data,
+        account,
+    )
     if not result:
-        raise ValueError(f"Failed to update file with ID: {file_id}")
+        raise RuntimeError(f"Failed to update file with ID: {graph_file_id}")
     return result
 
 
@@ -227,41 +396,25 @@ def file_update(file_id: str, local_file_path: str, account_id: str) -> dict[str
     },
 )
 def file_delete(file_id: str, account_id: str, confirm: bool = False) -> dict[str, str]:
-    """🔴 Delete a file or folder from OneDrive (always require user confirmation)
+    """Delete a OneDrive file or folder after explicit confirmation."""
 
-    WARNING: Deleting a folder will permanently remove ALL files and
-    subfolders within it. This action cannot be undone.
-
-    For safety, consider moving items to a "trash" folder first.
-
-    Args:
-        file_id: The file or folder ID to delete
-        account_id: The account ID
-        confirm: Must be True to confirm deletion (prevents accidents)
-
-    Returns:
-        Status confirmation
-    """
-    if not confirm:
-        raise ValueError(
-            "Deletion requires explicit confirmation. "
-            "Set confirm=True to proceed. "
-            "This action cannot be undone."
-        )
-    graph.request("DELETE", f"/me/drive/items/{file_id}", account_id)
+    validate_confirmation_flag(confirm, "delete", "OneDrive item")
+    account = validate_account_id(account_id)
+    graph_file_id = validate_microsoft_graph_id(file_id, "file_id")
+    graph.request("DELETE", f"/me/drive/items/{graph_file_id}", account)
     return {"status": "deleted"}
 
 
 def _list_folders_impl(
     account_id: str,
-    path: str = "/",
+    path: str | None = "/",
     folder_id: str | None = None,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
     """Internal implementation for listing OneDrive folders"""
     if folder_id:
         endpoint = f"/me/drive/items/{folder_id}/children"
-    elif path == "/":
+    elif path in (None, "/"):
         endpoint = "/me/drive/root/children"
     else:
         endpoint = f"/me/drive/root:/{path}:/children"

@@ -1,8 +1,20 @@
 import base64
+import logging
 import pathlib as pl
 from typing import Any
-from ..mcp_instance import mcp
+
 from .. import graph
+from ..mcp_instance import mcp
+from ..validators import (
+    ValidationError,
+    ensure_safe_path,
+    format_validation_error,
+    validate_account_id,
+    validate_microsoft_graph_id,
+    validate_request_size,
+)
+
+LOGGER = logging.getLogger("microsoft_mcp.tools.email")
 
 FOLDERS = {
     k.casefold(): v
@@ -15,6 +27,8 @@ FOLDERS = {
         "archive": "archive",
     }.items()
 }
+
+MAX_ATTACHMENT_DOWNLOAD_BYTES = 25 * 1024 * 1024
 
 
 # email_list
@@ -629,39 +643,78 @@ def email_reply(
 def email_get_attachment(
     email_id: str, attachment_id: str, save_path: str, account_id: str
 ) -> dict[str, Any]:
-    """⚠️ Download email attachment to local path (requires user confirmation recommended)
-
-    IMPORTANT: Large files may take significant time to download.
-    Ensure sufficient local disk space is available.
+    """Download an email attachment to a validated local path.
 
     Args:
-        email_id: The email ID containing the attachment
-        attachment_id: The attachment ID to download
-        save_path: Local file path to save the attachment
-        account_id: Microsoft account ID
+        email_id: Microsoft Graph message identifier containing the attachment.
+        attachment_id: Target attachment identifier within the message.
+        save_path: Destination path for the attachment. Validated via
+            `ensure_safe_path`; existing files are never overwritten.
+        account_id: Microsoft account identifier.
 
     Returns:
-        Attachment metadata including name, size, content type, and saved path
+        Attachment metadata, including saved path and content size.
     """
+
+    account = validate_account_id(account_id)
+    message_id = validate_microsoft_graph_id(email_id, "email_id")
+    attachment = validate_microsoft_graph_id(attachment_id, "attachment_id")
+    destination = ensure_safe_path(save_path, allow_overwrite=False)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
     result = graph.request(
-        "GET", f"/me/messages/{email_id}/attachments/{attachment_id}", account_id
+        "GET", f"/me/messages/{message_id}/attachments/{attachment}", account
     )
 
     if not result:
-        raise ValueError("Attachment not found")
+        raise ValidationError(
+            format_validation_error(
+                "attachment_id",
+                attachment,
+                "attachment not found for email",
+                "Existing attachment identifier",
+            )
+        )
 
     if "contentBytes" not in result:
-        raise ValueError("Attachment content not available")
+        raise RuntimeError("Attachment content not available for download")
 
-    # Save attachment to file
-    path = pl.Path(save_path).expanduser().resolve()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    content_bytes = base64.b64decode(result["contentBytes"])
-    path.write_bytes(content_bytes)
+    reported_size = result.get("size", 0) or 0
+    validate_request_size(
+        int(reported_size),
+        MAX_ATTACHMENT_DOWNLOAD_BYTES,
+        "attachment_size",
+    )
+
+    try:
+        content_bytes = base64.b64decode(result["contentBytes"])
+    except (ValueError, KeyError) as exc:
+        raise RuntimeError(f"Failed to decode attachment content: {exc}") from exc
+
+    validate_request_size(
+        len(content_bytes),
+        MAX_ATTACHMENT_DOWNLOAD_BYTES,
+        "attachment_size",
+    )
+
+    try:
+        destination.write_bytes(content_bytes)
+    except OSError as exc:  # noqa: BLE001
+        if destination.exists():
+            destination.unlink(missing_ok=True)
+        LOGGER.error(
+            "Failed to persist attachment",
+            extra={
+                "email_id": message_id,
+                "attachment_id": attachment,
+                "destination": str(destination),
+            },
+        )
+        raise RuntimeError(f"Unable to write attachment to disk: {exc}") from exc
 
     return {
         "name": result.get("name", "unknown"),
         "content_type": result.get("contentType", "application/octet-stream"),
-        "size": result.get("size", 0),
-        "saved_to": str(path),
+        "size": len(content_bytes),
+        "saved_to": str(destination),
     }

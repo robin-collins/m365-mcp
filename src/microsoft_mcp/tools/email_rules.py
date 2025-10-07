@@ -3,6 +3,22 @@ from ..mcp_instance import mcp
 from .. import graph
 
 
+def _emailrules_list_impl(account_id: str) -> list[dict[str, Any]]:
+    result = graph.request("GET", "/me/mailFolders/inbox/messageRules", account_id)
+    if not result or "value" not in result:
+        return []
+    return list(result["value"])
+
+
+def _emailrules_get_impl(rule_id: str, account_id: str) -> dict[str, Any]:
+    result = graph.request(
+        "GET", f"/me/mailFolders/inbox/messageRules/{rule_id}", account_id
+    )
+    if not result:
+        raise ValueError(f"Message rule with ID {rule_id} not found")
+    return result
+
+
 # emailrules_list
 @mcp.tool(
     name="emailrules_list",
@@ -27,10 +43,7 @@ def emailrules_list(account_id: str) -> list[dict[str, Any]]:
     Returns:
         List of rules with: id, displayName, sequence, isEnabled, conditions, actions
     """
-    result = graph.request("GET", "/me/mailFolders/inbox/messageRules", account_id)
-    if not result or "value" not in result:
-        return []
-    return result["value"]
+    return _emailrules_list_impl(account_id)
 
 
 # emailrules_get
@@ -57,12 +70,7 @@ def emailrules_get(rule_id: str, account_id: str) -> dict[str, Any]:
     Returns:
         Rule details including conditions, actions, sequence, and enabled status
     """
-    result = graph.request(
-        "GET", f"/me/mailFolders/inbox/messageRules/{rule_id}", account_id
-    )
-    if not result:
-        raise ValueError(f"Message rule with ID {rule_id} not found")
-    return result
+    return _emailrules_get_impl(rule_id, account_id)
 
 
 # emailrules_create
@@ -305,7 +313,7 @@ def emailrules_move_bottom(rule_id: str, account_id: str) -> dict[str, Any]:
         Updated rule with new sequence number
     """
     # Get all rules to find the highest sequence number
-    all_rules = emailrules_list(account_id)
+    all_rules = _emailrules_list_impl(account_id)
     if not all_rules:
         raise ValueError("No rules found")
 
@@ -349,7 +357,7 @@ def emailrules_move_up(rule_id: str, account_id: str) -> dict[str, Any]:
         Updated rule with new sequence number
     """
     # Get current rule
-    current_rule = emailrules_get(rule_id, account_id)
+    current_rule = _emailrules_get_impl(rule_id, account_id)
     current_sequence = current_rule.get("sequence", 1)
 
     if current_sequence <= 1:
@@ -394,7 +402,7 @@ def emailrules_move_down(rule_id: str, account_id: str) -> dict[str, Any]:
         Updated rule with new sequence number
     """
     # Get current rule
-    current_rule = emailrules_get(rule_id, account_id)
+    current_rule = _emailrules_get_impl(rule_id, account_id)
     current_sequence = current_rule.get("sequence", 1)
 
     new_sequence = current_sequence + 1

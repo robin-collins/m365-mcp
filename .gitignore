@@ -38,3 +38,6 @@ htmlcov/
 *.swp
 *.swo
 *~
+.specstory/
+reference/
+reports/

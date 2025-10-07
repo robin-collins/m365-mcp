@@ -568,7 +568,7 @@ uv run microsoft-mcp
 
 ### Support
 
-- **GitHub Issues:** https://github.com/elyxlz/microsoft-mcp/issues
+- **GitHub Issues:** https://github.com/robin-collins/m365-mcp/issues
 - **MCP Documentation:** https://modelcontextprotocol.io/
 
 ---

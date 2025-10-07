@@ -1,13 +1,14 @@
 from typing import Any
 from ..mcp_instance import mcp
 from .. import graph
+from ..validators import validate_limit
 
 
 def _list_mail_folders_impl(
     account_id: str,
     parent_folder_id: str | None = None,
     include_hidden: bool = False,
-    limit: int = 100,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """Internal implementation for listing mail folders"""
     if parent_folder_id:
@@ -15,9 +16,10 @@ def _list_mail_folders_impl(
     else:
         endpoint = "/me/mailFolders"
 
+    page_size = limit if limit is not None else 250
     params = {
         "$select": "id,displayName,childFolderCount,unreadItemCount,totalItemCount,parentFolderId,isHidden",
-        "$top": min(limit, 100),
+        "$top": page_size,
     }
 
     if include_hidden:
@@ -57,12 +59,13 @@ def emailfolders_list(
         account_id: Microsoft account ID
         parent_folder_id: If None, lists root folders. If provided, lists child folders.
         include_hidden: Whether to include hidden folders (default: False)
-        limit: Maximum number of folders to return (default: 100)
+        limit: Maximum number of folders to return (1-250, default: 100)
 
     Returns:
         List of folder objects with: id, displayName, childFolderCount,
         unreadItemCount, totalItemCount, parentFolderId, isHidden
     """
+    limit = validate_limit(limit, 1, 250, "limit")
     return _list_mail_folders_impl(account_id, parent_folder_id, include_hidden, limit)
 
 
@@ -126,12 +129,13 @@ def emailfolders_get_tree(
     Args:
         account_id: Microsoft account ID
         parent_folder_id: Root folder to start from (None = root)
-        max_depth: Maximum recursion depth to prevent infinite loops (default: 10)
+        max_depth: Maximum recursion depth to prevent infinite loops (1-25, default: 10)
         include_hidden: Whether to include hidden folders (default: False)
 
     Returns:
         Nested tree structure with folders and their children
     """
+    max_depth = validate_limit(max_depth, 1, 25, "max_depth")
 
     def _build_folder_tree(
         folder_id: str | None, current_depth: int
@@ -145,7 +149,7 @@ def emailfolders_get_tree(
             account_id=account_id,
             parent_folder_id=folder_id,
             include_hidden=include_hidden,
-            limit=1000,  # Large limit to get all folders at this level
+            limit=None,
         )
 
         result = []

@@ -2,6 +2,7 @@ import datetime as dt
 from typing import Any
 from ..mcp_instance import mcp
 from .. import graph
+from ..validators import validate_limit
 
 # Common constants (using from email.py as they are consistent across files)
 from .email import FOLDERS
@@ -31,11 +32,12 @@ def search_files(
     Args:
         query: Search query string
         account_id: Microsoft account ID
-        limit: Maximum results to return (default: 50)
+        limit: Maximum results to return (1-500, default: 50)
 
     Returns:
         List of matching files with metadata
     """
+    limit = validate_limit(limit, 1, 500, "limit")
     items = list(graph.search_query(query, ["driveItem"], account_id, limit))
 
     return [
@@ -76,12 +78,13 @@ def search_emails(
     Args:
         query: Search query string
         account_id: Microsoft account ID
-        limit: Maximum results to return (default: 50)
+        limit: Maximum results to return (1-500, default: 50)
         folder: Optional folder to search within (e.g., "inbox", "sent")
 
     Returns:
         List of matching emails with metadata
     """
+    limit = validate_limit(limit, 1, 500, "limit")
     if folder:
         # For folder-specific search, use the traditional endpoint
         folder_path = FOLDERS.get(folder.casefold(), folder)
@@ -89,7 +92,7 @@ def search_emails(
 
         params = {
             "$search": f'"{query}"',
-            "$top": min(limit, 100),
+            "$top": limit,
             "$select": "id,subject,from,toRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead",
         }
 
@@ -126,13 +129,16 @@ def search_events(
     Args:
         query: Search query string
         account_id: Microsoft account ID
-        days_ahead: Days to look forward (default: 365)
-        days_back: Days to look back (default: 365)
-        limit: Maximum results to return (default: 50)
+        days_ahead: Days to look forward (0-730, default: 365)
+        days_back: Days to look back (0-730, default: 365)
+        limit: Maximum results to return (1-500, default: 50)
 
     Returns:
         List of matching events
     """
+    days_ahead = validate_limit(days_ahead, 0, 730, "days_ahead")
+    days_back = validate_limit(days_back, 0, 730, "days_back")
+    limit = validate_limit(limit, 1, 500, "limit")
     events = list(graph.search_query(query, ["event"], account_id, limit))
 
     # Filter by date range if needed
@@ -143,12 +149,21 @@ def search_events(
 
         filtered_events = []
         for event in events:
-            event_start = dt.datetime.fromisoformat(
-                event.get("start", {}).get("dateTime", "").replace("Z", "+00:00")
-            )
-            event_end = dt.datetime.fromisoformat(
-                event.get("end", {}).get("dateTime", "").replace("Z", "+00:00")
-            )
+            start_info = event.get("start", {})
+            end_info = event.get("end", {})
+            if not isinstance(start_info, dict) or not isinstance(end_info, dict):
+                continue
+            start_raw = start_info.get("dateTime")
+            end_raw = end_info.get("dateTime")
+            if not isinstance(start_raw, str) or not isinstance(end_raw, str):
+                continue
+            try:
+                event_start = dt.datetime.fromisoformat(
+                    start_raw.replace("Z", "+00:00")
+                )
+                event_end = dt.datetime.fromisoformat(end_raw.replace("Z", "+00:00"))
+            except ValueError:
+                continue
 
             if event_start <= end and event_end >= start:
                 filtered_events.append(event)
@@ -182,14 +197,15 @@ def search_contacts(
     Args:
         query: Search query string
         account_id: Microsoft account ID
-        limit: Maximum results to return (default: 50)
+        limit: Maximum results to return (1-500, default: 50)
 
     Returns:
         List of matching contacts
     """
+    limit = validate_limit(limit, 1, 500, "limit")
     params = {
         "$search": f'"{query}"',
-        "$top": min(limit, 100),
+        "$top": limit,
     }
 
     contacts = list(
@@ -225,7 +241,7 @@ def search_unified(
         query: Search query string
         account_id: Microsoft account ID
         entity_types: Types to search: 'message', 'event', 'driveItem' (default: all)
-        limit: Maximum results per type (default: 50)
+        limit: Maximum results per type (1-500, default: 50)
 
     Returns:
         Dictionary with results grouped by entity type
@@ -235,6 +251,7 @@ def search_unified(
 
     results = {entity_type: [] for entity_type in entity_types}
 
+    limit = validate_limit(limit, 1, 500, "limit")
     items = list(graph.search_query(query, entity_types, account_id, limit))
 
     for item in items:

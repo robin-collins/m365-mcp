@@ -59,14 +59,14 @@ def file_list(
         account_id: Microsoft account ID
         path: Path to list from (default: "/")
         folder_id: Direct folder ID (takes precedence over path)
-        limit: Maximum items to return (default: 50)
+        limit: Maximum items to return (1-500, default: 50)
         type_filter: Filter by type - "all", "files", or "folders" (default: "all")
 
     Returns:
         List of items matching the filter criteria
     """
     validate_account_id(account_id)
-    limit = validate_limit(limit, 1, 1000)
+    limit = validate_limit(limit, 1, 500)
     if type_filter not in ["all", "files", "folders"]:
         raise ValidationError(
             format_validation_error(
@@ -86,7 +86,7 @@ def file_list(
         endpoint = f"/me/drive/root:/{path}:/children"
 
     params = {
-        "$top": min(limit, 100),
+        "$top": limit,
         "$select": "id,name,size,lastModifiedDateTime,folder,file,@microsoft.graph.downloadUrl",
     }
 
@@ -409,7 +409,7 @@ def _list_folders_impl(
     account_id: str,
     path: str | None = "/",
     folder_id: str | None = None,
-    limit: int = 50,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """Internal implementation for listing OneDrive folders"""
     if folder_id:
@@ -419,8 +419,9 @@ def _list_folders_impl(
     else:
         endpoint = f"/me/drive/root:/{path}:/children"
 
+    page_size = limit if limit is not None else 500
     params = {
-        "$top": min(limit, 100),
+        "$top": page_size,
         "$select": "id,name,folder,parentReference,size,lastModifiedDateTime",
     }
 

@@ -40,4 +40,8 @@ htmlcov/
 *~
 .specstory/
 reference/
-reports/
+reports/*
+
+
+!reports/todo/PARAMETER_VALIDATION.md
+!reports/todo/PARAMETER_VALIDATION_PLAN.md

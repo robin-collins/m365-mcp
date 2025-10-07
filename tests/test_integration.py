@@ -163,7 +163,11 @@ async def test_create_email_draft():
         draft_id = draft_data.get("id")
         delete_result = await session.call_tool(
             "email_delete",
-            {"email_id": draft_id, "account_id": account_info["account_id"]},
+            {
+                "email_id": draft_id,
+                "account_id": account_info["account_id"],
+                "confirm": True,
+            },
         )
         assert not delete_result.isError
 
@@ -224,6 +228,7 @@ async def test_delete_email():
                 {
                     "email_id": draft_data.get("id"),
                     "account_id": account_info["account_id"],
+                    "confirm": True,
                 },
             )
             assert not result.isError
@@ -294,6 +299,7 @@ async def test_reply_to_email():
                     "account_id": account_info["account_id"],
                     "email_id": test_email.get("id"),
                     "body": "This is a test reply",
+                    "confirm": True,
                 },
             )
             assert not result.isError
@@ -413,6 +419,7 @@ async def test_create_event():
                 "account_id": account_info["account_id"],
                 "event_id": event_id,
                 "send_cancellation": False,
+                "confirm": True,
             },
         )
         assert not delete_result.isError
@@ -463,6 +470,7 @@ async def test_update_event():
                 "account_id": account_info["account_id"],
                 "event_id": event_id,
                 "send_cancellation": False,
+                "confirm": True,
             },
         )
         assert not delete_result.isError
@@ -495,6 +503,7 @@ async def test_delete_event():
                 "account_id": account_info["account_id"],
                 "event_id": event_id,
                 "send_cancellation": False,
+                "confirm": True,
             },
         )
         assert not result.isError
@@ -624,7 +633,11 @@ async def test_create_contact():
         contact_id = new_contact.get("id")
         delete_result = await session.call_tool(
             "contact_delete",
-            {"contact_id": contact_id, "account_id": account_info["account_id"]},
+            {
+                "contact_id": contact_id,
+                "account_id": account_info["account_id"],
+                "confirm": True,
+            },
         )
         assert not delete_result.isError
 
@@ -658,7 +671,11 @@ async def test_update_contact():
 
         delete_result = await session.call_tool(
             "contact_delete",
-            {"contact_id": contact_id, "account_id": account_info["account_id"]},
+            {
+                "contact_id": contact_id,
+                "account_id": account_info["account_id"],
+                "confirm": True,
+            },
         )
         assert not delete_result.isError
 
@@ -682,7 +699,11 @@ async def test_delete_contact():
 
         result = await session.call_tool(
             "contact_delete",
-            {"contact_id": contact_id, "account_id": account_info["account_id"]},
+            {
+                "contact_id": contact_id,
+                "account_id": account_info["account_id"],
+                "confirm": True,
+            },
         )
         assert not result.isError
         delete_result = parse_result(result)
@@ -769,7 +790,11 @@ async def test_get_file():
 
         delete_result = await session.call_tool(
             "file_delete",
-            {"file_id": file_id, "account_id": account_info["account_id"]},
+            {
+                "file_id": file_id,
+                "account_id": account_info["account_id"],
+                "confirm": True,
+            },
         )
         assert not delete_result.isError
 
@@ -811,7 +836,11 @@ async def test_create_file():
         file_id = upload_result.get("id")
         delete_result = await session.call_tool(
             "file_delete",
-            {"file_id": file_id, "account_id": account_info["account_id"]},
+            {
+                "file_id": file_id,
+                "account_id": account_info["account_id"],
+                "confirm": True,
+            },
         )
         assert not delete_result.isError
 
@@ -872,7 +901,11 @@ async def test_update_file():
 
         delete_result = await session.call_tool(
             "file_delete",
-            {"file_id": file_id, "account_id": account_info["account_id"]},
+            {
+                "file_id": file_id,
+                "account_id": account_info["account_id"],
+                "confirm": True,
+            },
         )
         assert not delete_result.isError
 
@@ -911,7 +944,11 @@ async def test_delete_file():
 
         result = await session.call_tool(
             "file_delete",
-            {"file_id": file_id, "account_id": account_info["account_id"]},
+            {
+                "file_id": file_id,
+                "account_id": account_info["account_id"],
+                "confirm": True,
+            },
         )
         assert not result.isError
         delete_result = parse_result(result)
@@ -1007,6 +1044,7 @@ async def test_get_attachment():
             {
                 "email_id": email_id,
                 "account_id": account_info["account_id"],
+                "confirm": True,
             },
         )
 
@@ -1085,6 +1123,7 @@ async def test_send_email():
                 "to": account_info["email"],
                 "subject": f"MCP Test Send Email {datetime.now(timezone.utc).isoformat()}",
                 "body": "This is a test email sent via send_email tool",
+                "confirm": True,
             },
         )
         assert not result.isError

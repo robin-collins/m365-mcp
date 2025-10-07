@@ -9,6 +9,7 @@ from ..validators import (
     ValidationError,
     ensure_safe_path,
     format_validation_error,
+    require_confirm,
     validate_account_id,
     validate_microsoft_graph_id,
     validate_request_size,
@@ -332,12 +333,7 @@ def email_send(
     Returns:
         Status confirmation
     """
-    if not confirm:
-        raise ValueError(
-            "Email sending requires explicit confirmation. "
-            "Set confirm=True to proceed. "
-            "This action cannot be undone."
-        )
+    require_confirm(confirm, "send email")
     to_list = [to] if isinstance(to, str) else to
 
     message = {
@@ -515,12 +511,7 @@ def email_delete(
     Returns:
         Status confirmation
     """
-    if not confirm:
-        raise ValueError(
-            "Deletion requires explicit confirmation. "
-            "Set confirm=True to proceed. "
-            "This action cannot be undone."
-        )
+    require_confirm(confirm, "delete email")
     graph.request("DELETE", f"/me/messages/{email_id}", account_id)
     return {"status": "deleted"}
 
@@ -616,12 +607,7 @@ def email_reply(
     Returns:
         Status confirmation
     """
-    if not confirm:
-        raise ValueError(
-            "Email reply requires explicit confirmation. "
-            "Set confirm=True to proceed. "
-            "This action cannot be undone."
-        )
+    require_confirm(confirm, "reply to email")
     endpoint = f"/me/messages/{email_id}/reply"
     payload = {"message": {"body": {"contentType": "Text", "content": body}}}
     graph.request("POST", endpoint, account_id, json=payload)

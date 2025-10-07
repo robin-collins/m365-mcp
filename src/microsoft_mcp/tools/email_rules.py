@@ -1,6 +1,7 @@
 from typing import Any
 from ..mcp_instance import mcp
 from .. import graph
+from ..validators import require_confirm
 
 
 def _emailrules_list_impl(account_id: str) -> list[dict[str, Any]]:
@@ -242,12 +243,7 @@ def emailrules_delete(
     Returns:
         Status confirmation
     """
-    if not confirm:
-        raise ValueError(
-            "Deletion requires explicit confirmation. "
-            "Set confirm=True to proceed. "
-            "This action cannot be undone."
-        )
+    require_confirm(confirm, "delete email rule")
     graph.request("DELETE", f"/me/mailFolders/inbox/messageRules/{rule_id}", account_id)
     return {"status": "deleted", "rule_id": rule_id}
 

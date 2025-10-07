@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 1 Confirmation Regression Tests**: Added `tests/test_tool_confirmation.py` to assert the shared `require_confirm` validator guards all destructive and dangerous Phase 1 tools (email_send, email_reply, email_delete, file_delete, contact_delete, calendar_delete_event, emailrules_delete).
 - **Parameter Validation Phase 1 Tasklist Review**: Comprehensive review and update of Phase 1 implementation plan
   - **Review Summary**: Created `reports/todo/PHASE1_REVIEW_SUMMARY.md` documenting critical findings
   - **Key Finding**: All 7 tools (5 delete + 2 send/reply) **already have** confirm validation - Phase 1 is REFACTORING task
@@ -96,6 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed - BREAKING
 
+- **Phase 1 Confirmation Refactor**: Replaced inline `confirm` checks in `email_send`, `email_reply`, `email_delete`, `file_delete`, `contact_delete`, `calendar_delete_event`, and `emailrules_delete` with the shared `require_confirm` validator. The tools now emit standardized `ValidationError` messages (`Invalid confirm 'False': … Expected: Explicit user confirmation`) while preserving original signatures and metadata.
 - **Tool Naming Convention Migration**: All 50 MCP tools have been renamed to follow `category_verb_entity` convention for better organization and clarity:
   - **Account tools** (3): `list_accounts` → `account_list`, `authenticate_account` → `account_authenticate`, `complete_authentication` → `account_complete_auth`
   - **Email tools** (10): `list_emails` → `email_list`, `get_email` → `email_get`, `create_email_draft` → `email_create_draft`, `send_email` → `email_send`, `update_email` → `email_update`, `delete_email` → `email_delete`, `move_email` → `email_move`, `reply_to_email` → `email_reply`, `reply_all_email` → `email_reply_all`, `get_attachment` → `email_get_attachment`

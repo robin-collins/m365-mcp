@@ -1,6 +1,7 @@
 from typing import Any
 from ..mcp_instance import mcp
 from .. import graph
+from ..validators import require_confirm
 
 
 # calendar_get_event
@@ -186,12 +187,7 @@ def calendar_delete_event(
     Returns:
         Status confirmation
     """
-    if not confirm:
-        raise ValueError(
-            "Deletion requires explicit confirmation. "
-            "Set confirm=True to proceed. "
-            "This action cannot be undone."
-        )
+    require_confirm(confirm, "delete calendar event")
     if send_cancellation:
         graph.request("POST", f"/me/events/{event_id}/cancel", account_id, json={})
     else:

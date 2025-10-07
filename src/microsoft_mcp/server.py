@@ -104,30 +104,36 @@ def _run_http_with_bearer_auth(host: str, port: int, path: str) -> None:
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
         """Validate bearer token on all requests"""
+        from fastapi.responses import JSONResponse
+
         # Skip auth for health check endpoint
         if request.url.path == "/health":
             return await call_next(request)
 
+        # Skip auth for common browser requests (return 404 instead of 401)
+        if request.url.path in ["/favicon.ico", "/robots.txt"]:
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
         auth_header = request.headers.get("Authorization")
         if not auth_header:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=401,
-                detail="Missing Authorization header",
+                content={"detail": "Missing Authorization header"},
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
         if not auth_header.startswith("Bearer "):
-            raise HTTPException(
+            return JSONResponse(
                 status_code=401,
-                detail="Invalid Authorization header format. Expected: Bearer <token>",
+                content={"detail": "Invalid Authorization header format. Expected: Bearer <token>"},
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
         token = auth_header[7:]  # Remove "Bearer " prefix
         if token != auth_token:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=401,
-                detail="Invalid authentication token",
+                content={"detail": "Invalid authentication token"},
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
@@ -139,7 +145,13 @@ def _run_http_with_bearer_auth(host: str, port: int, path: str) -> None:
         return {"status": "ok", "transport": "http", "auth": "bearer"}
 
     # Get the Streamable HTTP app from FastMCP and mount it
-    http_app = mcp.get_asgi_app()
+    http_app = mcp.http_app()
+
+    # Important: Pass the lifespan context from the MCP app to the FastAPI app
+    # This ensures FastMCP's session manager is properly initialized
+    if hasattr(http_app, 'router') and hasattr(http_app.router, 'lifespan_context'):
+        app.router.lifespan_context = http_app.router.lifespan_context
+
     app.mount(path, http_app)
 
     print("✅ Bearer token authentication enabled", file=sys.stderr)

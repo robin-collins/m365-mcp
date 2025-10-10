@@ -10,7 +10,7 @@ from ..validators import (
     validate_limit,
 )
 
-ALLOWED_CONTACT_UPDATE_KEYS = {
+ALLOWED_CONTACT_UPDATE_KEYS = (
     "givenName",
     "surname",
     "displayName",
@@ -21,7 +21,7 @@ ALLOWED_CONTACT_UPDATE_KEYS = {
     "jobTitle",
     "companyName",
     "department",
-}
+)
 
 
 def _normalise_phone_list(phones: Any, param_name: str) -> list[str]:

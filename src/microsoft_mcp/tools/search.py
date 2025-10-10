@@ -1,11 +1,87 @@
 import datetime as dt
-from typing import Any
+from typing import Any, Sequence
 from ..mcp_instance import mcp
 from .. import graph
-from ..validators import validate_limit
+from ..validators import (
+    ValidationError,
+    format_validation_error,
+    validate_choices,
+    validate_folder_choice,
+    validate_limit,
+)
 
 # Common constants (using from email.py as they are consistent across files)
-from .email import FOLDERS
+from .email import EMAIL_FOLDER_NAMES, FOLDERS
+
+MAX_SEARCH_QUERY_LENGTH = 512
+ALLOWED_SEARCH_ENTITY_TYPES: Sequence[str] = ("message", "event", "driveItem")
+
+
+def _validate_search_query(query: str, param_name: str = "query") -> str:
+    """Ensure search queries are non-empty and within length bounds."""
+    if not isinstance(query, str):
+        reason = "must be a string"
+        raise ValidationError(
+            format_validation_error(
+                param_name,
+                query,
+                reason,
+                f"1-{MAX_SEARCH_QUERY_LENGTH} characters",
+            )
+        )
+    trimmed = query.strip()
+    if not trimmed:
+        reason = "cannot be empty"
+        raise ValidationError(
+            format_validation_error(
+                param_name,
+                query,
+                reason,
+                f"1-{MAX_SEARCH_QUERY_LENGTH} characters",
+            )
+        )
+    if len(trimmed) > MAX_SEARCH_QUERY_LENGTH:
+        reason = f"must be <= {MAX_SEARCH_QUERY_LENGTH} characters"
+        raise ValidationError(
+            format_validation_error(
+                param_name,
+                trimmed,
+                reason,
+                f"1-{MAX_SEARCH_QUERY_LENGTH} characters",
+            )
+        )
+    return trimmed
+
+
+def _validate_entity_types(
+    entity_types: list[str] | tuple[str, ...] | str | None,
+) -> list[str]:
+    """Validate unified search entity type selections."""
+    if entity_types is None:
+        return list(ALLOWED_SEARCH_ENTITY_TYPES)
+    if isinstance(entity_types, str):
+        candidate_iterable: Sequence[str] = [entity_types]
+    else:
+        candidate_iterable = entity_types
+        if not isinstance(candidate_iterable, (list, tuple)):
+            raise ValidationError(
+                format_validation_error(
+                    "entity_types",
+                    entity_types,
+                    "must be a list of entity types",
+                    f"Subset of {sorted(ALLOWED_SEARCH_ENTITY_TYPES)}",
+                )
+            )
+    validated: list[str] = []
+    for index, value in enumerate(candidate_iterable):
+        validated.append(
+            validate_choices(
+                value,
+                ALLOWED_SEARCH_ENTITY_TYPES,
+                f"entity_types[{index}]",
+            )
+        )
+    return validated
 
 
 # search_files
@@ -30,7 +106,7 @@ def search_files(
     Searches file names and content across all accessible OneDrive folders.
 
     Args:
-        query: Search query string
+        query: Search query string (1-512 characters)
         account_id: Microsoft account ID
         limit: Maximum results to return (1-500, default: 50)
 
@@ -38,7 +114,8 @@ def search_files(
         List of matching files with metadata
     """
     limit = validate_limit(limit, 1, 500, "limit")
-    items = list(graph.search_query(query, ["driveItem"], account_id, limit))
+    search_query = _validate_search_query(query)
+    items = list(graph.search_query(search_query, ["driveItem"], account_id, limit))
 
     return [
         {
@@ -76,7 +153,7 @@ def search_emails(
     Searches email subject, body, and sender across all or specific folders.
 
     Args:
-        query: Search query string
+        query: Search query string (1-512 characters)
         account_id: Microsoft account ID
         limit: Maximum results to return (1-500, default: 50)
         folder: Optional folder to search within (e.g., "inbox", "sent")
@@ -85,13 +162,15 @@ def search_emails(
         List of matching emails with metadata
     """
     limit = validate_limit(limit, 1, 500, "limit")
+    search_query = _validate_search_query(query)
     if folder:
         # For folder-specific search, use the traditional endpoint
-        folder_path = FOLDERS.get(folder.casefold(), folder)
+        folder_key = validate_folder_choice(folder, EMAIL_FOLDER_NAMES, "folder")
+        folder_path = FOLDERS[folder_key.casefold()]
         endpoint = f"/me/mailFolders/{folder_path}/messages"
 
         params = {
-            "$search": f'"{query}"',
+            "$search": f'"{search_query}"',
             "$top": limit,
             "$select": "id,subject,from,toRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead",
         }
@@ -100,7 +179,7 @@ def search_emails(
             graph.request_paginated(endpoint, account_id, params=params, limit=limit)
         )
 
-    return list(graph.search_query(query, ["message"], account_id, limit))
+    return list(graph.search_query(search_query, ["message"], account_id, limit))
 
 
 # search_events
@@ -127,7 +206,7 @@ def search_events(
     Searches event titles, locations, and descriptions within date range.
 
     Args:
-        query: Search query string
+        query: Search query string (1-512 characters)
         account_id: Microsoft account ID
         days_ahead: Days to look forward (0-730, default: 365)
         days_back: Days to look back (0-730, default: 365)
@@ -139,7 +218,8 @@ def search_events(
     days_ahead = validate_limit(days_ahead, 0, 730, "days_ahead")
     days_back = validate_limit(days_back, 0, 730, "days_back")
     limit = validate_limit(limit, 1, 500, "limit")
-    events = list(graph.search_query(query, ["event"], account_id, limit))
+    search_query = _validate_search_query(query)
+    events = list(graph.search_query(search_query, ["event"], account_id, limit))
 
     # Filter by date range if needed
     if days_ahead != 365 or days_back != 365:
@@ -195,7 +275,7 @@ def search_contacts(
     Searches contact names, email addresses, and phone numbers.
 
     Args:
-        query: Search query string
+        query: Search query string (1-512 characters)
         account_id: Microsoft account ID
         limit: Maximum results to return (1-500, default: 50)
 
@@ -203,8 +283,9 @@ def search_contacts(
         List of matching contacts
     """
     limit = validate_limit(limit, 1, 500, "limit")
+    search_query = _validate_search_query(query)
     params = {
-        "$search": f'"{query}"',
+        "$search": f'"{search_query}"',
         "$top": limit,
     }
 
@@ -238,7 +319,7 @@ def search_unified(
     Searches emails, events, and files simultaneously.
 
     Args:
-        query: Search query string
+        query: Search query string (1-512 characters)
         account_id: Microsoft account ID
         entity_types: Types to search: 'message', 'event', 'driveItem' (default: all)
         limit: Maximum results per type (1-500, default: 50)
@@ -246,13 +327,14 @@ def search_unified(
     Returns:
         Dictionary with results grouped by entity type
     """
-    if not entity_types:
-        entity_types = ["message", "event", "driveItem"]
-
-    results = {entity_type: [] for entity_type in entity_types}
+    validated_entity_types = _validate_entity_types(entity_types)
+    results = {entity_type: [] for entity_type in validated_entity_types}
 
     limit = validate_limit(limit, 1, 500, "limit")
-    items = list(graph.search_query(query, entity_types, account_id, limit))
+    search_query = _validate_search_query(query)
+    items = list(
+        graph.search_query(search_query, validated_entity_types, account_id, limit)
+    )
 
     for item in items:
         resource_type = item.get("@odata.type", "").split(".")[-1]

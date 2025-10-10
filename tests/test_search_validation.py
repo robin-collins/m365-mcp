@@ -38,6 +38,42 @@ def test_search_limits_reject_invalid_input(
         callable_fn(**kwargs)
 
 
+@pytest.mark.parametrize(
+    ("callable_fn", "kwargs"),
+    [
+        (search_tools.search_files.fn, {"account_id": "acc"}),
+        (search_tools.search_emails.fn, {"account_id": "acc"}),
+        (search_tools.search_events.fn, {"account_id": "acc"}),
+        (search_tools.search_contacts.fn, {"account_id": "acc"}),
+        (search_tools.search_unified.fn, {"account_id": "acc"}),
+    ],
+)
+@pytest.mark.parametrize("bad_query", ["", "   "])
+def test_search_query_rejects_empty(
+    callable_fn: Callable[..., Any],
+    kwargs: Dict[str, Any],
+    bad_query: str,
+) -> None:
+    with pytest.raises(ValidationError):
+        callable_fn(query=bad_query, **kwargs)
+
+
+@pytest.mark.parametrize(
+    "callable_fn",
+    [
+        search_tools.search_files.fn,
+        search_tools.search_emails.fn,
+        search_tools.search_events.fn,
+        search_tools.search_contacts.fn,
+        search_tools.search_unified.fn,
+    ],
+)
+def test_search_query_rejects_excess_length(callable_fn: Callable[..., Any]) -> None:
+    overlong_query = "x" * 600
+    with pytest.raises(ValidationError):
+        callable_fn(query=overlong_query, account_id="acc")
+
+
 def test_search_events_rejects_invalid_days(mock_account_id: str) -> None:
     with pytest.raises(ValidationError):
         search_tools.search_events.fn(
@@ -82,3 +118,53 @@ def test_search_events_filters_by_range(
 
     assert len(results) == 1
     assert results[0]["start"]["dateTime"] == inside_start
+
+
+def test_search_emails_rejects_invalid_folder(mock_account_id: str) -> None:
+    with pytest.raises(ValidationError):
+        search_tools.search_emails.fn(
+            query="reports",
+            account_id=mock_account_id,
+            folder="spam",
+        )
+
+
+def test_search_unified_rejects_invalid_entity_type() -> None:
+    with pytest.raises(ValidationError):
+        search_tools.search_unified.fn(
+            query="report",
+            account_id="acc",
+            entity_types=["message", "calendar"],
+        )
+
+
+def test_search_files_trims_query(
+    monkeypatch: pytest.MonkeyPatch,
+    mock_account_id: str,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_search_query(
+        query: str,
+        entity_types: list[str],
+        account_id: str,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        captured["query"] = query
+        captured["entity_types"] = entity_types
+        captured["account_id"] = account_id
+        captured["limit"] = limit
+        return []
+
+    monkeypatch.setattr(search_tools.graph, "search_query", fake_search_query)
+
+    search_tools.search_files.fn(
+        query="  quarterly report ",
+        account_id=mock_account_id,
+        limit=25,
+    )
+
+    assert captured["query"] == "quarterly report"
+    assert captured["entity_types"] == ["driveItem"]
+    assert captured["account_id"] == mock_account_id
+    assert captured["limit"] == 25

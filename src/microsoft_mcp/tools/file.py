@@ -80,10 +80,12 @@ def file_list(
     # Determine endpoint
     if folder_id:
         endpoint = f"/me/drive/items/{folder_id}/children"
-    elif path == "/":
-        endpoint = "/me/drive/root/children"
     else:
-        endpoint = f"/me/drive/root:/{path}:/children"
+        validated_path = validate_onedrive_path(path, "path")
+        if validated_path == "/":
+            endpoint = "/me/drive/root/children"
+        else:
+            endpoint = f"/me/drive/root:{validated_path}:/children"
 
     params = {
         "$top": limit,

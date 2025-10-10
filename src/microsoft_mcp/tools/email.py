@@ -14,6 +14,7 @@ from ..validators import (
     require_confirm,
     validate_account_id,
     validate_choices,
+    validate_folder_choice,
     validate_iso_datetime,
     validate_json_payload,
     validate_limit,
@@ -35,25 +36,26 @@ FOLDERS = {
         "archive": "archive",
     }.items()
 }
+EMAIL_FOLDER_NAMES = tuple(FOLDERS.keys())
 
 MAX_ATTACHMENT_DOWNLOAD_BYTES = 25 * 1024 * 1024
 MAX_EMAIL_RECIPIENTS = 500
-ALLOWED_EMAIL_UPDATE_KEYS = {
+ALLOWED_EMAIL_UPDATE_KEYS = (
     "isRead",
     "categories",
     "importance",
     "flag",
     "inferenceClassification",
-}
+)
 EMAIL_IMPORTANCE_CHOICES = {"low", "normal", "high"}
 INFERENCE_CLASSIFICATIONS = {"focused", "other"}
-ALLOWED_EMAIL_FLAG_KEYS = {
+ALLOWED_EMAIL_FLAG_KEYS = (
     "flagStatus",
     "startDateTime",
     "dueDateTime",
     "completedDateTime",
-}
-ALLOWED_FLAG_DATETIME_KEYS = {"dateTime", "timeZone"}
+)
+ALLOWED_FLAG_DATETIME_KEYS = ("dateTime", "timeZone")
 FLAG_STATUS_CHOICES = {"notFlagged", "flagged", "complete"}
 
 
@@ -181,8 +183,9 @@ def email_list(
         # Direct folder ID takes precedence
         folder_path = folder_id
     elif folder:
-        # Use folder name mapping
-        folder_path = FOLDERS.get(folder.casefold(), folder)
+        # Validate folder name against known choices
+        folder_key = validate_folder_choice(folder, EMAIL_FOLDER_NAMES, "folder")
+        folder_path = FOLDERS[folder_key.casefold()]
     else:
         # Default to inbox
         folder_path = "inbox"
@@ -763,17 +766,20 @@ def email_move(
 
     Moves the email to the specified folder without deleting it from the source.
 
-    Valid folder names: inbox, sent, drafts, deleted, junk, archive
+    Valid folder names: inbox, sent, drafts, deleted, junk, archive.
 
     Args:
         email_id: The email ID to move
-        destination_folder: Folder name or ID to move to
+        destination_folder: Folder name to move to
         account_id: Microsoft account ID
 
     Returns:
         Status confirmation with new email ID
     """
-    folder_path = FOLDERS.get(destination_folder.casefold(), destination_folder)
+    folder_key = validate_folder_choice(
+        destination_folder, EMAIL_FOLDER_NAMES, "destination_folder"
+    )
+    folder_path = FOLDERS[folder_key.casefold()]
 
     folders = graph.request("GET", "/me/mailFolders", account_id)
     folder_id = None
@@ -784,12 +790,26 @@ def email_move(
         raise ValueError(f"Unexpected folder response structure: {folders}")
 
     for folder in folders["value"]:
-        if folder["displayName"].lower() == folder_path.lower():
+        display_name = folder.get("displayName", "")
+        well_known = folder.get("wellKnownName", "")
+        if (
+            isinstance(well_known, str)
+            and well_known.casefold() == folder_path.casefold()
+        ):
+            folder_id = folder["id"]
+            break
+        if (
+            isinstance(display_name, str)
+            and display_name.casefold() == folder_key.casefold()
+        ):
             folder_id = folder["id"]
             break
 
     if not folder_id:
-        raise ValueError(f"Folder '{destination_folder}' not found")
+        raise ValueError(
+            f"Folder '{destination_folder}' not found. "
+            f"Valid options: {', '.join(sorted(EMAIL_FOLDER_NAMES))}"
+        )
 
     payload = {"destinationId": folder_id}
     result = graph.request(

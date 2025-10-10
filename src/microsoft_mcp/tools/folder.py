@@ -1,7 +1,7 @@
 from typing import Any
 from ..mcp_instance import mcp
 from .. import graph
-from ..validators import validate_limit
+from ..validators import validate_limit, validate_onedrive_path
 
 
 def _list_folders_impl(
@@ -13,10 +13,12 @@ def _list_folders_impl(
     """Internal implementation for listing OneDrive folders"""
     if folder_id:
         endpoint = f"/me/drive/items/{folder_id}/children"
-    elif path in (None, "/"):
-        endpoint = "/me/drive/root/children"
     else:
-        endpoint = f"/me/drive/root:/{path}:/children"
+        normalised_path = validate_onedrive_path(path or "/", "path")
+        if normalised_path == "/":
+            endpoint = "/me/drive/root/children"
+        else:
+            endpoint = f"/me/drive/root:{normalised_path}:/children"
 
     page_size = limit if limit is not None else 500
     params = {
@@ -120,10 +122,12 @@ def folder_get(
 
     if folder_id:
         endpoint = f"/me/drive/items/{folder_id}"
-    elif path == "/":
-        endpoint = "/me/drive/root"
     else:
-        endpoint = f"/me/drive/root:/{path}"
+        normalised_path = validate_onedrive_path(path or "/", "path")
+        if normalised_path == "/":
+            endpoint = "/me/drive/root"
+        else:
+            endpoint = f"/me/drive/root:{normalised_path}"
 
     result = graph.request("GET", endpoint, account_id)
     if not result:
@@ -218,16 +222,16 @@ def folder_get_tree(
     # Build tree starting from specified location
     if folder_id:
         start_id = folder_id
-        start_path = None
+        start_path: str | None = None
     else:
         start_id = None
-        start_path = path
+        start_path = validate_onedrive_path(path or "/", "path")
 
     tree_data = _build_drive_folder_tree(start_id, start_path, 0)
 
     return {
         "root_folder_id": folder_id,
-        "root_path": path if not folder_id else None,
+        "root_path": start_path if start_path is not None else None,
         "max_depth": max_depth,
         "folders": tree_data,
     }

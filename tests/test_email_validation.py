@@ -227,3 +227,20 @@ def test_email_get_rejects_invalid_body_limit(mock_account_id: str) -> None:
             account_id=mock_account_id,
             body_max_length=0,
         )
+
+
+def test_email_list_rejects_unknown_folder(mock_account_id: str) -> None:
+    with pytest.raises(ValidationError):
+        email_tools.email_list.fn(
+            account_id=mock_account_id,
+            folder="unknown",
+        )
+
+
+def test_email_move_rejects_unknown_folder(mock_account_id: str) -> None:
+    with pytest.raises(ValidationError):
+        email_tools.email_move.fn(
+            email_id="msg-1",
+            destination_folder="other",
+            account_id=mock_account_id,
+        )

@@ -25,7 +25,7 @@ CALENDAR_RESPONSE_ALIASES = {
     "tentativelyAccept": "tentativelyAccept",
     "tentative": "tentativelyAccept",
 }
-ALLOWED_CALENDAR_UPDATE_KEYS = {
+ALLOWED_CALENDAR_UPDATE_KEYS = (
     "subject",
     "start",
     "end",
@@ -33,7 +33,7 @@ ALLOWED_CALENDAR_UPDATE_KEYS = {
     "location",
     "body",
     "attendees",
-}
+)
 
 
 # calendar_get_event

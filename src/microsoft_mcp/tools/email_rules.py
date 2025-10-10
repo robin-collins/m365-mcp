@@ -46,7 +46,7 @@ RULE_PREDICATE_CHOICE_MAP = {
     "importance": RULE_IMPORTANCE_CHOICES,
     "sensitivity": RULE_SENSITIVITY_CHOICES,
 }
-ALLOWED_RULE_PREDICATE_KEYS = (
+ALLOWED_RULE_PREDICATE_KEYS = tuple(
     RULE_PREDICATE_STRING_LIST_KEYS
     | RULE_PREDICATE_RECIPIENT_KEYS
     | RULE_PREDICATE_BOOL_KEYS
@@ -72,7 +72,7 @@ RULE_ACTION_BOOL_KEYS = {
     "permanentDelete",
 }
 RULE_ACTION_CHOICE_MAP = {"markImportance": RULE_IMPORTANCE_CHOICES}
-ALLOWED_RULE_ACTION_KEYS = (
+ALLOWED_RULE_ACTION_KEYS = tuple(
     RULE_ACTION_STRING_LIST_KEYS
     | RULE_ACTION_STRING_KEYS
     | RULE_ACTION_RECIPIENT_KEYS
@@ -162,6 +162,15 @@ def _normalise_rule_recipients(
             )
         if "emailAddress" in entry and isinstance(entry["emailAddress"], dict):
             email_address = entry["emailAddress"].get("address")
+            if not isinstance(email_address, str):
+                raise ValidationError(
+                    format_validation_error(
+                        f"{param_name}[{index}].emailAddress.address",
+                        email_address,
+                        "must be a string",
+                        "Email address",
+                    )
+                )
             email = validate_email_format(
                 email_address,
                 f"{param_name}[{index}].emailAddress.address",

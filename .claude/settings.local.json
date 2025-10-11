@@ -1,7 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(timeout 30 uv run pytest tests/test_tool_confirmation.py tests/test_validators.py -v)"
+      "Bash(timeout 30 uv run pytest tests/test_tool_confirmation.py tests/test_validators.py -v)",
+      "Bash(python:*)",
+      "Bash(lsof:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(sudo lsof:*)",
+      "Bash(uv run:*)",
+      "Bash(chmod:*)",
+      "Bash(python3:*)",
+      "Bash(env)",
+      "Bash(timeout:*)",
+      "Bash(pgrep:*)",
+      "Bash(bash:*)"
     ],
     "deny": [],
     "ask": []

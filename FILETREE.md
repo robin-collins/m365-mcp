@@ -9,29 +9,52 @@ microsoft-mcp/
 ├── .python-version                         # Python version specification
 ├── .venv/                                  # Virtual environment
 ├── authenticate.py                         # Interactive authentication script
-├── CHANGELOG.md                            # **NEW** Project changelog
+├── CHANGELOG.md                            # **MODIFIED** Project changelog with monitoring system updates
 ├── CLAUDE.md                               # Claude Code guidance file
 ├── EMAIL_FOLDER_IMPLEMENTATION_SUMMARY.md  # **NEW** Email folder tools implementation
 ├── EMAIL_OUTPUT_FORMAT.md                  # **NEW** Email reading output format guide
 ├── FOLDER_LISTING_TODO.md                  # **NEW** Implementation plan
-├── FILETREE.md                             # **NEW** This file - project structure
+├── FILETREE.md                             # **MODIFIED** This file - project structure with monitoring updates
 ├── MESSAGE_RULES_IMPLEMENTATION_SUMMARY.md # **NEW** Message rule tools implementation
+├── MONITORING.md                           # **NEW** Monitoring and troubleshooting guide
 ├── ONEDRIVE_FOLDER_IMPLEMENTATION_SUMMARY.md # **NEW** OneDrive folder tools implementation
 ├── QUICKSTART.md                           # **NEW** Quick start guide for installation and setup
 ├── SECURITY.md                             # **NEW** Security guide for transport modes and authentication
 ├── HTTP_TRANSPORT_IMPLEMENTATION.md         # **NEW** Streamable HTTP transport implementation details
 ├── HTTP_APP_METHOD_FIX.md                   # **NEW** Fix for http_app() method issue (2025-10-06)
 ├── MIGRATION_SSE_TO_HTTP.md                 # **NEW** Migration notes from SSE to Streamable HTTP
+├── monitor_mcp_server.sh                   # **NEW** Health monitoring script with auto-recovery
+├── start_mcp_with_monitoring.sh            # **NEW** Server startup script with monitoring
 ├── pyproject.toml                          # **MODIFIED** Python project configuration (added fastapi, uvicorn)
 ├── README.md                               # Project documentation
 ├── uv.lock                                 # UV package lock file
+├── logs/                                   # **NEW** Log directory (auto-created)
+│   ├── mcp_server_all.jsonl                # JSON structured logs (all levels)
+│   ├── mcp_server_errors.jsonl             # JSON error logs only
+│   ├── mcp_server.log                      # Human-readable logs
+│   ├── server_output.log                   # Server stdout/stderr
+│   └── monitor.log                         # Monitor activity log
+├── reports/                                # **NEW** Error report directory (auto-created)
+│   └── error_report_YYYYMMDD_HHMMSS.txt   # Auto-generated error reports
 ├── src/
 │   └── microsoft_mcp/
 │       ├── __init__.py                     # Package initialization
 │       ├── auth.py                         # MSAL authentication & token management
 │       ├── graph.py                        # Microsoft Graph API client wrapper
+│       ├── health_check.py                 # **NEW** Health check utility module with async/sync functions
+│       │                                   #   - check_health() - Single health check
+│       │                                   #   - continuous_health_check() - Continuous monitoring
+│       │                                   #   - CLI: python -m microsoft_mcp.health_check
+│       ├── logging_config.py               # **NEW** Comprehensive logging configuration
+│       │                                   #   - Structured JSON formatter
+│       │                                   #   - Human-readable formatter with colors
+│       │                                   #   - Multiple log outputs (JSON, errors, readable)
+│       │                                   #   - Automatic log rotation (10 files × 10MB)
 │       ├── mcp_instance.py                 # **NEW** FastMCP instance (single source of truth)
-│       ├── server.py                       # **MODIFIED** FastMCP server with stdio/Streamable HTTP transport support
+│       ├── server.py                       # **MODIFIED** FastMCP server with logging, monitoring, and graceful shutdown
+│       │                                   #   - Comprehensive structured logging
+│       │                                   #   - Signal handlers for graceful shutdown
+│       │                                   #   - Request/response timing and client IP tracking
 │       ├── tools.py                        # **NEW** MCP tool registry (imports mcp and triggers tool registration)
 │       ├── validators.py                   # Shared validation helpers and ValidationError class
 │       │                                   #   - Validators for accounts, email, datetime, paths, Graph IDs, URLs
@@ -145,9 +168,15 @@ microsoft-mcp/
 
 - **`README.md`** - User-facing documentation with feature overview
 - **`QUICKSTART.md`** - Quick start guide for installation and setup
+- **`MONITORING.md`** - **NEW** Comprehensive monitoring and troubleshooting guide
+  - Log file structure and formats
+  - Health check monitoring
+  - Error report interpretation
+  - Common troubleshooting scenarios
+  - Production deployment best practices
 - **`SECURITY.md`** - Security guide for transport modes and authentication
 - **`CLAUDE.md`** - AI assistant guidance
-- **`CHANGELOG.md`** - Version history
+- **`CHANGELOG.md`** - Version history with monitoring system updates
 - **`FOLDER_LISTING_TODO.md`** - Implementation plan
 - **`EMAIL_FOLDER_IMPLEMENTATION_SUMMARY.md`** - Email folder tools implementation
 - **`EMAIL_OUTPUT_FORMAT.md`** - Email reading output format guide
@@ -156,6 +185,19 @@ microsoft-mcp/
 - **`HTTP_TRANSPORT_IMPLEMENTATION.md`** - Streamable HTTP transport implementation details
 - **`reports/todo/PARAMETER_VALIDATION.md`** - Parameter validation analysis report
 - **`reports/todo/PARAMETER_VALIDATION_PLAN.md`** - Comprehensive validation implementation plan
+
+### Scripts
+
+- **`monitor_mcp_server.sh`** - **NEW** Health monitoring script with auto-recovery
+  - Periodic health checks via HTTP endpoint
+  - Automatic process cleanup on failure
+  - Comprehensive error report generation
+  - Configurable failure thresholds
+- **`start_mcp_with_monitoring.sh`** - **NEW** Server startup script with monitoring
+  - Launches server with automatic monitoring
+  - Environment validation
+  - Token generation if not provided
+  - Graceful shutdown handling
 
 ### Configuration
 

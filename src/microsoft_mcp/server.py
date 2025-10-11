@@ -1,10 +1,61 @@
 import os
 import sys
+import signal
+import atexit
 from .tools import mcp
+from .logging_config import setup_logging, get_logger
+
+# Initialize logger (will be configured in main)
+logger = get_logger(__name__)
+
+
+def _setup_signal_handlers() -> None:
+    """Setup graceful shutdown handlers."""
+
+    def signal_handler(signum, frame):
+        sig_name = signal.Signals(signum).name
+        logger.warning(f"Received signal {sig_name} ({signum}), shutting down gracefully")
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
+
+def _log_startup_info() -> None:
+    """Log server startup information."""
+    logger.info("=" * 80)
+    logger.info("Microsoft MCP Server Starting")
+    logger.info("=" * 80)
+    logger.info(f"PID: {os.getpid()}")
+    logger.info(f"Python: {sys.version}")
+    logger.info(f"Working Directory: {os.getcwd()}")
+    logger.info("Environment Variables:")
+    for key in ["MICROSOFT_MCP_CLIENT_ID", "MCP_TRANSPORT", "MCP_HOST", "MCP_PORT", "MCP_AUTH_METHOD"]:
+        value = os.getenv(key, "not set")
+        # Mask sensitive values
+        if "CLIENT_ID" in key and value != "not set":
+            value = f"{value[:8]}...{value[-4:]}"
+        logger.info(f"  {key}: {value}")
+    logger.info("=" * 80)
 
 
 def main() -> None:
+    # Setup logging first thing
+    log_level = os.getenv("MCP_LOG_LEVEL", "INFO")
+    log_dir = os.getenv("MCP_LOG_DIR", "logs")
+    setup_logging(log_dir=log_dir, log_level=log_level)
+
+    # Setup signal handlers for graceful shutdown
+    _setup_signal_handlers()
+
+    # Register cleanup handler
+    atexit.register(lambda: logger.info("Server shutting down"))
+
+    # Log startup information
+    _log_startup_info()
+
     if not os.getenv("MICROSOFT_MCP_CLIENT_ID"):
+        logger.error("MICROSOFT_MCP_CLIENT_ID environment variable is required")
         print(
             "Error: MICROSOFT_MCP_CLIENT_ID environment variable is required",
             file=sys.stderr,
@@ -13,6 +64,7 @@ def main() -> None:
 
     # Configure transport based on environment variable
     transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
+    logger.info(f"Transport mode: {transport}")
 
     if transport == "http":
         host = os.getenv("MCP_HOST", "127.0.0.1")
@@ -21,6 +73,7 @@ def main() -> None:
 
         # SECURITY: Warn if binding to all interfaces
         if host in ["0.0.0.0", "::", ""]:
+            logger.warning(f"Binding to all network interfaces ({host}) - ensure firewall is configured!")
             print(
                 "⚠️  WARNING: Binding to all network interfaces. Ensure firewall is configured!",
                 file=sys.stderr,
@@ -28,8 +81,10 @@ def main() -> None:
 
         # SECURITY: Check for auth configuration
         auth_method = os.getenv("MCP_AUTH_METHOD", "none").lower()
+        logger.info(f"Authentication method: {auth_method}")
 
         if auth_method == "none":
+            logger.warning("Running HTTP server without authentication!")
             print(
                 "⚠️  WARNING: Running HTTP server without authentication!",
                 file=sys.stderr,
@@ -45,29 +100,43 @@ def main() -> None:
 
             # Require explicit opt-in to run without auth
             if os.getenv("MCP_ALLOW_INSECURE") != "true":
+                logger.error("Refusing to start insecure HTTP server without MCP_ALLOW_INSECURE=true")
                 print(
                     "Error: Refusing to start insecure HTTP server. Set MCP_ALLOW_INSECURE=true to override",
                     file=sys.stderr,
                 )
                 sys.exit(1)
 
+        logger.info(f"Starting HTTP transport on {host}:{port}{path}")
         print(
             f"Starting MCP server with Streamable HTTP transport on {host}:{port}{path}",
             file=sys.stderr,
         )
 
-        if auth_method == "bearer":
-            _run_http_with_bearer_auth(host, port, path)
-        elif auth_method == "oauth":
-            # Use FastMCP built-in OAuth (requires FastMCP 2.0+)
-            mcp.run(transport="http", host=host, port=port, path=path, auth="oauth")
-        else:
-            # No auth (insecure mode - requires MCP_ALLOW_INSECURE=true)
-            mcp.run(transport="http", host=host, port=port, path=path)
+        try:
+            if auth_method == "bearer":
+                _run_http_with_bearer_auth(host, port, path)
+            elif auth_method == "oauth":
+                logger.info("Using FastMCP built-in OAuth authentication")
+                # Use FastMCP built-in OAuth (requires FastMCP 2.0+)
+                mcp.run(transport="http", host=host, port=port, path=path, auth="oauth")
+            else:
+                logger.warning("Running in insecure mode (no authentication)")
+                # No auth (insecure mode - requires MCP_ALLOW_INSECURE=true)
+                mcp.run(transport="http", host=host, port=port, path=path)
+        except Exception as e:
+            logger.critical(f"Failed to start HTTP server: {e}", exc_info=True)
+            raise
 
     elif transport == "stdio":
-        mcp.run()
+        logger.info("Starting stdio transport")
+        try:
+            mcp.run()
+        except Exception as e:
+            logger.critical(f"Failed to start stdio server: {e}", exc_info=True)
+            raise
     else:
+        logger.error(f"Invalid MCP_TRANSPORT '{transport}'. Must be 'stdio' or 'http'")
         print(
             f"Error: Invalid MCP_TRANSPORT '{transport}'. Must be 'stdio' or 'http'",
             file=sys.stderr,
@@ -80,8 +149,11 @@ def _run_http_with_bearer_auth(host: str, port: int, path: str) -> None:
     from fastapi import FastAPI, Request
     import uvicorn
 
+    logger.info("Configuring bearer token authentication")
+
     auth_token = os.getenv("MCP_AUTH_TOKEN")
     if not auth_token:
+        logger.error("MCP_AUTH_TOKEN required when MCP_AUTH_METHOD=bearer")
         print(
             "Error: MCP_AUTH_TOKEN required when MCP_AUTH_METHOD=bearer",
             file=sys.stderr,
@@ -90,6 +162,7 @@ def _run_http_with_bearer_auth(host: str, port: int, path: str) -> None:
 
     # Validate token is sufficiently secure
     if len(auth_token) < 32:
+        logger.warning(f"MCP_AUTH_TOKEN is too short ({len(auth_token)} chars, minimum 32 recommended)")
         print(
             "⚠️  WARNING: MCP_AUTH_TOKEN is too short (minimum 32 characters recommended)",
             file=sys.stderr,
@@ -105,17 +178,26 @@ def _run_http_with_bearer_auth(host: str, port: int, path: str) -> None:
     async def auth_middleware(request: Request, call_next):
         """Validate bearer token on all requests"""
         from fastapi.responses import JSONResponse
+        import time
+
+        start_time = time.time()
+        client_ip = request.client.host if request.client else "unknown"
 
         # Skip auth for health check endpoint
         if request.url.path == "/health":
+            logger.debug(f"Health check request from {client_ip}")
             return await call_next(request)
 
         # Skip auth for common browser requests (return 404 instead of 401)
         if request.url.path in ["/favicon.ico", "/robots.txt"]:
+            logger.debug(f"Ignoring browser request: {request.url.path} from {client_ip}")
             return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+        logger.debug(f"Request: {request.method} {request.url.path} from {client_ip}")
 
         auth_header = request.headers.get("Authorization")
         if not auth_header:
+            logger.warning(f"Unauthorized request (missing auth header) from {client_ip} to {request.url.path}")
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Missing Authorization header"},
@@ -123,6 +205,7 @@ def _run_http_with_bearer_auth(host: str, port: int, path: str) -> None:
             )
 
         if not auth_header.startswith("Bearer "):
+            logger.warning(f"Unauthorized request (invalid auth format) from {client_ip} to {request.url.path}")
             return JSONResponse(
                 status_code=401,
                 content={
@@ -133,13 +216,23 @@ def _run_http_with_bearer_auth(host: str, port: int, path: str) -> None:
 
         token = auth_header[7:]  # Remove "Bearer " prefix
         if token != auth_token:
+            logger.warning(f"Unauthorized request (invalid token) from {client_ip} to {request.url.path}")
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Invalid authentication token"},
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        return await call_next(request)
+        # Process authenticated request
+        response = await call_next(request)
+        duration = (time.time() - start_time) * 1000  # Convert to ms
+
+        logger.info(
+            f"Request processed: {request.method} {request.url.path} from {client_ip} - "
+            f"Status: {response.status_code} - Duration: {duration:.2f}ms"
+        )
+
+        return response
 
     @app.get("/health")
     async def health_check():
@@ -147,6 +240,8 @@ def _run_http_with_bearer_auth(host: str, port: int, path: str) -> None:
         return {"status": "ok", "transport": "http", "auth": "bearer"}
 
     # Get the Streamable HTTP app from FastMCP and mount it
+    # Note: http_app() already includes routes at the configured path (e.g., /mcp)
+    # so we mount it at root "/" to avoid double-pathing (e.g., /mcp/mcp)
     http_app = mcp.http_app()
 
     # Important: Pass the lifespan context from the MCP app to the FastAPI app
@@ -154,7 +249,8 @@ def _run_http_with_bearer_auth(host: str, port: int, path: str) -> None:
     if hasattr(http_app, "router") and hasattr(http_app.router, "lifespan_context"):
         app.router.lifespan_context = http_app.router.lifespan_context
 
-    app.mount(path, http_app)
+    # Mount at root since http_app already has path-prefixed routes
+    app.mount("/", http_app)
 
     print("✅ Bearer token authentication enabled", file=sys.stderr)
     print(f"✅ Health check available at http://{host}:{port}/health", file=sys.stderr)

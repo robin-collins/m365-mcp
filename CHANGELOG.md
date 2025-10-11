@@ -9,7 +9,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Comprehensive Logging System**: Multi-tier structured logging for production debugging and monitoring
+  - `src/microsoft_mcp/logging_config.py` - Centralized logging configuration with structured JSON and human-readable formats
+  - Multiple log outputs: JSON structured logs (`mcp_server_all.jsonl`), error-only logs (`mcp_server_errors.jsonl`), human-readable logs (`mcp_server.log`)
+  - Automatic log rotation (10 files × 10MB per log type)
+  - Configurable log levels via `MCP_LOG_LEVEL` environment variable (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  - Color-coded console output for improved readability
+  - Detailed request/response logging with timing, client IP, and status codes
+
+- **Health Check & Monitoring System**: Continuous diagnostics collection with automatic kill on failure
+  - `monitor_mcp_server.sh` - Comprehensive monitoring and diagnostics script
+  - Continuous metrics collection: Memory (RSS), CPU%, threads, open files, response times
+  - Health check monitoring via HTTP endpoint with configurable check intervals
+  - Automatic process kill on failure (graceful SIGTERM followed by SIGKILL if needed)
+  - **NO AUTO-RESTART**: Server is killed and monitoring exits to allow investigation
+  - Configurable failure thresholds (default: 3 consecutive failures)
+  - Comprehensive error report generation including metrics history, logs, system info, and process details
+  - Metrics log (`logs/metrics.log`) with CSV format for easy analysis
+
+- **Health Check Utility Module**: Programmatic health checking
+  - `src/microsoft_mcp/health_check.py` - Python module for health check operations
+  - Async and sync health check functions
+  - Continuous monitoring mode with configurable intervals
+  - Command-line interface: `python -m microsoft_mcp.health_check`
+  - Bearer token authentication support
+  - Detailed result objects with response times and error information
+
+- **Startup Scripts**: Easy server deployment with monitoring
+  - `start_mcp_with_monitoring.sh` - Launches server with automatic monitoring
+  - Automatic bearer token generation if not provided
+  - Environment variable validation
+  - Background process management with PID tracking
+  - Graceful shutdown on SIGTERM/SIGINT
+  - Health check verification before declaring server ready
+
+- **Documentation**: Comprehensive monitoring and troubleshooting guide
+  - `MONITORING.md` - Complete guide to logging, monitoring, and troubleshooting
+  - Log file structure and formats
+  - Searching and analyzing logs
+  - Error report interpretation
+  - Common troubleshooting scenarios
+  - Production deployment best practices
+  - Security considerations for log management
+
+### Changed
+
+- **Server Startup**: Enhanced with comprehensive logging and signal handling
+  - Added structured logging initialization on startup
+  - Added signal handlers for graceful shutdown (SIGTERM, SIGINT)
+  - Added startup information logging (PID, Python version, environment variables)
+  - Added error logging for all failure scenarios
+  - Added request/response logging in HTTP middleware with timing metrics
+  - Added authentication failure logging with client IP tracking
+
+- **HTTP Middleware**: Enhanced with detailed request tracking
+  - Added timing instrumentation for all requests
+  - Added client IP logging for security auditing
+  - Added debug logging for health checks and browser requests
+  - Added warning logging for authentication failures with reason codes
+  - Added info logging for successful authenticated requests with status and duration
+
+### Fixed
+
+- **HTTP Transport MCP Endpoint Routing**: Fixed critical routing issue where `/mcp` endpoint returned 307 redirect followed by 404 error. Root cause was double-path mounting - `mcp.http_app()` returns an app with routes already at `/mcp`, so mounting it again at `/mcp` created incorrect paths. Fixed by mounting the FastMCP app at root `/` instead of at the configured path. (`src/microsoft_mcp/server.py:160`)
+- **Shell Script Variable Quoting**: Fixed shellcheck warnings in `start_mcp_with_monitoring.sh` by properly quoting variables in command substitutions to prevent globbing and word splitting issues (`${PID_FILE}`, `${MONITOR_PID_FILE}`)
+
+### Added
+
 - **Phase 3 Validation Tests**: Added targeted suites covering update dictionary guards, pagination limits, and search date windows (`tests/test_contact_validation.py`, `tests/test_email_rules_validation.py`, `tests/test_search_validation.py`, `tests/test_folder_validation.py`).
+- **Phase 4 Validation Tests**: Added read-only coverage for folder choice, query bounds, and path validation (`tests/test_email_validation.py`, `tests/test_search_validation.py`, `tests/test_folder_validation.py`).
 - **Phase 1 Confirmation Regression Tests**: Added `tests/test_tool_confirmation.py` to assert the shared `require_confirm` validator guards all destructive and dangerous Phase 1 tools (email_send, email_reply, email_delete, file_delete, contact_delete, calendar_delete_event, emailrules_delete).
 - **Parameter Validation Phase 1 Tasklist Review**: Comprehensive review and update of Phase 1 implementation plan
   - **Review Summary**: Created `reports/todo/PHASE1_REVIEW_SUMMARY.md` documenting critical findings
@@ -27,6 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Hardened moderate operations as part of Phase 3: enforced strict whitelist validation for `email_update`, `calendar_update_event`, `contact_update`, and `emailrules_update`; applied explicit limit bounds across email, folder, contact, file, and search tools; added day-range validation to `search_events`; normalised error handling to emit `ValidationError` for rejected input.
+- Completed Phase 4 read-only validation: enforced canonical folder names for email listing/move operations, added non-empty/length-checked search queries with entity-type validation, and required absolute OneDrive paths for list/get helpers.
 - Hardened dangerous email and calendar tools with Phase 2 parameter
   validation: recipient normalization/deduplication with limits, reply body
   checks, calendar response enum enforcement, attendee validation, and ISO

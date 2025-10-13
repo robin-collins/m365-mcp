@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Update any scripts or automation using old package/module names
   - All documentation, shell scripts, and test files updated to reflect new naming
 
+### Added
+
+- **Server Version Tool**: Added new `server_get_version` tool that returns the current version of the m365-mcp server. Useful for diagnostics, troubleshooting, and ensuring compatibility. Returns package name and semantic version string.
+
 ### Fixed
 
 - **Token Cache Location**: Reverted token cache location from `.cache/token_cache.json` (project directory) back to `~/.m365_mcp_token_cache.json` (user home directory). Project directory may not always be user-writable, and user credentials should be stored in standard user-specific locations for proper permissions and security.

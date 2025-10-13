@@ -88,6 +88,11 @@ from .search import (
     search_unified,
 )
 
+# Server functions
+from .server import (
+    server_get_version,
+)
+
 # Common constants (using from email.py as they are consistent across files)
 from .email import FOLDERS
 
@@ -152,6 +157,8 @@ __all__ = [
     "search_events",
     "search_contacts",
     "search_unified",
+    # Server functions
+    "server_get_version",
     # Constants
     "FOLDERS",
 ]

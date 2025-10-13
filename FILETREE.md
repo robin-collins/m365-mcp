@@ -64,7 +64,7 @@ m365-mcp/
 │       │                                   #   - Validators for accounts, email, datetime, paths, Graph IDs, URLs
 │       │                                   #   - Security helpers: ensure_safe_path, validate_graph_url, validate_onedrive_path
 │       │                                   #   - Sanitised error messaging and logging utilities
-│       └── tools/                          # **NEW** Modular tool implementations (50 tools across 9 files)
+│       └── tools/                          # **NEW** Modular tool implementations (51 tools across 10 files)
 │           ├── __init__.py                  # **NEW** Tool package exports (imports all functions and mcp)
 │           ├── account.py                   # **NEW** Account management tools (3 tools)
 │           ├── calendar.py                  # **NEW** Calendar and event tools (6 tools)
@@ -167,6 +167,7 @@ m365-mcp/
   - `file.py` - OneDrive file operations (5 tools)
   - `folder.py` - OneDrive folder navigation (3 tools)
   - `search.py` - Search operations (5 tools)
+  - `server.py` - Server information (1 tool)
 
 ### Documentation
 

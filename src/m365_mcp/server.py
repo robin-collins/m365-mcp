@@ -5,6 +5,7 @@ import atexit
 import argparse
 from pathlib import Path
 from dotenv import load_dotenv
+from importlib.metadata import version, PackageNotFoundError
 
 # Logger will be initialized after argument parsing
 logger = None
@@ -38,8 +39,14 @@ def _setup_signal_handlers() -> None:
 
 def _log_startup_info() -> None:
     """Log server startup information."""
+    # Get version dynamically
+    try:
+        pkg_version = version("m365-mcp")
+    except PackageNotFoundError:
+        pkg_version = "dev"
+
     logger.info("=" * 80)
-    logger.info("M365 MCP Server Starting")
+    logger.info(f"M365 MCP Server Starting v{pkg_version}")
     logger.info("=" * 80)
     logger.info(f"PID: {os.getpid()}")
     logger.info(f"Python: {sys.version}")

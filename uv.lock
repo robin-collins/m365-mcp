@@ -557,7 +557,7 @@ wheels = [
 
 [[package]]
 name = "m365-mcp"
-version = "0.1.2"
+version = "0.1.5"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },

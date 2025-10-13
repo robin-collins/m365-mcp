@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Server Version Tool**: Added new `server_get_version` tool that returns the current version of the m365-mcp server. Useful for diagnostics, troubleshooting, and ensuring compatibility. Returns package name and semantic version string.
+- **Version in Startup Logs**: Server startup logs now display the version number (e.g., "M365 MCP Server Starting v0.1.4"). Version is dynamically retrieved from package metadata to match pyproject.toml.
 
 ### Fixed
 

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **stdio Mode JSON-RPC Corruption**: Fixed critical issue where print statements writing to stdout corrupted JSON-RPC protocol communication in stdio mode
+  - Removed debug print statement from `src/microsoft_mcp/__init__.py:2` that wrote to stdout
+  - Updated all authentication print statements in `src/microsoft_mcp/auth.py` to write to stderr instead of stdout (lines 78-80, 114-121)
+  - stdio transport requires exclusive stdout usage for JSON-RPC messages per MCP protocol specification
+  - All diagnostic and authentication messages now properly use stderr to maintain protocol integrity
+
 ### Added
 - Command-line argument `--env-file` to specify custom environment file path
   - Supports both `microsoft-mcp` server and `authenticate.py` script

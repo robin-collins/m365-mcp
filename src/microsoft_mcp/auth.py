@@ -1,4 +1,5 @@
 import os
+import sys
 import msal
 import pathlib as pl
 from typing import NamedTuple
@@ -75,7 +76,8 @@ def get_token(account_id: str | None = None) -> str:
             flow.get("verification_url", "https://microsoft.com/devicelogin"),
         )
         print(
-            f"\nTo authenticate:\n1. Visit {verification_uri}\n2. Enter code: {flow['user_code']}"
+            f"\nTo authenticate:\n1. Visit {verification_uri}\n2. Enter code: {flow['user_code']}",
+            file=sys.stderr
         )
         result = app.acquire_token_by_device_flow(flow)
 
@@ -109,13 +111,14 @@ def authenticate_new_account() -> Account | None:
             f"Failed to get device code: {flow.get('error_description', 'Unknown error')}"
         )
 
-    print("\nTo authenticate:")
+    print("\nTo authenticate:", file=sys.stderr)
     print(
-        f"1. Visit: {flow.get('verification_uri', flow.get('verification_url', 'https://microsoft.com/devicelogin'))}"
+        f"1. Visit: {flow.get('verification_uri', flow.get('verification_url', 'https://microsoft.com/devicelogin'))}",
+        file=sys.stderr
     )
-    print(f"2. Enter code: {flow['user_code']}")
-    print("3. Sign in with your Microsoft account")
-    print("\nWaiting for authentication...")
+    print(f"2. Enter code: {flow['user_code']}", file=sys.stderr)
+    print("3. Sign in with your Microsoft account", file=sys.stderr)
+    print("\nWaiting for authentication...", file=sys.stderr)
 
     result = app.acquire_token_by_device_flow(flow)
 

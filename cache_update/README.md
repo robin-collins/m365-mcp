@@ -68,6 +68,15 @@ This folder contains comprehensive documentation for the proposed SQLite-based c
 - Server integration and configuration
 - Timing examples and user experience
 
+### [09-encryption-security.md](./09-encryption-security.md) 🔒 NEW
+**Cache encryption and security implementation**
+- AES-256 encryption using SQLCipher
+- Automatic key management via system keyring
+- Zero-configuration encryption for users
+- GDPR/HIPAA compliance for data at rest
+- Migration from unencrypted cache
+- Performance impact analysis (<1ms overhead)
+
 ---
 
 ## 🚀 Quick Start
@@ -75,7 +84,8 @@ This folder contains comprehensive documentation for the proposed SQLite-based c
 1. **Read the overview** - Start with [01-overview.md](./01-overview.md) for the big picture
 2. **Review the schema** - Check [02-database-schema.md](./02-database-schema.md) for data structure
 3. **Understand the strategy** - Read [03-cache-strategy.md](./03-cache-strategy.md) for TTL policies
-4. **Check the plan** - Review [07-implementation-plan.md](./07-implementation-plan.md) for timeline
+4. **Review encryption** - Check [09-encryption-security.md](./09-encryption-security.md) for security compliance
+5. **Check the plan** - Review [07-implementation-plan.md](./07-implementation-plan.md) for timeline
 
 ---
 
@@ -89,18 +99,21 @@ This folder contains comprehensive documentation for the proposed SQLite-based c
 
 ### Architecture
 - **3-tier caching**: Fresh → Stale → Expired
+- **AES-256 encryption**: All cached data encrypted at rest (SQLCipher)
+- **Automatic key management**: System keyring integration (transparent to users)
 - **2GB soft limit**: Holds 20,000+ operations, auto-cleanup at 80%
 - **Selective compression**: 80% space savings on large entries (≥50KB)
 - **Smart invalidation**: Write operations auto-invalidate related caches
 - **Background refresh**: Return stale data while fetching fresh
 - **Progressive warming**: Pre-populate cache on startup (non-blocking)
-- **SQLite storage**: Single file, zero external dependencies
+- **SQLite storage**: Single encrypted file, zero external dependencies
 
 ### Implementation
-- **9 days total** across 4 phases
-- **9 new files** (~2,000 lines of code)
+- **14 days total** across 5 phases (includes encryption + cache warming)
+- **12 new files** (~2,500 lines of code)
 - **7 modified files** (tool integration)
 - **Zero breaking changes** - caching is optional
+- **GDPR/HIPAA compliant** - encryption by default
 
 ---
 
@@ -125,9 +138,10 @@ This folder contains comprehensive documentation for the proposed SQLite-based c
 | 06-task-queue.md | ✅ Complete | 2025-10-14 |
 | 07-implementation-plan.md | ✅ Complete | 2025-10-14 |
 | 08-cache-warming.md | ✅ Complete | 2025-10-14 |
+| 09-encryption-security.md | ✅ Complete | 2025-10-14 |
 
 ---
 
 **Generated**: 2025-10-14
-**Version**: 1.0
+**Version**: 1.1 (Updated for encryption and cache warming)
 **Status**: Awaiting Review & Approval

@@ -198,25 +198,77 @@ class BackgroundWorker:
 ```python
 # src/m365_mcp/tools/cache_tools.py
 
-@mcp.tool(name="task_get_status")
-def task_get_status(task_id: str) -> dict:
-    """Get background task status"""
+@mcp.tool(
+    name="cache_task_get_status",
+    annotations={
+        "title": "Get Cache Task Status",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False
+    },
+    meta={
+        "category": "cache",
+        "safety_level": "safe"
+    }
+)
+def cache_task_get_status(task_id: str) -> dict:
+    """📖 Get background task status (read-only, safe for unsupervised use)"""
     return cache_manager.get_task_status(task_id)
 
-@mcp.tool(name="task_list")
-def task_list(account_id: str, status: str | None = None, limit: int = 50) -> list:
-    """List background tasks"""
+@mcp.tool(
+    name="cache_task_list",
+    annotations={
+        "title": "List Cache Tasks",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False
+    },
+    meta={
+        "category": "cache",
+        "safety_level": "safe"
+    }
+)
+def cache_task_list(account_id: str, status: str | None = None, limit: int = 50) -> list:
+    """📖 List background tasks (read-only, safe for unsupervised use)"""
     return cache_manager.list_tasks(account_id, status, limit)
 
-@mcp.tool(name="cache_get_stats")
+@mcp.tool(
+    name="cache_get_stats",
+    annotations={
+        "title": "Get Cache Statistics",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False
+    },
+    meta={
+        "category": "cache",
+        "safety_level": "safe"
+    }
+)
 def cache_get_stats(account_id: str) -> dict:
-    """Get cache statistics"""
+    """📖 Get cache statistics (read-only, safe for unsupervised use)"""
     # Implement stats retrieval
     pass
 
-@mcp.tool(name="cache_invalidate")
-def cache_invalidate(account_id: str, resource_type: str, pattern: str = "*"):
-    """Manually invalidate cache entries"""
+@mcp.tool(
+    name="cache_invalidate",
+    annotations={
+        "title": "Invalidate Cache Entries",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": False
+    },
+    meta={
+        "category": "cache",
+        "safety_level": "moderate"
+    }
+)
+def cache_invalidate(account_id: str, resource_type: str, pattern: str = "*") -> dict:
+    """✏️ Manually invalidate cache entries (requires user confirmation recommended)"""
     cache_manager.invalidate_pattern(account_id, resource_type, pattern)
     return {"status": "invalidated", "pattern": pattern}
 ```

@@ -50,3 +50,4 @@ logs/
 
 # !reports/todo/PARAMETER_VALIDATION.md
 # !reports/todo/PARAMETER_VALIDATION_PLAN.md
+.gait/custom-merge-driver.sh

@@ -1,5 +1,7 @@
 # CacheManager Implementation
 
+**Note**: This document shows the basic CacheManager implementation. For the production version with AES-256 encryption support, see [09-encryption-security.md](./09-encryption-security.md) which includes SQLCipher integration, encryption key management, and automatic migration from unencrypted cache.
+
 ## Class Structure
 
 Location: `src/m365_mcp/cache.py`

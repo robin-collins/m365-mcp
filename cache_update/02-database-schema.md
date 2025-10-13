@@ -2,6 +2,8 @@
 
 ## SQLite Database: `~/.m365_mcp_cache.db`
 
+**Encryption**: This database uses SQLCipher for AES-256 encryption. All data is encrypted at rest with automatic key management via system keyring. See [09-encryption-security.md](./09-encryption-security.md) for details.
+
 ### Table: cache_entries
 
 Stores cached data with TTL management.

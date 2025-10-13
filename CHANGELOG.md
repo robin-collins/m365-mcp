@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Token Cache Location**: Reverted token cache location from `.cache/token_cache.json` (project directory) back to `~/.m365_mcp_token_cache.json` (user home directory). Project directory may not always be user-writable, and user credentials should be stored in standard user-specific locations for proper permissions and security.
 - **stdio Mode JSON-RPC Corruption**: Fixed critical issue where print statements writing to stdout corrupted JSON-RPC protocol communication in stdio mode
   - Removed debug print statement from `src/m365_mcp/__init__.py:2` that wrote to stdout
   - Updated all authentication print statements in `src/m365_mcp/auth.py` to write to stderr instead of stdout (lines 78-80, 114-121)
@@ -44,7 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ENV_FILE_USAGE.md` - Comprehensive guide for using `--env-file` argument with examples and use cases
 
 ### Changed
-- **Token Cache Location**: Moved token cache from `~/.microsoft_mcp_token_cache.json` (home directory) to `.cache/token_cache.json` (project directory) for better portability and project isolation. Cache directory is auto-created on first authentication.
 - **Environment Loading**: Refactored environment loading to occur before module imports in `server.py` and `authenticate.py`
 - **Auth Module**: Removed module-level `load_dotenv()` from `auth.py` (now loaded by caller before import)
 

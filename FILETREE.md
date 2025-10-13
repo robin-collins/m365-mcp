@@ -2,8 +2,6 @@
 
 ```text
 m365-mcp/
-├── .cache/                                 # **NEW** Cache directory (auto-created, not in repo)
-│   └── token_cache.json                   # MSAL token cache for authenticated accounts
 ├── .env                                    # Environment variables (create from .env.example)
 ├── .env.example                            # **NEW** Environment configuration template with comments
 ├── .env.stdio.example                      # **NEW** stdio mode configuration example
@@ -215,7 +213,7 @@ m365-mcp/
 ### Authentication
 
 - **`authenticate.py`** - CLI tool for user authentication
-- **`.cache/token_cache.json`** - Token cache stored in project directory (not in repo)
+- **`~/.m365_mcp_token_cache.json`** - MSAL token cache stored in user's home directory (not in repo)
 
 ## Tool Naming Convention
 

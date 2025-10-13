@@ -7,9 +7,8 @@ from typing import NamedTuple
 # Note: Environment variables should be loaded by the caller (server.py or authenticate.py)
 # before importing this module
 
-# Store token cache in project directory instead of home directory
-_PROJECT_ROOT = pl.Path(__file__).parent.parent.parent
-CACHE_FILE = _PROJECT_ROOT / ".cache" / "token_cache.json"
+# Store token cache in user's home directory for proper permissions and portability
+CACHE_FILE = pl.Path.home() / ".m365_mcp_token_cache.json"
 SCOPES = ["https://graph.microsoft.com/.default"]
 
 

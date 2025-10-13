@@ -2,12 +2,18 @@ import os
 import asyncio
 import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from dotenv import load_dotenv
 
-load_dotenv()
+# Support custom env file via TEST_ENV_FILE environment variable
+test_env_file = os.getenv("TEST_ENV_FILE", ".env")
+if Path(test_env_file).exists():
+    load_dotenv(dotenv_path=test_env_file)
+else:
+    load_dotenv()
 
 if not os.getenv("MICROSOFT_MCP_CLIENT_ID"):
     pytest.fail("MICROSOFT_MCP_CLIENT_ID environment variable is required")

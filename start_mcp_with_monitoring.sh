@@ -103,6 +103,7 @@ check_if_running() {
     return 1  # Not running
 }
 
+# shellcheck disable=SC2329  # Called from cleanup() signal handler
 stop_server() {
     log_info "Stopping MCP server..."
 
@@ -216,6 +217,7 @@ start_monitor() {
 }
 
 # === Signal Handlers ===
+# shellcheck disable=SC2329  # Invoked by trap on SIGTERM/SIGINT
 cleanup() {
     log_info ""
     log_info "Shutting down..."

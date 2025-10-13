@@ -2,11 +2,26 @@ import os
 import sys
 import signal
 import atexit
-from .tools import mcp
-from .logging_config import setup_logging, get_logger
+import argparse
+from pathlib import Path
+from dotenv import load_dotenv
 
-# Initialize logger (will be configured in main)
-logger = get_logger(__name__)
+# Logger will be initialized after argument parsing
+logger = None
+
+
+def _parse_arguments() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Microsoft MCP Server - Provide AI assistants with Microsoft 365 access"
+    )
+    parser.add_argument(
+        "--env-file",
+        type=Path,
+        default=Path(".env"),
+        help="Path to .env file (default: .env)",
+    )
+    return parser.parse_args()
 
 
 def _setup_signal_handlers() -> None:
@@ -40,7 +55,28 @@ def _log_startup_info() -> None:
 
 
 def main() -> None:
-    # Setup logging first thing
+    # Parse arguments first to get env file path
+    args = _parse_arguments()
+
+    # Load environment variables from custom path
+    env_file = args.env_file
+    if env_file.exists():
+        load_dotenv(dotenv_path=env_file)
+        print(f"Loaded environment from: {env_file}", file=sys.stderr)
+    else:
+        print(f"Warning: Environment file not found: {env_file}", file=sys.stderr)
+        print("Continuing with system environment variables...", file=sys.stderr)
+
+    # Import local modules after loading environment
+    # (This allows auth.py to access environment variables)
+    from .tools import mcp
+    from .logging_config import setup_logging, get_logger
+
+    # Initialize logger after loading environment
+    global logger
+    logger = get_logger(__name__)
+
+    # Setup logging
     log_level = os.getenv("MCP_LOG_LEVEL", "INFO")
     log_dir = os.getenv("MCP_LOG_DIR", "logs")
     setup_logging(log_dir=log_dir, log_level=log_level)

@@ -9,8 +9,9 @@ import logging
 import logging.handlers
 import os
 import sys
+import shutil
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 
@@ -19,7 +20,7 @@ class StructuredFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -72,6 +73,62 @@ class HumanReadableFormatter(logging.Formatter):
         return formatted
 
 
+def archive_existing_logs(log_dir: Path) -> dict[str, any]:
+    """
+    Archive existing log files to a timestamped folder.
+
+    This ensures each server run gets fresh log files while preserving
+    previous logs for historical reference.
+
+    Args:
+        log_dir: Directory containing log files to archive
+
+    Returns:
+        Dictionary with archival information:
+        - 'archived': bool - Whether logs were archived
+        - 'archive_dir': str or None - Archive directory path if archived
+        - 'file_count': int - Number of files archived
+    """
+    result = {
+        'archived': False,
+        'archive_dir': None,
+        'file_count': 0
+    }
+
+    if not log_dir.exists():
+        return result
+
+    # Check if any log files exist
+    log_files = list(log_dir.glob("*.log*")) + list(log_dir.glob("*.jsonl*"))
+    if not log_files:
+        return result
+
+    # Create archive directory with timestamp
+    archive_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    archive_dir = log_dir / "archives" / archive_timestamp
+    archive_dir.mkdir(parents=True, exist_ok=True)
+
+    # Move all log files to archive
+    archived_count = 0
+    for log_file in log_files:
+        try:
+            dest = archive_dir / log_file.name
+            shutil.move(str(log_file), str(dest))
+            archived_count += 1
+        except Exception as e:
+            # Print to stderr since logging isn't setup yet
+            print(
+                f"Warning: Failed to archive {log_file.name}: {e}",
+                file=sys.stderr
+            )
+
+    result['archived'] = archived_count > 0
+    result['archive_dir'] = str(archive_dir.relative_to(log_dir)) if archived_count > 0 else None
+    result['file_count'] = archived_count
+
+    return result
+
+
 def setup_logging(
     log_dir: str = "logs",
     log_level: str = "INFO",
@@ -80,6 +137,9 @@ def setup_logging(
 ) -> None:
     """
     Setup comprehensive logging for the MCP server.
+
+    Existing log files are automatically archived to a timestamped folder
+    under logs/archives/ on each startup, ensuring fresh logs for each run.
 
     Args:
         log_dir: Directory to store log files
@@ -90,6 +150,9 @@ def setup_logging(
     # Create log directory
     log_path = Path(log_dir)
     log_path.mkdir(exist_ok=True)
+
+    # Archive existing logs before starting new run
+    archive_info = archive_existing_logs(log_path)
 
     # Convert log level string to logging constant
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
@@ -151,6 +214,16 @@ def setup_logging(
 
     # Log the startup
     logger = logging.getLogger("microsoft_mcp.logging")
+
+    # Log archival status first
+    if archive_info['archived']:
+        logger.info(
+            f"Previous logs archived: {archive_info['file_count']} file(s) → "
+            f"{archive_info['archive_dir']}"
+        )
+    else:
+        logger.info("Fresh start: No previous logs found")
+
     logger.info(f"Logging initialized - Level: {log_level}")
     logger.info(f"Log directory: {log_path.absolute()}")
     logger.info(f"All logs: {all_logs_file.name}")

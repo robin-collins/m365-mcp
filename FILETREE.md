@@ -2,17 +2,22 @@
 
 ```text
 microsoft-mcp/
+├── .cache/                                 # **NEW** Cache directory (auto-created, not in repo)
+│   └── token_cache.json                   # MSAL token cache for authenticated accounts
 ├── .env                                    # Environment variables (create from .env.example)
 ├── .env.example                            # **NEW** Environment configuration template with comments
+├── .env.stdio.example                      # **NEW** stdio mode configuration example
+├── .env.http.example                       # **NEW** HTTP mode configuration example
 ├── .git/                                   # Git repository
 ├── .gitignore                              # Git ignore rules (includes .env)
 ├── .python-version                         # Python version specification
 ├── .venv/                                  # Virtual environment
-├── authenticate.py                         # Interactive authentication script
+├── authenticate.py                         # **MODIFIED** Interactive authentication script (supports --env-file)
 ├── CHANGELOG.md                            # **MODIFIED** Project changelog with monitoring system updates
 ├── CLAUDE.md                               # Claude Code guidance file
 ├── EMAIL_FOLDER_IMPLEMENTATION_SUMMARY.md  # **NEW** Email folder tools implementation
 ├── EMAIL_OUTPUT_FORMAT.md                  # **NEW** Email reading output format guide
+├── ENV_FILE_USAGE.md                       # **NEW** Guide for using --env-file argument
 ├── FOLDER_LISTING_TODO.md                  # **NEW** Implementation plan
 ├── FILETREE.md                             # **MODIFIED** This file - project structure with monitoring updates
 ├── MESSAGE_RULES_IMPLEMENTATION_SUMMARY.md # **NEW** Message rule tools implementation
@@ -39,7 +44,7 @@ microsoft-mcp/
 ├── src/
 │   └── microsoft_mcp/
 │       ├── __init__.py                     # Package initialization
-│       ├── auth.py                         # MSAL authentication & token management
+│       ├── auth.py                         # **MODIFIED** MSAL authentication & token management (env loading removed)
 │       ├── graph.py                        # Microsoft Graph API client wrapper
 │       ├── health_check.py                 # **NEW** Health check utility module with async/sync functions
 │       │                                   #   - check_health() - Single health check
@@ -52,6 +57,7 @@ microsoft-mcp/
 │       │                                   #   - Automatic log rotation (10 files × 10MB)
 │       ├── mcp_instance.py                 # **NEW** FastMCP instance (single source of truth)
 │       ├── server.py                       # **MODIFIED** FastMCP server with logging, monitoring, and graceful shutdown
+│       │                                   #   - Command-line argument support (--env-file)
 │       │                                   #   - Comprehensive structured logging
 │       │                                   #   - Signal handlers for graceful shutdown
 │       │                                   #   - Request/response timing and client IP tracking
@@ -131,7 +137,7 @@ microsoft-mcp/
 ├── tests/
 │   ├── __init__.py                         # Test package initialization
 │   ├── conftest.py                         # Shared pytest fixtures for Graph API mocking
-│   ├── test_integration.py                 # Integration tests for MCP tools
+│   ├── test_integration.py                 # **MODIFIED** Integration tests (supports TEST_ENV_FILE env var)
 │   └── tools/                              # Planned module-specific validation suites (future work)
 │       ├── test_email_validation.py        # Planned email tool validation tests
 │       ├── test_file_validation.py         # Planned file tool validation tests
@@ -209,7 +215,7 @@ microsoft-mcp/
 ### Authentication
 
 - **`authenticate.py`** - CLI tool for user authentication
-- **`~/.microsoft_mcp_token_cache.json`** - Token cache (not in repo)
+- **`.cache/token_cache.json`** - Token cache stored in project directory (not in repo)
 
 ## Tool Naming Convention
 

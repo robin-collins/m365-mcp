@@ -6,19 +6,44 @@ Run this script to sign in to one or more Microsoft accounts.
 
 import os
 import sys
+import argparse
 from pathlib import Path
 
 # Add src to path so we can import our modules
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from dotenv import load_dotenv
-from microsoft_mcp import auth
 
-# Load environment variables before anything else
-load_dotenv()
+
+def _parse_arguments() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Authenticate Microsoft accounts for Microsoft MCP"
+    )
+    parser.add_argument(
+        "--env-file",
+        type=Path,
+        default=Path(".env"),
+        help="Path to .env file (default: .env)",
+    )
+    return parser.parse_args()
 
 
 def main():
+    # Parse arguments first to get env file path
+    args = _parse_arguments()
+
+    # Load environment variables from custom path
+    env_file = args.env_file
+    if env_file.exists():
+        load_dotenv(dotenv_path=env_file)
+        print(f"Loaded environment from: {env_file}\n")
+    else:
+        print(f"Warning: Environment file not found: {env_file}")
+        print("Continuing with system environment variables...\n")
+
+    # Import auth module after loading environment
+    from microsoft_mcp import auth
     if not os.getenv("MICROSOFT_MCP_CLIENT_ID"):
         print("Error: MICROSOFT_MCP_CLIENT_ID environment variable is required")
         print("\nPlease set it in your .env file or environment:")

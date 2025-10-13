@@ -2,11 +2,13 @@ import os
 import msal
 import pathlib as pl
 from typing import NamedTuple
-from dotenv import load_dotenv
 
-load_dotenv()
+# Note: Environment variables should be loaded by the caller (server.py or authenticate.py)
+# before importing this module
 
-CACHE_FILE = pl.Path.home() / ".microsoft_mcp_token_cache.json"
+# Store token cache in project directory instead of home directory
+_PROJECT_ROOT = pl.Path(__file__).parent.parent.parent
+CACHE_FILE = _PROJECT_ROOT / ".cache" / "token_cache.json"
 SCOPES = ["https://graph.microsoft.com/.default"]
 
 

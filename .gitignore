@@ -19,6 +19,11 @@ wheels/
 .installed.cfg
 *.egg
 .env
+.env.stdio
+.env.http
+.env.*
+!.env.example
+!.env.*.example
 .venv
 env/
 venv/
@@ -29,9 +34,8 @@ ENV/
 .coverage
 htmlcov/
 .tox/
-.cache
+.cache/
 .ruff_cache/
-*.log
 .DS_Store
 .idea/
 .vscode/
@@ -40,8 +44,9 @@ htmlcov/
 *~
 .specstory/
 reference/
-reports/*
+reports/
 logs/
+*.log
 
 # !reports/todo/PARAMETER_VALIDATION.md
 # !reports/todo/PARAMETER_VALIDATION_PLAN.md

@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Command-line argument `--env-file` to specify custom environment file path
+  - Supports both `microsoft-mcp` server and `authenticate.py` script
+  - Default: `.env` (maintains backward compatibility)
+  - Usage: `microsoft-mcp --env-file .env.stdio` or `python authenticate.py --env-file .env.http`
+  - Facilitates testing different MCP server modes (stdio vs HTTP)
+  - Tests now support custom env file via `TEST_ENV_FILE` environment variable
+- Example environment files for different modes
+  - `.env.stdio.example` - Pre-configured for stdio mode (default)
+  - `.env.http.example` - Pre-configured for HTTP mode with bearer auth
+  - Both include usage instructions and security notes
+- `ENV_FILE_USAGE.md` - Comprehensive guide for using `--env-file` argument with examples and use cases
+
+### Changed
+- **Token Cache Location**: Moved token cache from `~/.microsoft_mcp_token_cache.json` (home directory) to `.cache/token_cache.json` (project directory) for better portability and project isolation. Cache directory is auto-created on first authentication.
+- **Environment Loading**: Refactored environment loading to occur before module imports in `server.py` and `authenticate.py`
+- **Auth Module**: Removed module-level `load_dotenv()` from `auth.py` (now loaded by caller before import)
+
+### Added
 
 - **Comprehensive Logging System**: Multi-tier structured logging for production debugging and monitoring
   - `src/microsoft_mcp/logging_config.py` - Centralized logging configuration with structured JSON and human-readable formats

@@ -35,6 +35,7 @@ GRAPH_ALLOWED_SUFFIXES = (
     ".1drv.com",
     ".onedrive.live.com",
     ".storage.live.com",
+    ".microsoftpersonalcontent.com",
 )
 
 WINDOWS_RESERVED_NAMES = {

@@ -275,7 +275,7 @@ def _file_get_impl(file_id: str, account_id: str, download_path: str) -> dict[st
     meta={"category": "file", "safety_level": "moderate"},
 )
 def file_get(file_id: str, account_id: str, download_path: str) -> dict[str, Any]:
-    """Download a OneDrive file to a validated local path.
+    """✏️ Download a OneDrive file to a local path (requires user confirmation recommended)
 
     The download URL is supplied by Microsoft Graph (never user input) and is
     validated against an allow-list of Microsoft domains before use. The file
@@ -316,7 +316,7 @@ def file_get(file_id: str, account_id: str, download_path: str) -> dict[str, Any
 def file_create(
     onedrive_path: str, local_file_path: str, account_id: str
 ) -> dict[str, Any]:
-    """Upload a validated local file to OneDrive.
+    """✏️ Upload a local file to OneDrive (requires user confirmation recommended)
 
     Args:
         onedrive_path: Destination path within OneDrive (must start with '/').
@@ -354,7 +354,7 @@ def file_create(
     meta={"category": "file", "safety_level": "moderate"},
 )
 def file_update(file_id: str, local_file_path: str, account_id: str) -> dict[str, Any]:
-    """Replace OneDrive file content from a validated local source.
+    """✏️ Replace OneDrive file content with local file (requires user confirmation recommended)
 
     Args:
         file_id: Target OneDrive file identifier to replace.
@@ -398,7 +398,10 @@ def file_update(file_id: str, local_file_path: str, account_id: str) -> dict[str
     },
 )
 def file_delete(file_id: str, account_id: str, confirm: bool = False) -> dict[str, str]:
-    """Delete a OneDrive file or folder after explicit confirmation."""
+    """🔴 Delete a OneDrive file or folder permanently (always require user confirmation)
+
+    WARNING: This action permanently deletes the file or folder and cannot be undone.
+    """
 
     require_confirm(confirm, "delete OneDrive item")
     account = validate_account_id(account_id)

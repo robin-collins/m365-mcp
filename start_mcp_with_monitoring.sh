@@ -28,8 +28,33 @@
 
 set -euo pipefail
 
-# === Configuration ===
+# === Load Environment Variables ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Load .env file if it exists (.env takes precedence over shell environment)
+if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+    log_info() { echo -e "\033[0;32m[INFO]\033[0m $*"; }
+    log_info "Loading environment variables from .env file..."
+
+    # Read .env file, ignoring comments and empty lines
+    while IFS='=' read -r key value; do
+        # Skip comments and empty lines
+        [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
+
+        # Remove leading/trailing whitespace and quotes from value
+        value="${value#"${value%%[![:space:]]*}"}"  # Remove leading whitespace
+        value="${value%"${value##*[![:space:]]}"}"  # Remove trailing whitespace
+        value="${value#\"}"  # Remove leading quote
+        value="${value%\"}"  # Remove trailing quote
+        value="${value#\'}"  # Remove leading single quote
+        value="${value%\'}"  # Remove trailing single quote
+
+        # Export variable (.env takes precedence)
+        export "$key=$value"
+    done < <(grep -v '^[[:space:]]*$' "${SCRIPT_DIR}/.env" | grep -v '^[[:space:]]*#')
+fi
+
+# === Configuration ===
 LOG_DIR="${MCP_LOG_DIR:-${SCRIPT_DIR}/logs}"
 REPORT_DIR="${MCP_REPORT_DIR:-${SCRIPT_DIR}/reports}"
 PID_FILE="${LOG_DIR}/mcp_server.pid"

@@ -190,12 +190,17 @@ def folder_get_tree(
             return []
 
         # Get folders at this level
-        folders = _list_folders_impl(
-            account_id=account_id,
-            path=item_path if not item_id else None,
-            folder_id=item_id,
-            limit=None,
-        )
+        try:
+            folders = _list_folders_impl(
+                account_id=account_id,
+                path=item_path if not item_id else None,
+                folder_id=item_id,
+                limit=None,
+            )
+        except Exception as e:
+            # Log error but don't fail entire tree operation
+            # Return empty list to stop recursion on this branch
+            return []
 
         result = []
         for folder in folders:
@@ -209,11 +214,12 @@ def folder_get_tree(
                 "children": [],
             }
 
-            # Recursively get children if this folder has subfolders
-            if folder.get("childCount", 0) > 0:
-                folder_node["children"] = _build_drive_folder_tree(
-                    folder["id"], None, current_depth + 1
-                )
+            # Always recurse to check for subfolders
+            # The API call will return empty list if no subfolders exist
+            # This is more efficient than checking childCount which includes files
+            folder_node["children"] = _build_drive_folder_tree(
+                folder["id"], None, current_depth + 1
+            )
 
             result.append(folder_node)
 

@@ -151,7 +151,7 @@ def main() -> None:
 
         try:
             if auth_method == "bearer":
-                _run_http_with_bearer_auth(host, port, path)
+                _run_http_with_bearer_auth(mcp, host, port, path)
             elif auth_method == "oauth":
                 logger.info("Using FastMCP built-in OAuth authentication")
                 # Use FastMCP built-in OAuth (requires FastMCP 2.0+)
@@ -180,7 +180,7 @@ def main() -> None:
         sys.exit(1)
 
 
-def _run_http_with_bearer_auth(host: str, port: int, path: str) -> None:
+def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
     """Run Streamable HTTP server with bearer token authentication"""
     from fastapi import FastAPI, Request
     import uvicorn

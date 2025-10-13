@@ -2,13 +2,13 @@
 
 ## Overview
 
-Microsoft MCP Server follows a modular architecture with clear separation of concerns. The project is organized into logical layers that support easy maintenance, testing, and extension.
+M365 MCP Server follows a modular architecture with clear separation of concerns. The project is organized into logical layers that support easy maintenance, testing, and extension.
 
 ## Core Architecture
 
 ```
-microsoft-mcp/
-├── src/microsoft_mcp/          # Main package
+m365-mcp/
+├── src/m365_mcp/          # Main package
 │   ├── __init__.py            # Package initialization
 │   ├── auth.py                # Authentication & token management
 │   ├── graph.py               # Microsoft Graph API client
@@ -101,14 +101,14 @@ uv.lock                        # Dependency lock file
 ## File Organization Guidelines
 
 ### Adding New Tools
-1. **Location** - Add to `src/microsoft_mcp/tools.py`
+1. **Location** - Add to `src/m365_mcp/tools.py`
 2. **Pattern** - Use `@mcp.tool` decorator
 3. **Signature** - Include `account_id: str` as first parameter
 4. **Documentation** - Comprehensive docstring with examples
 5. **Error Handling** - Proper exception raising and handling
 
 ### Adding New Modules
-1. **Location** - Create in `src/microsoft_mcp/`
+1. **Location** - Create in `src/m365_mcp/`
 2. **Integration** - Import in `__init__.py`
 3. **Dependencies** - Minimize cross-module dependencies
 4. **Testing** - Include corresponding test file

@@ -3,7 +3,7 @@
 ################################################################################
 # MCP Server Monitor and Diagnostic Collection Script
 #
-# This script monitors the Microsoft MCP server and collects comprehensive
+# This script monitors the M365 MCP server and collects comprehensive
 # diagnostic information. On failure, it kills the server and generates
 # a detailed diagnostic report (NO AUTO-RESTART).
 #
@@ -149,7 +149,7 @@ check_health() {
 # === Process Management Functions ===
 get_server_pids() {
     # Find all MCP server processes
-    pgrep -f "microsoft-mcp|microsoft_mcp" || true
+    pgrep -f "m365-mcp|m365_mcp" || true
 }
 
 kill_server_processes() {

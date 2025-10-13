@@ -1,4 +1,4 @@
-# Microsoft MCP
+# M365 MCP
 
 Powerful MCP server for Microsoft Graph API - a complete AI assistant toolkit for Outlook, Calendar, OneDrive, and Contacts.
 
@@ -20,24 +20,24 @@ Powerful MCP server for Microsoft Graph API - a complete AI assistant toolkit fo
 ```bash
 # 1. Install
 git clone https://github.com/robin-collins/m365-mcp.git
-cd microsoft-mcp && uv sync
+cd m365-mcp && uv sync
 
 # 2. Configure (use .env.example template)
 cp .env.example .env
-# Edit .env with your MICROSOFT_MCP_CLIENT_ID
+# Edit .env with your M365_MCP_CLIENT_ID
 
 # 3. Authenticate
 uv run authenticate.py
 
 # 4. Run
-uv run microsoft-mcp
+uv run m365-mcp
 ```
 
 ### Claude Desktop
 
 ```bash
-# Add Microsoft MCP server (replace with your Azure app ID)
-claude mcp add microsoft-mcp -e MICROSOFT_MCP_CLIENT_ID=your-app-id-here -- uvx --from git+https://github.com/robin-collins/m365-mcp.git microsoft-mcp
+# Add M365 MCP server (replace with your Azure app ID)
+claude mcp add m365-mcp -e M365_MCP_CLIENT_ID=your-app-id-here -- uvx --from git+https://github.com/robin-collins/m365-mcp.git m365-mcp
 
 # Start Claude Desktop
 claude
@@ -118,7 +118,7 @@ claude
 ### 1. Azure App Registration
 
 1. Go to [Azure Portal](https://portal.azure.com) → Microsoft Entra ID → App registrations
-2. New registration → Name: `microsoft-mcp`
+2. New registration → Name: `m365-mcp`
 3. Supported account types: Personal + Work/School
 4. Authentication → Allow public client flows: Yes
 5. API permissions → Add these delegated permissions:
@@ -134,7 +134,7 @@ claude
 
 ```bash
 git clone https://github.com/robin-collins/m365-mcp.git
-cd microsoft-mcp
+cd m365-mcp
 uv sync
 ```
 
@@ -142,7 +142,7 @@ uv sync
 
 ```bash
 # Set your Azure app ID
-export MICROSOFT_MCP_CLIENT_ID="your-app-id-here"
+export M365_MCP_CLIENT_ID="your-app-id-here"
 
 # Run authentication script
 uv run authenticate.py
@@ -162,9 +162,9 @@ Add to your Claude Desktop configuration:
   "mcpServers": {
     "microsoft": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/robin-collins/m365-mcp.git", "microsoft-mcp"],
+      "args": ["--from", "git+https://github.com/robin-collins/m365-mcp.git", "m365-mcp"],
       "env": {
-        "MICROSOFT_MCP_CLIENT_ID": "your-app-id-here"
+        "M365_MCP_CLIENT_ID": "your-app-id-here"
       }
     }
   }
@@ -178,9 +178,9 @@ Or for local development:
   "mcpServers": {
     "microsoft": {
       "command": "uv",
-      "args": ["--directory", "/path/to/microsoft-mcp", "run", "microsoft-mcp"],
+      "args": ["--directory", "/path/to/m365-mcp", "run", "m365-mcp"],
       "env": {
-        "MICROSOFT_MCP_CLIENT_ID": "your-app-id-here"
+        "M365_MCP_CLIENT_ID": "your-app-id-here"
       }
     }
   }
@@ -189,7 +189,7 @@ Or for local development:
 
 ## Transport Modes
 
-Microsoft MCP supports two transport modes for different use cases:
+M365 MCP supports two transport modes for different use cases:
 
 ### stdio (Default) - For Desktop Apps
 
@@ -199,8 +199,8 @@ Microsoft MCP supports two transport modes for different use cases:
 
 ```bash
 # Default mode - no configuration needed
-export MICROSOFT_MCP_CLIENT_ID="your-app-id"
-uv run microsoft-mcp
+export M365_MCP_CLIENT_ID="your-app-id"
+uv run m365-mcp
 ```
 
 ### Streamable HTTP - For Web/API Access
@@ -216,14 +216,14 @@ uv run microsoft-mcp
 export MCP_AUTH_TOKEN=$(openssl rand -hex 32)
 
 # Configure Streamable HTTP with bearer authentication
-export MICROSOFT_MCP_CLIENT_ID="your-app-id"
+export M365_MCP_CLIENT_ID="your-app-id"
 export MCP_TRANSPORT="http"
 export MCP_AUTH_METHOD="bearer"
 export MCP_HOST="127.0.0.1"
 export MCP_PORT="8000"
 
 # Start server
-uv run microsoft-mcp
+uv run m365-mcp
 ```
 
 **Client connection:**
@@ -313,7 +313,7 @@ create_event(
 
 ## Security Notes
 
-- Tokens are cached locally in `~/.microsoft_mcp_token_cache.json`
+- Tokens are cached locally in `~/.m365_mcp_token_cache.json`
 - Use app-specific passwords if you have 2FA enabled
 - Only request permissions your app actually needs
 - Consider using a dedicated app registration for production
@@ -321,9 +321,9 @@ create_event(
 ## Troubleshooting
 
 - **Authentication fails**: Check your CLIENT_ID is correct
-- **"Need admin approval"**: Use `MICROSOFT_MCP_TENANT_ID=consumers` for personal accounts
+- **"Need admin approval"**: Use `M365_MCP_TENANT_ID=consumers` for personal accounts
 - **Missing permissions**: Ensure all required API permissions are granted in Azure
-- **Token errors**: Delete `~/.microsoft_mcp_token_cache.json` and re-authenticate
+- **Token errors**: Delete `~/.m365_mcp_token_cache.json` and re-authenticate
 
 ## License
 

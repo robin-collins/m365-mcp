@@ -1,6 +1,6 @@
 # MCP Server Monitoring and Diagnostics
 
-This document describes the comprehensive monitoring and diagnostic collection system for the Microsoft MCP server, designed to detect failures and collect detailed diagnostic information for troubleshooting.
+This document describes the comprehensive monitoring and diagnostic collection system for the M365 MCP server, designed to detect failures and collect detailed diagnostic information for troubleshooting.
 
 ## Overview
 
@@ -18,7 +18,7 @@ The monitoring system provides:
 
 ```bash
 # Set required environment variables
-export MICROSOFT_MCP_CLIENT_ID="your-azure-client-id"
+export M365_MCP_CLIENT_ID="your-azure-client-id"
 export MCP_AUTH_TOKEN="your-secure-token"  # Optional, will be generated if not set
 
 # Start server with monitoring
@@ -35,20 +35,20 @@ This will:
 
 ```bash
 # Single health check
-uv run python -m microsoft_mcp.health_check http://localhost:8000/health
+uv run python -m m365_mcp.health_check http://localhost:8000/health
 
 # Continuous monitoring
-uv run python -m microsoft_mcp.health_check --continuous --interval 10 http://localhost:8000/health
+uv run python -m m365_mcp.health_check --continuous --interval 10 http://localhost:8000/health
 
 # With authentication
-uv run python -m microsoft_mcp.health_check --auth-token "your-token" http://localhost:8000/health
+uv run python -m m365_mcp.health_check --auth-token "your-token" http://localhost:8000/health
 ```
 
 ### 3. Manual Server Start (with logging only)
 
 ```bash
 # Set environment variables
-export MICROSOFT_MCP_CLIENT_ID="your-client-id"
+export M365_MCP_CLIENT_ID="your-client-id"
 export MCP_TRANSPORT="http"
 export MCP_HOST="127.0.0.1"
 export MCP_PORT="8000"
@@ -57,7 +57,7 @@ export MCP_AUTH_TOKEN="your-token"
 export MCP_LOG_LEVEL="INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 # Start server
-uv run microsoft-mcp
+uv run m365-mcp
 ```
 
 ## Metrics Collection
@@ -116,7 +116,7 @@ Structured logs in `mcp_server_all.jsonl` use this format:
 {
   "timestamp": "2025-10-10T12:34:56.789",
   "level": "INFO",
-  "logger": "microsoft_mcp.server",
+  "logger": "m365_mcp.server",
   "message": "Request processed",
   "module": "server",
   "function": "auth_middleware",
@@ -248,7 +248,7 @@ The report includes:
 
 1. Check environment variables:
    ```bash
-   echo $MICROSOFT_MCP_CLIENT_ID
+   echo $M365_MCP_CLIENT_ID
    echo $MCP_AUTH_TOKEN
    ```
 
@@ -277,19 +277,19 @@ The report includes:
 
 3. Check process status:
    ```bash
-   ps aux | grep microsoft-mcp
+   ps aux | grep m365-mcp
    ```
 
 4. Force cleanup:
    ```bash
-   pkill -9 -f microsoft-mcp
+   pkill -9 -f m365-mcp
    ```
 
 ### High Memory Usage
 
 1. Check process memory:
    ```bash
-   ps aux | grep microsoft-mcp
+   ps aux | grep m365-mcp
    ```
 
 2. Check for memory leaks in logs:
@@ -405,7 +405,7 @@ find logs/ -name "*.log.*" -o -name "*.jsonl.*" | \
 Create custom health check scripts using the Python module:
 
 ```python
-from microsoft_mcp.health_check import check_health_async
+from m365_mcp.health_check import check_health_async
 import asyncio
 
 async def main():

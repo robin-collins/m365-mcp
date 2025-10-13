@@ -15,8 +15,8 @@ if Path(test_env_file).exists():
 else:
     load_dotenv()
 
-if not os.getenv("MICROSOFT_MCP_CLIENT_ID"):
-    pytest.fail("MICROSOFT_MCP_CLIENT_ID environment variable is required")
+if not os.getenv("M365_MCP_CLIENT_ID"):
+    pytest.fail("M365_MCP_CLIENT_ID environment variable is required")
 
 
 def parse_result(result, tool_name=None):
@@ -44,10 +44,10 @@ async def get_session():
     """Get MCP session"""
     server_params = StdioServerParameters(
         command="uv",
-        args=["run", "microsoft-mcp"],
+        args=["run", "m365-mcp"],
         env={
-            "MICROSOFT_MCP_CLIENT_ID": os.getenv("MICROSOFT_MCP_CLIENT_ID", ""),
-            "MICROSOFT_MCP_TENANT_ID": os.getenv("MICROSOFT_MCP_TENANT_ID", "common"),
+            "M365_MCP_CLIENT_ID": os.getenv("M365_MCP_CLIENT_ID", ""),
+            "M365_MCP_TENANT_ID": os.getenv("M365_MCP_TENANT_ID", "common"),
         },
     )
 

@@ -31,11 +31,11 @@ def _write_cache(content: str) -> None:
 
 
 def get_app() -> msal.PublicClientApplication:
-    client_id = os.getenv("MICROSOFT_MCP_CLIENT_ID")
+    client_id = os.getenv("M365_MCP_CLIENT_ID")
     if not client_id:
-        raise ValueError("MICROSOFT_MCP_CLIENT_ID environment variable is required")
+        raise ValueError("M365_MCP_CLIENT_ID environment variable is required")
 
-    tenant_id = os.getenv("MICROSOFT_MCP_TENANT_ID", "common")
+    tenant_id = os.getenv("M365_MCP_TENANT_ID", "common")
     authority = f"https://login.microsoftonline.com/{tenant_id}"
 
     cache = msal.SerializableTokenCache()

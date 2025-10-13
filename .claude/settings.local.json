@@ -12,7 +12,9 @@
       "Bash(env)",
       "Bash(timeout:*)",
       "Bash(pgrep:*)",
-      "Bash(bash:*)"
+      "Bash(bash:*)",
+      "Bash(ast-grep --lang Python -p 'print($$$)' src/)",
+      "Bash(cat .git/config)"
     ],
     "deny": [],
     "ask": []

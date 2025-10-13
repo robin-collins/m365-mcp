@@ -11,24 +11,24 @@ Copy the example files and customize them:
 ```bash
 # For stdio mode (default)
 cp .env.stdio.example .env.stdio
-# Edit .env.stdio and set your MICROSOFT_MCP_CLIENT_ID
+# Edit .env.stdio and set your M365_MCP_CLIENT_ID
 
 # For HTTP mode
 cp .env.http.example .env.http
-# Edit .env.http and set your MICROSOFT_MCP_CLIENT_ID and MCP_AUTH_TOKEN
+# Edit .env.http and set your M365_MCP_CLIENT_ID and MCP_AUTH_TOKEN
 ```
 
 ### 2. Run with Specific Environment File
 
 ```bash
 # Run with stdio mode configuration
-microsoft-mcp --env-file .env.stdio
+m365-mcp --env-file .env.stdio
 
 # Run with HTTP mode configuration
-microsoft-mcp --env-file .env.http
+m365-mcp --env-file .env.http
 
 # Or use relative/absolute paths
-microsoft-mcp --env-file /path/to/custom.env
+m365-mcp --env-file /path/to/custom.env
 ```
 
 ### 3. Authentication with Custom Environment
@@ -63,10 +63,10 @@ Quickly switch between stdio and HTTP modes without editing your main `.env` fil
 
 ```bash
 # Test stdio mode
-microsoft-mcp --env-file .env.stdio
+m365-mcp --env-file .env.stdio
 
 # Test HTTP mode
-microsoft-mcp --env-file .env.http
+m365-mcp --env-file .env.http
 ```
 
 ### Development vs Production Configurations
@@ -76,15 +76,15 @@ Create separate environment files for different environments:
 ```bash
 # Development
 .env.dev
-microsoft-mcp --env-file .env.dev
+m365-mcp --env-file .env.dev
 
 # Staging
 .env.staging
-microsoft-mcp --env-file .env.staging
+m365-mcp --env-file .env.staging
 
 # Production
 .env.prod
-microsoft-mcp --env-file .env.prod
+m365-mcp --env-file .env.prod
 ```
 
 ### Multi-Account Testing
@@ -94,11 +94,11 @@ Test with different Microsoft accounts by creating account-specific env files:
 ```bash
 # Work account
 .env.work
-microsoft-mcp --env-file .env.work
+m365-mcp --env-file .env.work
 
 # Personal account
 .env.personal
-microsoft-mcp --env-file .env.personal
+m365-mcp --env-file .env.personal
 ```
 
 ### CI/CD Integration
@@ -115,7 +115,7 @@ TEST_ENV_FILE=.env.ci uv run pytest tests/ -v
 ### stdio Mode (.env.stdio)
 
 ```bash
-MICROSOFT_MCP_CLIENT_ID=your-client-id
+M365_MCP_CLIENT_ID=your-client-id
 MCP_TRANSPORT=stdio
 MCP_LOG_LEVEL=INFO
 ```
@@ -123,7 +123,7 @@ MCP_LOG_LEVEL=INFO
 ### HTTP Mode with Bearer Auth (.env.http)
 
 ```bash
-MICROSOFT_MCP_CLIENT_ID=your-client-id
+M365_MCP_CLIENT_ID=your-client-id
 MCP_TRANSPORT=http
 MCP_HOST=127.0.0.1
 MCP_PORT=8000
@@ -135,7 +135,7 @@ MCP_LOG_LEVEL=DEBUG
 ### HTTP Mode on Custom Port (.env.http.custom)
 
 ```bash
-MICROSOFT_MCP_CLIENT_ID=your-client-id
+M365_MCP_CLIENT_ID=your-client-id
 MCP_TRANSPORT=http
 MCP_HOST=0.0.0.0
 MCP_PORT=9000

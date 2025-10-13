@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Get Microsoft MCP server up and running in 5 minutes.
+Get M365 MCP server up and running in 5 minutes.
 
 ---
 
@@ -18,7 +18,7 @@ Get Microsoft MCP server up and running in 5 minutes.
 
 ```bash
 git clone https://github.com/robin-collins/m365-mcp.git
-cd microsoft-mcp
+cd m365-mcp
 ```
 
 ### 2. Install Dependencies
@@ -42,7 +42,7 @@ This installs:
 
 ```bash
 # Your Azure app registration client ID
-export MICROSOFT_MCP_CLIENT_ID="abc123-def456-ghi789"
+export M365_MCP_CLIENT_ID="abc123-def456-ghi789"
 ```
 
 ### Optional Environment Variables (Streamable HTTP Mode)
@@ -91,7 +91,7 @@ uv run authenticate.py
 3. Sign in with your Microsoft account
 4. Grant permissions
 
-**Authentication is saved** to `~/.microsoft_mcp_token_cache.json` and persists across sessions.
+**Authentication is saved** to `~/.m365_mcp_token_cache.json` and persists across sessions.
 
 ### Multi-Account Support
 
@@ -113,8 +113,8 @@ uv run authenticate.py
 **Use for:** Claude Desktop, local MCP clients
 
 ```bash
-export MICROSOFT_MCP_CLIENT_ID="your-app-id"
-uv run microsoft-mcp
+export M365_MCP_CLIENT_ID="your-app-id"
+uv run m365-mcp
 ```
 
 **No additional setup required** - stdio is secure by default through process isolation.
@@ -133,7 +133,7 @@ echo "Save this token: $MCP_AUTH_TOKEN"
 #### Step 2: Configure Streamable HTTP Transport
 
 ```bash
-export MICROSOFT_MCP_CLIENT_ID="your-app-id"
+export M365_MCP_CLIENT_ID="your-app-id"
 export MCP_TRANSPORT="http"
 export MCP_AUTH_METHOD="bearer"
 export MCP_HOST="127.0.0.1"
@@ -143,7 +143,7 @@ export MCP_PORT="8000"
 #### Step 3: Start Server
 
 ```bash
-uv run microsoft-mcp
+uv run m365-mcp
 ```
 
 **Expected output:**
@@ -181,9 +181,9 @@ curl http://localhost:8000/health
   "mcpServers": {
     "microsoft": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/robin-collins/m365-mcp.git", "microsoft-mcp"],
+      "args": ["--from", "git+https://github.com/robin-collins/m365-mcp.git", "m365-mcp"],
       "env": {
-        "MICROSOFT_MCP_CLIENT_ID": "your-app-id-here"
+        "M365_MCP_CLIENT_ID": "your-app-id-here"
       }
     }
   }
@@ -197,16 +197,16 @@ curl http://localhost:8000/health
   "mcpServers": {
     "microsoft": {
       "command": "uv",
-      "args": ["--directory", "/path/to/microsoft-mcp", "run", "microsoft-mcp"],
+      "args": ["--directory", "/path/to/m365-mcp", "run", "m365-mcp"],
       "env": {
-        "MICROSOFT_MCP_CLIENT_ID": "your-app-id-here"
+        "M365_MCP_CLIENT_ID": "your-app-id-here"
       }
     }
   }
 }
 ```
 
-**Replace `/path/to/microsoft-mcp`** with your actual project path.
+**Replace `/path/to/m365-mcp`** with your actual project path.
 
 ### Restart Claude Desktop
 
@@ -264,13 +264,13 @@ files = await session.call_tool("list_files", {
 
 ## Common Issues & Solutions
 
-### Issue 1: "MICROSOFT_MCP_CLIENT_ID environment variable is required"
+### Issue 1: "M365_MCP_CLIENT_ID environment variable is required"
 
 **Cause:** Environment variable not set
 
 **Solution:**
 ```bash
-export MICROSOFT_MCP_CLIENT_ID="your-app-id"
+export M365_MCP_CLIENT_ID="your-app-id"
 ```
 
 Or add to `.env` file in project root.
@@ -313,7 +313,7 @@ export MCP_ALLOW_INSECURE="true"
 **Solution:**
 ```bash
 # Remove token cache
-rm ~/.microsoft_mcp_token_cache.json
+rm ~/.m365_mcp_token_cache.json
 
 # Re-authenticate
 uv run authenticate.py
@@ -341,7 +341,7 @@ uv run authenticate.py
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `MICROSOFT_MCP_CLIENT_ID` | Azure app client ID | `abc123-def456-...` |
+| `M365_MCP_CLIENT_ID` | Azure app client ID | `abc123-def456-...` |
 
 ### Optional (Transport)
 
@@ -363,7 +363,7 @@ uv run authenticate.py
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MICROSOFT_MCP_TENANT_ID` | `common` | Azure tenant ID |
+| `M365_MCP_TENANT_ID` | `common` | Azure tenant ID |
 
 ---
 
@@ -371,7 +371,7 @@ uv run authenticate.py
 
 ### Token Cache
 
-**Location:** `~/.microsoft_mcp_token_cache.json`
+**Location:** `~/.m365_mcp_token_cache.json`
 
 Contains MSAL token cache for authenticated accounts. Delete to force re-authentication.
 
@@ -446,17 +446,17 @@ The server provides 50 MCP tools across 5 categories:
 ```bash
 # 1. Clone and install
 git clone https://github.com/robin-collins/m365-mcp.git
-cd microsoft-mcp
+cd m365-mcp
 uv sync
 
 # 2. Set environment
-export MICROSOFT_MCP_CLIENT_ID="your-app-id"
+export M365_MCP_CLIENT_ID="your-app-id"
 
 # 3. Authenticate
 uv run authenticate.py
 
 # 4. Run server
-uv run microsoft-mcp
+uv run m365-mcp
 ```
 
 ### Complete Setup (Streamable HTTP mode)
@@ -464,12 +464,12 @@ uv run microsoft-mcp
 ```bash
 # 1. Clone and install
 git clone https://github.com/robin-collins/m365-mcp.git
-cd microsoft-mcp
+cd m365-mcp
 uv sync
 
 # 2. Create .env file
 cat > .env << EOF
-MICROSOFT_MCP_CLIENT_ID=your-app-id-here
+M365_MCP_CLIENT_ID=your-app-id-here
 MCP_TRANSPORT=http
 MCP_AUTH_METHOD=bearer
 MCP_AUTH_TOKEN=$(openssl rand -hex 32)
@@ -481,7 +481,7 @@ EOF
 uv run authenticate.py
 
 # 4. Run server
-uv run microsoft-mcp
+uv run m365-mcp
 
 # 5. Test health check
 curl http://localhost:8000/health
@@ -504,9 +504,9 @@ cat > "$CONFIG_FILE" << 'EOF'
   "mcpServers": {
     "microsoft": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/robin-collins/m365-mcp.git", "microsoft-mcp"],
+      "args": ["--from", "git+https://github.com/robin-collins/m365-mcp.git", "m365-mcp"],
       "env": {
-        "MICROSOFT_MCP_CLIENT_ID": "your-app-id-here"
+        "M365_MCP_CLIENT_ID": "your-app-id-here"
       }
     }
   }
@@ -545,7 +545,7 @@ uvx ruff check --fix .
 ```bash
 # Increase logging verbosity
 export LOG_LEVEL=DEBUG
-uv run microsoft-mcp
+uv run m365-mcp
 ```
 
 ---
@@ -562,7 +562,7 @@ uv run microsoft-mcp
 ### Troubleshooting
 
 1. Check environment variables: `env | grep MCP`
-2. Check token cache: `ls -lh ~/.microsoft_mcp_token_cache.json`
+2. Check token cache: `ls -lh ~/.m365_mcp_token_cache.json`
 3. Check Claude Desktop logs (see Issue 5 above)
 4. Verify Azure app permissions (see Azure Setup below)
 
@@ -582,7 +582,7 @@ If you don't have an Azure app registration yet:
 1. Go to [Azure Portal](https://portal.azure.com)
 2. Navigate to **Microsoft Entra ID** → **App registrations**
 3. Click **New registration**
-4. Name: `microsoft-mcp`
+4. Name: `m365-mcp`
 5. Supported account types: **Personal + Work/School**
 6. Click **Register**
 
@@ -613,11 +613,11 @@ If you don't have an Azure app registration yet:
 
 1. Go to **Overview**
 2. Copy **Application (client) ID**
-3. Use this as `MICROSOFT_MCP_CLIENT_ID`
+3. Use this as `M365_MCP_CLIENT_ID`
 
 **Example:**
 ```bash
-export MICROSOFT_MCP_CLIENT_ID="12345678-1234-1234-1234-123456789abc"
+export M365_MCP_CLIENT_ID="12345678-1234-1234-1234-123456789abc"
 ```
 
 ---
@@ -629,22 +629,22 @@ export MICROSOFT_MCP_CLIENT_ID="12345678-1234-1234-1234-123456789abc"
 ```bash
 # 1. Install
 git clone https://github.com/robin-collins/m365-mcp.git
-cd microsoft-mcp && uv sync
+cd m365-mcp && uv sync
 
 # 2. Configure
-export MICROSOFT_MCP_CLIENT_ID="your-app-id"
+export M365_MCP_CLIENT_ID="your-app-id"
 
 # 3. Authenticate
 uv run authenticate.py
 
 # 4. Run (stdio mode)
-uv run microsoft-mcp
+uv run m365-mcp
 
 # Or for Streamable HTTP mode with auth:
 export MCP_AUTH_TOKEN=$(openssl rand -hex 32)
 export MCP_TRANSPORT=http
 export MCP_AUTH_METHOD=bearer
-uv run microsoft-mcp
+uv run m365-mcp
 ```
 
 **That's it!** 🎉
@@ -655,4 +655,4 @@ For Claude Desktop, add the server to your config file and restart Claude.
 
 **Document Version:** 1.0
 **Last Updated:** 2025-10-05
-**Maintainer:** microsoft-mcp contributors
+**Maintainer:** m365-mcp contributors

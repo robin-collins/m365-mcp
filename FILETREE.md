@@ -1,7 +1,7 @@
 # File Tree
 
 ```text
-microsoft-mcp/
+m365-mcp/
 ├── .cache/                                 # **NEW** Cache directory (auto-created, not in repo)
 │   └── token_cache.json                   # MSAL token cache for authenticated accounts
 ├── .env                                    # Environment variables (create from .env.example)
@@ -42,14 +42,14 @@ microsoft-mcp/
 ├── reports/                                # **NEW** Error report directory (auto-created)
 │   └── error_report_YYYYMMDD_HHMMSS.txt   # Auto-generated error reports
 ├── src/
-│   └── microsoft_mcp/
+│   └── m365_mcp/
 │       ├── __init__.py                     # Package initialization
 │       ├── auth.py                         # **MODIFIED** MSAL authentication & token management (env loading removed)
 │       ├── graph.py                        # Microsoft Graph API client wrapper
 │       ├── health_check.py                 # **NEW** Health check utility module with async/sync functions
 │       │                                   #   - check_health() - Single health check
 │       │                                   #   - continuous_health_check() - Continuous monitoring
-│       │                                   #   - CLI: python -m microsoft_mcp.health_check
+│       │                                   #   - CLI: python -m m365_mcp.health_check
 │       ├── logging_config.py               # **NEW** Comprehensive logging configuration
 │       │                                   #   - Structured JSON formatter
 │       │                                   #   - Human-readable formatter with colors
@@ -158,8 +158,8 @@ microsoft-mcp/
 
 ### Source Code
 
-- **`src/microsoft_mcp/tools.py`** (tool registry, imports from tools/ directory)
-- **`src/microsoft_mcp/tools/`** (modular tool implementations)
+- **`src/m365_mcp/tools.py`** (tool registry, imports from tools/ directory)
+- **`src/m365_mcp/tools/`** (modular tool implementations)
   - `account.py` - Account management (3 tools)
   - `calendar.py` - Calendar operations (6 tools)
   - `contact.py` - Contact management (5 tools)
@@ -252,7 +252,7 @@ Tools with `confirm=True` parameter (8 tools):
 
 **Modified:**
 
-- `src/microsoft_mcp/tools.py` - Added 3 new tools, enhanced 1 tool, added 1 helper function
+- `src/m365_mcp/tools.py` - Added 3 new tools, enhanced 1 tool, added 1 helper function
 
 **Added:**
 
@@ -277,7 +277,7 @@ Tools with `confirm=True` parameter (8 tools):
 
 **Modified:**
 
-- `src/microsoft_mcp/tools.py` - Added 3 new OneDrive tools, enhanced 1 tool, added 1 helper
+- `src/m365_mcp/tools.py` - Added 3 new OneDrive tools, enhanced 1 tool, added 1 helper
 
 **Added:**
 
@@ -301,12 +301,12 @@ Tools with `confirm=True` parameter (8 tools):
 
 **Modified:**
 
-- `src/microsoft_mcp/tools.py` - Refactored to import from modular tools/ directory
-- `src/microsoft_mcp/tools/__init__.py` - **NEW** Package exports for all 50 tools
+- `src/m365_mcp/tools.py` - Refactored to import from modular tools/ directory
+- `src/m365_mcp/tools/__init__.py` - **NEW** Package exports for all 50 tools
 
 **Added:**
 
-- `src/microsoft_mcp/tools/` - **NEW** Modular tool implementations (9 files)
+- `src/m365_mcp/tools/` - **NEW** Modular tool implementations (9 files)
   - `account.py` - 3 account management tools
   - `calendar.py` - 6 calendar tools
   - `contact.py` - 5 contact management tools
@@ -363,7 +363,7 @@ Tools with `confirm=True` parameter (8 tools):
 
 **Modified:**
 
-- `src/microsoft_mcp/server.py` - Added stdio/Streamable HTTP transport selection with bearer token authentication
+- `src/m365_mcp/server.py` - Added stdio/Streamable HTTP transport selection with bearer token authentication
 - `pyproject.toml` - Added fastapi and uvicorn dependencies
 
 **Added:**

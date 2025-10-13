@@ -7,19 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - BREAKING
+
+- **Project Renamed**: Renamed from `microsoft-mcp` to `m365-mcp` for cleaner branding and consistency
+  - **Package name**: `microsoft-mcp` → `m365-mcp` (pyproject.toml:2)
+  - **Module name**: `microsoft_mcp` → `m365_mcp` (src/ folder structure)
+  - **CLI command**: `microsoft-mcp` → `m365-mcp` (pyproject.toml:21)
+  - **Environment variables**: All renamed with new prefix
+    - `MICROSOFT_MCP_CLIENT_ID` → `M365_MCP_CLIENT_ID`
+    - `MICROSOFT_MCP_TENANT_ID` → `M365_MCP_TENANT_ID`
+  - **Migration required**: Users must update their `.env` files and CLI commands
+    - Update environment variable names in `.env` configuration files
+    - Update Claude Desktop config from `uvx --from git+https://github.com/robin-collins/microsoft-mcp.git microsoft-mcp` to `uvx --from git+https://github.com/robin-collins/m365-mcp.git m365-mcp`
+    - Update any scripts or automation using old package/module names
+  - All documentation, shell scripts, and test files updated to reflect new naming
+
 ### Fixed
 
 - **stdio Mode JSON-RPC Corruption**: Fixed critical issue where print statements writing to stdout corrupted JSON-RPC protocol communication in stdio mode
-  - Removed debug print statement from `src/microsoft_mcp/__init__.py:2` that wrote to stdout
-  - Updated all authentication print statements in `src/microsoft_mcp/auth.py` to write to stderr instead of stdout (lines 78-80, 114-121)
+  - Removed debug print statement from `src/m365_mcp/__init__.py:2` that wrote to stdout
+  - Updated all authentication print statements in `src/m365_mcp/auth.py` to write to stderr instead of stdout (lines 78-80, 114-121)
   - stdio transport requires exclusive stdout usage for JSON-RPC messages per MCP protocol specification
   - All diagnostic and authentication messages now properly use stderr to maintain protocol integrity
 
 ### Added
 - Command-line argument `--env-file` to specify custom environment file path
-  - Supports both `microsoft-mcp` server and `authenticate.py` script
+  - Supports both `m365-mcp` server and `authenticate.py` script
   - Default: `.env` (maintains backward compatibility)
-  - Usage: `microsoft-mcp --env-file .env.stdio` or `python authenticate.py --env-file .env.http`
+  - Usage: `m365-mcp --env-file .env.stdio` or `python authenticate.py --env-file .env.http`
   - Facilitates testing different MCP server modes (stdio vs HTTP)
   - Tests now support custom env file via `TEST_ENV_FILE` environment variable
 - Example environment files for different modes

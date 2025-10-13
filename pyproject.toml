@@ -1,7 +1,7 @@
 [project]
-name = "microsoft-mcp"
+name = "m365-mcp"
 version = "0.1.2"
-description = "Microsoft Graph MCP server for Outlook, Calendar, and OneDrive with multi-account support"
+description = "Microsoft 365 MCP server for Outlook, Calendar, and OneDrive with multi-account support"
 readme = "README.md"
 authors = [
     { name = "elyx", email = "elio@pascarelli.com" },
@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-microsoft-mcp = "microsoft_mcp.server:main"
+m365-mcp = "m365_mcp.server:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -39,13 +39,13 @@ def _setup_signal_handlers() -> None:
 def _log_startup_info() -> None:
     """Log server startup information."""
     logger.info("=" * 80)
-    logger.info("Microsoft MCP Server Starting")
+    logger.info("M365 MCP Server Starting")
     logger.info("=" * 80)
     logger.info(f"PID: {os.getpid()}")
     logger.info(f"Python: {sys.version}")
     logger.info(f"Working Directory: {os.getcwd()}")
     logger.info("Environment Variables:")
-    for key in ["MICROSOFT_MCP_CLIENT_ID", "MCP_TRANSPORT", "MCP_HOST", "MCP_PORT", "MCP_AUTH_METHOD"]:
+    for key in ["M365_MCP_CLIENT_ID", "MCP_TRANSPORT", "MCP_HOST", "MCP_PORT", "MCP_AUTH_METHOD"]:
         value = os.getenv(key, "not set")
         # Mask sensitive values
         if "CLIENT_ID" in key and value != "not set":
@@ -90,10 +90,10 @@ def main() -> None:
     # Log startup information
     _log_startup_info()
 
-    if not os.getenv("MICROSOFT_MCP_CLIENT_ID"):
-        logger.error("MICROSOFT_MCP_CLIENT_ID environment variable is required")
+    if not os.getenv("M365_MCP_CLIENT_ID"):
+        logger.error("M365_MCP_CLIENT_ID environment variable is required")
         print(
-            "Error: MICROSOFT_MCP_CLIENT_ID environment variable is required",
+            "Error: M365_MCP_CLIENT_ID environment variable is required",
             file=sys.stderr,
         )
         sys.exit(1)

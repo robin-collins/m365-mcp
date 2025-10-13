@@ -1,8 +1,8 @@
-# Microsoft MCP Server
+# M365 MCP Server
 
 ## Product Summary
 
-**Microsoft MCP Server** is a comprehensive Model Context Protocol (MCP) server that provides AI assistants with complete access to Microsoft 365 services through the Microsoft Graph API. It serves as an intelligent bridge between AI assistants and Microsoft productivity tools.
+**M365 MCP Server** is a comprehensive Model Context Protocol (MCP) server that provides AI assistants with complete access to Microsoft 365 services through the Microsoft Graph API. It serves as an intelligent bridge between AI assistants and Microsoft productivity tools.
 
 ## Core Capabilities
 

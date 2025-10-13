@@ -77,10 +77,10 @@ uv run pytest --cov=src tests/
 **stdio Mode (Default):**
 ```bash
 # Set required environment variables
-export MICROSOFT_MCP_CLIENT_ID="your-azure-app-id"
+export M365_MCP_CLIENT_ID="your-azure-app-id"
 
 # Run server
-uv run microsoft-mcp
+uv run m365-mcp
 ```
 
 **HTTP Mode:**
@@ -93,7 +93,7 @@ export MCP_AUTH_METHOD="bearer"
 export MCP_AUTH_TOKEN="your-secure-token"
 
 # Run HTTP server
-uv run microsoft-mcp
+uv run m365-mcp
 ```
 
 #### Authentication
@@ -104,7 +104,7 @@ uv run authenticate.py
 # Complete authentication flow
 uv run python -c "
 import asyncio
-from src.microsoft_mcp.tools import complete_authentication
+from src.m365_mcp.tools import complete_authentication
 result = asyncio.run(complete_authentication('your-flow-cache'))
 print(result)
 "

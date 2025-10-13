@@ -4,16 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Microsoft MCP is a Model Context Protocol (MCP) server that provides AI assistants with access to Microsoft Graph API. It enables management of Outlook emails, Calendar events, OneDrive files, and Contacts with support for multiple Microsoft accounts (personal, work, school).
+M365 MCP is a Model Context Protocol (MCP) server that provides AI assistants with access to Microsoft Graph API. It enables management of Outlook emails, Calendar events, OneDrive files, and Contacts with support for multiple Microsoft accounts (personal, work, school).
 
 ## Architecture
 
 ### Core Modules
 
-- **`src/microsoft_mcp/server.py`**: Entry point that initializes the FastMCP server
-- **`src/microsoft_mcp/auth.py`**: Handles MSAL authentication using device flow, token caching to `~/.microsoft_mcp_token_cache.json`, and multi-account management
-- **`src/microsoft_mcp/graph.py`**: HTTP client wrapper for Microsoft Graph API with retry logic, pagination, chunked uploads (15×320 KiB chunks), and rate limiting handling
-- **`src/microsoft_mcp/tools.py`**: Defines 35 MCP tools using FastMCP decorators (`@mcp.tool`)
+- **`src/m365_mcp/server.py`**: Entry point that initializes the FastMCP server
+- **`src/m365_mcp/auth.py`**: Handles MSAL authentication using device flow, token caching to `~/.m365_mcp_token_cache.json`, and multi-account management
+- **`src/m365_mcp/graph.py`**: HTTP client wrapper for Microsoft Graph API with retry logic, pagination, chunked uploads (15×320 KiB chunks), and rate limiting handling
+- **`src/m365_mcp/tools.py`**: Defines 35 MCP tools using FastMCP decorators (`@mcp.tool`)
 - **`authenticate.py`**: Standalone script for interactive account authentication
 
 ### Key Design Patterns
@@ -44,8 +44,8 @@ uv sync
 # Run authentication (interactive)
 uv run authenticate.py
 
-# Run MCP server (requires MICROSOFT_MCP_CLIENT_ID env var)
-uv run microsoft-mcp
+# Run MCP server (requires M365_MCP_CLIENT_ID env var)
+uv run m365-mcp
 
 # Run tests (requires authenticated account)
 uv run pytest tests/ -v
@@ -62,8 +62,8 @@ uvx ruff check --fix --unsafe-fixes .
 
 ## Environment Variables
 
-- **`MICROSOFT_MCP_CLIENT_ID`** (required): Azure app registration client ID
-- **`MICROSOFT_MCP_TENANT_ID`** (optional): Defaults to "common". Use "consumers" for personal accounts only
+- **`M365_MCP_CLIENT_ID`** (required): Azure app registration client ID
+- **`M365_MCP_TENANT_ID`** (optional): Defaults to "common". Use "consumers" for personal accounts only
 
 ## Azure App Requirements
 
@@ -80,7 +80,7 @@ App must allow public client flows (device code authentication).
 ## Testing
 
 Tests in `tests/test_integration.py` run against live Microsoft Graph API and require:
-1. Valid `MICROSOFT_MCP_CLIENT_ID` in environment
+1. Valid `M365_MCP_CLIENT_ID` in environment
 2. At least one authenticated account (run `authenticate.py` first)
 3. Test account with email, calendar, and OneDrive access
 

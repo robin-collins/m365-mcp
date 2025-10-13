@@ -1,4 +1,4 @@
-# Python Implementation Standards for Microsoft MCP Server
+# Python Implementation Standards for M365 MCP Server
 
 ## Code Quality Mandates
 
@@ -15,7 +15,7 @@
 - **Private members**: Single leading underscore (_internal_method)
 
 ### Project Structure
-- **Layout**: Use src/ layout (src/microsoft_mcp/)
+- **Layout**: Use src/ layout (src/m365_mcp/)
 - **Configuration**: pyproject.toml as single source of truth
 - **Dependencies**: Pinned exact versions (package==X.Y.Z)
 - **Imports**: Group standard library, third-party, then local imports
@@ -57,7 +57,7 @@ def categorize_email(email_id: str, account_id: str) -> dict[str, Any]:
 ### Custom Exception Example
 ```python
 class MicrosoftMCPServerError(Exception):
-    """Base exception for Microsoft MCP Server errors."""
+    """Base exception for M365 MCP Server errors."""
     pass
 
 class AuthenticationError(MicrosoftMCPServerError):
@@ -187,7 +187,7 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log_entry)
 
 # Configure structured logging
-logger = logging.getLogger("microsoft_mcp")
+logger = logging.getLogger("m365_mcp")
 handler = logging.StreamHandler()
 handler.setFormatter(JSONFormatter())
 logger.addHandler(handler)

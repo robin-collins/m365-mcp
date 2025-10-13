@@ -1,4 +1,4 @@
-# MCP Server Implementation Standards for Microsoft MCP Server
+# MCP Server Implementation Standards for M365 MCP Server
 
 ## MCP Protocol Compliance
 
@@ -320,7 +320,7 @@ class TestEmailCategorization:
             "confidence": 0.85
         }
 
-        with patch('microsoft_mcp.graph.request') as mock_request:
+        with patch('m365_mcp.graph.request') as mock_request:
             mock_request.return_value = expected_result
 
             # Act
@@ -346,7 +346,7 @@ class TestEmailCategorization:
 ```python
 class MCPConfiguration:
     def __init__(self):
-        self.client_id = os.getenv("MICROSOFT_MCP_CLIENT_ID")
+        self.client_id = os.getenv("M365_MCP_CLIENT_ID")
         self.transport = os.getenv("MCP_TRANSPORT", "stdio")
         self.auth_method = os.getenv("MCP_AUTH_METHOD", "none")
         self.host = os.getenv("MCP_HOST", "127.0.0.1")
@@ -356,7 +356,7 @@ class MCPConfiguration:
         """Validate all required configuration is present."""
         if not self.client_id:
             raise ConfigurationError(
-                "MICROSOFT_MCP_CLIENT_ID environment variable is required"
+                "M365_MCP_CLIENT_ID environment variable is required"
             )
 
         if self.transport not in ["stdio", "http"]:

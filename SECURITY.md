@@ -6,7 +6,7 @@
 
 ## Transport Security Overview
 
-Microsoft MCP supports two transport modes with different security characteristics:
+M365 MCP supports two transport modes with different security characteristics:
 
 | Transport | Security Model | Authentication | Use Case |
 |-----------|---------------|----------------|----------|
@@ -28,8 +28,8 @@ Microsoft MCP supports two transport modes with different security characteristi
 
 ```bash
 # Default mode - no MCP_TRANSPORT variable needed
-export MICROSOFT_MCP_CLIENT_ID="your-app-id"
-uv run microsoft-mcp
+export M365_MCP_CLIENT_ID="your-app-id"
+uv run m365-mcp
 ```
 
 ### Usage with Claude Desktop
@@ -37,11 +37,11 @@ uv run microsoft-mcp
 ```json
 {
   "mcpServers": {
-    "microsoft-mcp": {
+    "m365-mcp": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/robin-collins/m365-mcp.git", "microsoft-mcp"],
+      "args": ["--from", "git+https://github.com/robin-collins/m365-mcp.git", "m365-mcp"],
       "env": {
-        "MICROSOFT_MCP_CLIENT_ID": "your-app-id-here"
+        "M365_MCP_CLIENT_ID": "your-app-id-here"
       }
     }
   }
@@ -78,14 +78,14 @@ Simple and secure token-based authentication.
 export MCP_AUTH_TOKEN=$(openssl rand -hex 32)
 
 # 2. Configure SSE with bearer auth
-export MICROSOFT_MCP_CLIENT_ID="your-app-id"
+export M365_MCP_CLIENT_ID="your-app-id"
 export MCP_TRANSPORT="http"
 export MCP_AUTH_METHOD="bearer"
 export MCP_HOST="127.0.0.1"  # localhost only
 export MCP_PORT="8000"
 
 # 3. Start server
-uv run microsoft-mcp
+uv run m365-mcp
 ```
 
 #### Server Output
@@ -141,13 +141,13 @@ Enterprise-grade OAuth 2.0 authentication with automatic browser flow.
 #### Setup
 
 ```bash
-export MICROSOFT_MCP_CLIENT_ID="your-app-id"
+export M365_MCP_CLIENT_ID="your-app-id"
 export MCP_TRANSPORT="http"
 export MCP_AUTH_METHOD="oauth"
 export MCP_HOST="127.0.0.1"
 export MCP_PORT="8000"
 
-uv run microsoft-mcp
+uv run m365-mcp
 ```
 
 #### Features
@@ -164,13 +164,13 @@ uv run microsoft-mcp
 **⚠️ DANGER: Only use for local development on isolated networks**
 
 ```bash
-export MICROSOFT_MCP_CLIENT_ID="your-app-id"
+export M365_MCP_CLIENT_ID="your-app-id"
 export MCP_TRANSPORT="http"
 export MCP_ALLOW_INSECURE="true"  # Required to bypass security check
 export MCP_HOST="127.0.0.1"
 export MCP_PORT="8000"
 
-uv run microsoft-mcp
+uv run m365-mcp
 ```
 
 #### Server Output
@@ -208,7 +208,7 @@ Starting MCP server with Streamable HTTP transport on 127.0.0.1:8000
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `MICROSOFT_MCP_CLIENT_ID` | Azure app registration ID | `abc123-def456-...` |
+| `M365_MCP_CLIENT_ID` | Azure app registration ID | `abc123-def456-...` |
 
 ### Transport Configuration
 
@@ -264,7 +264,7 @@ Instead of exposing Streamable HTTP server to network, use SSH tunnel:
 # On remote server
 export MCP_HOST="127.0.0.1"
 export MCP_AUTH_METHOD="bearer"
-uv run microsoft-mcp
+uv run m365-mcp
 
 # On local machine
 ssh -L 8000:localhost:8000 user@remote-server
@@ -332,7 +332,7 @@ curl http://localhost:8000/health
    ```bash
    # AWS Secrets Manager
    export MCP_AUTH_TOKEN=$(aws secretsmanager get-secret-value \
-     --secret-id microsoft-mcp-token \
+     --secret-id m365-mcp-token \
      --query SecretString --output text)
 
    # HashiCorp Vault
@@ -485,12 +485,12 @@ headers = {"Authorization": "abc123..."}
 
 1. **Immediately stop server:**
    ```bash
-   pkill -f microsoft-mcp
+   pkill -f m365-mcp
    ```
 
 2. **Revoke Microsoft tokens:**
    ```bash
-   rm ~/.microsoft_mcp_token_cache.json
+   rm ~/.m365_mcp_token_cache.json
    ```
 
 3. **Review Microsoft account activity:**
@@ -514,4 +514,4 @@ headers = {"Authorization": "abc123..."}
 
 **Document Version:** 1.0
 **Last Updated:** 2025-10-05
-**Maintainer:** microsoft-mcp contributors
+**Maintainer:** m365-mcp contributors

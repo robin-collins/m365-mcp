@@ -3,7 +3,7 @@
 ################################################################################
 # MCP Server Startup Script with Monitoring
 #
-# This script starts the Microsoft MCP server in HTTP mode with comprehensive
+# This script starts the M365 MCP server in HTTP mode with comprehensive
 # logging and automatic monitoring for failures.
 #
 # Features:
@@ -16,7 +16,7 @@
 #   ./start_mcp_with_monitoring.sh
 #
 # Environment Variables (required):
-#   MICROSOFT_MCP_CLIENT_ID  - Azure app client ID
+#   M365_MCP_CLIENT_ID  - Azure app client ID
 #
 # Environment Variables (optional):
 #   MCP_HOST                 - Server host (default: 127.0.0.1)
@@ -68,9 +68,9 @@ log_error() {
 validate_environment() {
     log_info "Validating environment..."
 
-    if [[ -z "${MICROSOFT_MCP_CLIENT_ID:-}" ]]; then
-        log_error "MICROSOFT_MCP_CLIENT_ID environment variable is required"
-        log_error "Set it with: export MICROSOFT_MCP_CLIENT_ID=your-client-id"
+    if [[ -z "${M365_MCP_CLIENT_ID:-}" ]]; then
+        log_error "M365_MCP_CLIENT_ID environment variable is required"
+        log_error "Set it with: export M365_MCP_CLIENT_ID=your-client-id"
         exit 1
     fi
 
@@ -83,7 +83,7 @@ validate_environment() {
     fi
 
     log_info "Configuration:"
-    log_info "  Client ID: ${MICROSOFT_MCP_CLIENT_ID:0:8}...${MICROSOFT_MCP_CLIENT_ID: -4}"
+    log_info "  Client ID: ${M365_MCP_CLIENT_ID:0:8}...${M365_MCP_CLIENT_ID: -4}"
     log_info "  Host: ${MCP_HOST}"
     log_info "  Port: ${MCP_PORT}"
     log_info "  Auth: ${MCP_AUTH_METHOD}"
@@ -150,7 +150,7 @@ start_server() {
     log_info "Starting MCP server..."
 
     # Export environment variables
-    export MICROSOFT_MCP_CLIENT_ID
+    export M365_MCP_CLIENT_ID
     export MCP_TRANSPORT
     export MCP_HOST
     export MCP_PORT
@@ -164,7 +164,7 @@ start_server() {
     cd "${SCRIPT_DIR}"
 
     # Use uv run to start the server
-    nohup uv run microsoft-mcp > "${SERVER_OUTPUT_LOG}" 2>&1 &
+    nohup uv run m365-mcp > "${SERVER_OUTPUT_LOG}" 2>&1 &
     local server_pid=$!
 
     echo "${server_pid}" > "${PID_FILE}"

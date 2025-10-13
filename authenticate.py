@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Authenticate Microsoft accounts for use with Microsoft MCP.
+Authenticate Microsoft accounts for use with M365 MCP.
 Run this script to sign in to one or more Microsoft accounts.
 """
 
@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 def _parse_arguments() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Authenticate Microsoft accounts for Microsoft MCP"
+        description="Authenticate Microsoft accounts for M365 MCP"
     )
     parser.add_argument(
         "--env-file",
@@ -43,14 +43,14 @@ def main():
         print("Continuing with system environment variables...\n")
 
     # Import auth module after loading environment
-    from microsoft_mcp import auth
-    if not os.getenv("MICROSOFT_MCP_CLIENT_ID"):
-        print("Error: MICROSOFT_MCP_CLIENT_ID environment variable is required")
+    from m365_mcp import auth
+    if not os.getenv("M365_MCP_CLIENT_ID"):
+        print("Error: M365_MCP_CLIENT_ID environment variable is required")
         print("\nPlease set it in your .env file or environment:")
-        print("export MICROSOFT_MCP_CLIENT_ID='your-app-id'")
+        print("export M365_MCP_CLIENT_ID='your-app-id'")
         sys.exit(1)
 
-    print("Microsoft MCP Authentication")
+    print("M365 MCP Authentication")
     print("============================\n")
 
     # List current accounts

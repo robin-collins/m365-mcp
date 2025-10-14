@@ -496,3 +496,257 @@ def contact_delete(
     # Note: Cache invalidation happens automatically via TTL (20min for contact_list)
 
     return {"status": "deleted"}
+
+
+# contact_create_list
+@mcp.tool(
+    name="contact_create_list",
+    annotations={
+        "title": "Create Contact List",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={"category": "contact", "safety_level": "moderate"},
+)
+def contact_create_list(
+    account_id: str,
+    list_name: str,
+) -> dict[str, Any]:
+    """✏️ Create a new contact list (requires user confirmation recommended)
+
+    Creates a contact folder (list) for organizing contacts into groups.
+    Useful for creating distribution lists, project teams, or other groupings.
+
+    Args:
+        account_id: Microsoft account ID
+        list_name: Name for the contact list/folder
+
+    Returns:
+        Created contact folder object with ID
+
+    Raises:
+        ValidationError: If list name is empty or invalid.
+    """
+    # Validate list name
+    if not isinstance(list_name, str):
+        raise ValidationError(
+            format_validation_error(
+                "list_name",
+                list_name,
+                "must be a string",
+                "Non-empty list name",
+            )
+        )
+
+    name_stripped = list_name.strip()
+    if not name_stripped:
+        raise ValidationError(
+            format_validation_error(
+                "list_name",
+                list_name,
+                "cannot be empty",
+                "Non-empty list name",
+            )
+        )
+
+    # Create contact folder payload
+    payload = {"displayName": name_stripped}
+
+    # Create contact folder
+    result = graph.request("POST", "/me/contactFolders", account_id, json=payload)
+    if not result:
+        raise ValueError("Failed to create contact list")
+
+    return result
+
+
+# contact_add_to_list
+@mcp.tool(
+    name="contact_add_to_list",
+    annotations={
+        "title": "Add Contact to List",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={"category": "contact", "safety_level": "moderate"},
+)
+def contact_add_to_list(
+    account_id: str,
+    contact_id: str,
+    list_id: str,
+) -> dict[str, Any]:
+    """✏️ Add a contact to a contact list (requires user confirmation recommended)
+
+    Adds an existing contact to a contact folder (list). The contact is copied
+    to the list, so it will exist in both the original location and the list.
+
+    Args:
+        account_id: Microsoft account ID
+        contact_id: The contact ID to add
+        list_id: The contact list/folder ID
+
+    Returns:
+        Copy of the contact in the new list
+
+    Raises:
+        ValueError: If contact or list is not found.
+    """
+    # First, get the contact details
+    contact = graph.request("GET", f"/me/contacts/{contact_id}", account_id)
+    if not contact:
+        raise ValueError(f"Contact with ID {contact_id} not found")
+
+    # Create a copy of the contact in the target folder
+    # Remove system fields that shouldn't be copied
+    contact_copy = {
+        k: v
+        for k, v in contact.items()
+        if k not in ("id", "@odata.context", "@odata.etag", "createdDateTime", "lastModifiedDateTime")
+    }
+
+    # Add the contact to the folder
+    result = graph.request(
+        "POST",
+        f"/me/contactFolders/{list_id}/contacts",
+        account_id,
+        json=contact_copy,
+    )
+    if not result:
+        raise ValueError(f"Failed to add contact to list {list_id}")
+
+    return result
+
+
+# contact_export
+@mcp.tool(
+    name="contact_export",
+    annotations={
+        "title": "Export Contact",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    meta={"category": "contact", "safety_level": "safe"},
+)
+def contact_export(
+    account_id: str,
+    contact_id: str,
+    format: str = "vcard",
+) -> dict[str, Any]:
+    """📖 Export a contact in vCard format (read-only, safe for unsupervised use)
+
+    Exports contact information in vCard format for portability and sharing.
+    vCard is a standard format supported by most contact management applications.
+
+    Args:
+        account_id: Microsoft account ID
+        contact_id: The contact ID to export
+        format: Export format (currently only "vcard" is supported)
+
+    Returns:
+        Dictionary containing the vCard data and metadata
+
+    Raises:
+        ValidationError: If format is not supported.
+        ValueError: If contact is not found.
+    """
+    # Validate format
+    if format.lower() != "vcard":
+        raise ValidationError(
+            format_validation_error(
+                "format",
+                format,
+                "only 'vcard' format is currently supported",
+                "vcard",
+            )
+        )
+
+    # Get contact details
+    contact = graph.request("GET", f"/me/contacts/{contact_id}", account_id)
+    if not contact:
+        raise ValueError(f"Contact with ID {contact_id} not found")
+
+    # Build vCard format (version 3.0)
+    vcard_lines = ["BEGIN:VCARD", "VERSION:3.0"]
+
+    # Add name fields
+    given_name = contact.get("givenName", "")
+    surname = contact.get("surname", "")
+    display_name = contact.get("displayName", f"{given_name} {surname}".strip())
+
+    if display_name:
+        vcard_lines.append(f"FN:{display_name}")
+
+    if given_name or surname:
+        # Format: surname;given_name;middle;prefix;suffix
+        vcard_lines.append(f"N:{surname};{given_name};;;")
+
+    # Add email addresses
+    email_addresses = contact.get("emailAddresses", [])
+    for idx, email_obj in enumerate(email_addresses):
+        if isinstance(email_obj, dict) and "address" in email_obj:
+            email_type = "INTERNET" if idx == 0 else f"INTERNET,type=OTHER{idx}"
+            vcard_lines.append(f"EMAIL;type={email_type}:{email_obj['address']}")
+
+    # Add phone numbers
+    business_phones = contact.get("businessPhones", [])
+    for phone in business_phones:
+        vcard_lines.append(f"TEL;type=WORK,VOICE:{phone}")
+
+    home_phones = contact.get("homePhones", [])
+    for phone in home_phones:
+        vcard_lines.append(f"TEL;type=HOME,VOICE:{phone}")
+
+    mobile_phone = contact.get("mobilePhone")
+    if mobile_phone:
+        vcard_lines.append(f"TEL;type=CELL:{mobile_phone}")
+
+    # Add organization information
+    company_name = contact.get("companyName")
+    department = contact.get("department")
+    if company_name or department:
+        org_value = f"{company_name or ''};{department or ''}"
+        vcard_lines.append(f"ORG:{org_value}")
+
+    job_title = contact.get("jobTitle")
+    if job_title:
+        vcard_lines.append(f"TITLE:{job_title}")
+
+    # Add business address if available
+    business_address = contact.get("businessAddress")
+    if business_address and isinstance(business_address, dict):
+        street = business_address.get("street", "")
+        city = business_address.get("city", "")
+        state = business_address.get("state", "")
+        postal_code = business_address.get("postalCode", "")
+        country = business_address.get("countryOrRegion", "")
+        # Format: POBox;Extended;Street;City;State;PostalCode;Country
+        vcard_lines.append(f"ADR;type=WORK:;;{street};{city};{state};{postal_code};{country}")
+
+    # Add home address if available
+    home_address = contact.get("homeAddress")
+    if home_address and isinstance(home_address, dict):
+        street = home_address.get("street", "")
+        city = home_address.get("city", "")
+        state = home_address.get("state", "")
+        postal_code = home_address.get("postalCode", "")
+        country = home_address.get("countryOrRegion", "")
+        vcard_lines.append(f"ADR;type=HOME:;;{street};{city};{state};{postal_code};{country}")
+
+    vcard_lines.append("END:VCARD")
+
+    # Join lines with CRLF as per vCard spec
+    vcard_content = "\r\n".join(vcard_lines)
+
+    return {
+        "contact_id": contact_id,
+        "display_name": display_name,
+        "format": "vcard",
+        "vcard": vcard_content,
+        "size_bytes": len(vcard_content.encode("utf-8")),
+    }

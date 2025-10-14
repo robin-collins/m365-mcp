@@ -799,3 +799,502 @@ def calendar_check_availability(
     if not result:
         raise ValueError("Failed to check availability")
     return result
+
+
+# calendar_forward_event
+@mcp.tool(
+    name="calendar_forward_event",
+    annotations={
+        "title": "Forward Calendar Event",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={
+        "category": "calendar",
+        "safety_level": "dangerous",
+        "requires_confirmation": True,
+    },
+)
+def calendar_forward_event(
+    account_id: str,
+    event_id: str,
+    to: str | list[str],
+    cc: str | list[str] | None = None,
+    message: str | None = None,
+    confirm: bool = False,
+) -> dict[str, str]:
+    """📧 Forward a calendar event to recipients (always require user confirmation)
+
+    WARNING: Meeting invitation will be sent immediately to specified recipients.
+    This action cannot be undone.
+
+    Addresses are validated, deduplicated across To/CC, and limited to
+    500 unique recipients in total.
+
+    Args:
+        account_id: Microsoft account ID
+        event_id: The event ID to forward
+        to: Recipient email address(es)
+        cc: CC recipient email address(es) (optional)
+        message: Optional comment/message to include with forward (plain text)
+        confirm: Must be True to confirm sending (prevents accidents)
+
+    Returns:
+        Status confirmation
+
+    Raises:
+        ValidationError: If recipients are invalid, exceed limits,
+            or confirm is False.
+    """
+    to_normalized = normalize_recipients(to, "to")
+    cc_normalized = normalize_recipients(cc, "cc") if cc else []
+
+    seen: set[str] = set()
+    to_unique: list[str] = []
+    cc_unique: list[str] = []
+
+    for address in to_normalized:
+        key = address.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        to_unique.append(address)
+
+    for address in cc_normalized:
+        key = address.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        cc_unique.append(address)
+
+    total_unique = len(to_unique) + len(cc_unique)
+    if total_unique > MAX_CALENDAR_ATTENDEES:
+        reason = f"must not exceed {MAX_CALENDAR_ATTENDEES} unique recipients"
+        raise ValidationError(
+            format_validation_error(
+                "recipients",
+                total_unique,
+                reason,
+                f"≤ {MAX_CALENDAR_ATTENDEES}",
+            )
+        )
+
+    require_confirm(confirm, "forward calendar event")
+
+    payload: dict[str, Any] = {
+        "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_unique],
+    }
+
+    if cc_unique:
+        payload["ccRecipients"] = [
+            {"emailAddress": {"address": addr}} for addr in cc_unique
+        ]
+
+    if message:
+        message_stripped = message.strip()
+        if message_stripped:
+            payload["comment"] = message_stripped
+
+    endpoint = f"/me/events/{event_id}/forward"
+    graph.request("POST", endpoint, account_id, json=payload)
+
+    return {"status": "forwarded"}
+
+
+# calendar_list_calendars
+@mcp.tool(
+    name="calendar_list_calendars",
+    annotations={
+        "title": "List Calendars",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    meta={"category": "calendar", "safety_level": "safe"},
+)
+def calendar_list_calendars(
+    account_id: str,
+    use_cache: bool = True,
+    force_refresh: bool = False,
+) -> list[dict[str, Any]]:
+    """📖 List all available calendars (read-only, safe for unsupervised use)
+
+    Returns all calendars accessible by the user, including primary calendar
+    and any additional calendars (shared, group, etc.).
+
+    Caching: Results are cached for 15 minutes (fresh) / 1 hour (stale).
+    Use force_refresh=True to bypass cache and fetch fresh data.
+
+    Args:
+        account_id: Microsoft account ID
+        use_cache: Whether to use cached data if available (default: True)
+        force_refresh: Force refresh from API, bypassing cache (default: False)
+
+    Returns:
+        List of calendar objects with metadata.
+        Each calendar includes _cache_status and _cached_at fields.
+    """
+    # Build cache parameters
+    cache_params = {}
+
+    # Check cache if enabled
+    if use_cache and not force_refresh:
+        try:
+            cache_manager = get_cache_manager()
+            cached_result = cache_manager.get_cached(
+                account_id, "calendar_list_calendars", cache_params
+            )
+
+            if cached_result:
+                data, state = cached_result
+                # Add cache status to each calendar
+                for calendar in data:
+                    calendar["_cache_status"] = state.value
+                return data
+        except Exception:
+            # If cache fails, continue to API call
+            pass
+
+    # Fetch from API
+    calendars = list(
+        graph.request_paginated(
+            "/me/calendars",
+            account_id,
+            params={"$select": "id,name,color,canEdit,canShare,canViewPrivateItems,owner,isDefaultCalendar"},
+        )
+    )
+
+    # Add cache metadata to each calendar
+    cached_at = datetime.now(timezone.utc).isoformat()
+    for calendar in calendars:
+        calendar["_cache_status"] = "fresh"
+        calendar["_cached_at"] = cached_at
+
+    # Store in cache
+    if use_cache:
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.set_cached(
+                account_id, "calendar_list_calendars", cache_params, calendars
+            )
+        except Exception:
+            # If cache storage fails, still return the result
+            pass
+
+    return calendars
+
+
+# calendar_create_calendar
+@mcp.tool(
+    name="calendar_create_calendar",
+    annotations={
+        "title": "Create Calendar",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={"category": "calendar", "safety_level": "moderate"},
+)
+def calendar_create_calendar(
+    account_id: str,
+    name: str,
+) -> dict[str, Any]:
+    """✏️ Create a new calendar (requires user confirmation recommended)
+
+    Creates a new calendar in the user's mailbox. Useful for organizing
+    events into separate calendars (work, personal, project-specific, etc.).
+
+    Args:
+        account_id: Microsoft account ID
+        name: Name for the new calendar
+
+    Returns:
+        Created calendar object with ID and metadata
+
+    Raises:
+        ValidationError: If calendar name is empty or invalid.
+    """
+    # Validate calendar name
+    if not isinstance(name, str):
+        raise ValidationError(
+            format_validation_error(
+                "name",
+                name,
+                "must be a string",
+                "Non-empty calendar name",
+            )
+        )
+
+    name_stripped = name.strip()
+    if not name_stripped:
+        raise ValidationError(
+            format_validation_error(
+                "name",
+                name,
+                "cannot be empty",
+                "Non-empty calendar name",
+            )
+        )
+
+    # Create calendar payload
+    payload = {"name": name_stripped}
+
+    # Create calendar
+    result = graph.request("POST", "/me/calendars", account_id, json=payload)
+    if not result:
+        raise ValueError("Failed to create calendar")
+
+    # Invalidate calendar list cache
+    try:
+        cache_manager = get_cache_manager()
+        cache_manager.invalidate_pattern(
+            f"calendar_list_calendars:{account_id}:*",
+            reason="calendar_created",
+        )
+    except Exception:
+        # If cache invalidation fails, continue
+        pass
+
+    return result
+
+
+# calendar_delete_calendar
+@mcp.tool(
+    name="calendar_delete_calendar",
+    annotations={
+        "title": "Delete Calendar",
+        "readOnlyHint": False,
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    meta={
+        "category": "calendar",
+        "safety_level": "critical",
+        "requires_confirmation": True,
+    },
+)
+def calendar_delete_calendar(
+    account_id: str,
+    calendar_id: str,
+    confirm: bool = False,
+) -> dict[str, str]:
+    """🔴 Delete a calendar permanently (always require user confirmation)
+
+    WARNING: This action permanently deletes the calendar and ALL events
+    contained within it. This action cannot be undone.
+
+    Note: The default calendar cannot be deleted.
+
+    Args:
+        account_id: Microsoft account ID
+        calendar_id: The calendar ID to delete
+        confirm: Must be True to confirm deletion (prevents accidents)
+
+    Returns:
+        Status confirmation
+
+    Raises:
+        ValidationError: If confirm is False.
+        ValueError: If attempting to delete the default calendar.
+    """
+    require_confirm(confirm, "delete calendar")
+
+    # Check if this is the default calendar (cannot be deleted)
+    calendar_info = graph.request(
+        "GET",
+        f"/me/calendars/{calendar_id}?$select=isDefaultCalendar",
+        account_id,
+    )
+
+    if calendar_info and calendar_info.get("isDefaultCalendar"):
+        raise ValueError("Cannot delete the default calendar")
+
+    # Delete calendar
+    graph.request("DELETE", f"/me/calendars/{calendar_id}", account_id)
+
+    # Invalidate calendar list cache
+    try:
+        cache_manager = get_cache_manager()
+        cache_manager.invalidate_pattern(
+            f"calendar_list_calendars:{account_id}:*",
+            reason="calendar_deleted",
+        )
+    except Exception:
+        # If cache invalidation fails, continue
+        pass
+
+    return {"status": "deleted"}
+
+
+# calendar_propose_new_time
+@mcp.tool(
+    name="calendar_propose_new_time",
+    annotations={
+        "title": "Propose New Meeting Time",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={"category": "calendar", "safety_level": "moderate"},
+)
+def calendar_propose_new_time(
+    account_id: str,
+    event_id: str,
+    proposed_start: str,
+    proposed_end: str,
+    message: str | None = None,
+) -> dict[str, str]:
+    """✏️ Propose a new time for a meeting (requires user confirmation recommended)
+
+    Proposes a new meeting time to the organizer. This is useful when you've
+    been invited to a meeting but the time doesn't work for you.
+
+    Note: This only works for meetings where you are an attendee, not the organizer.
+
+    Args:
+        account_id: Microsoft account ID
+        event_id: The event ID to propose new time for
+        proposed_start: Proposed start time in ISO format (e.g., "2024-01-15T10:00:00")
+        proposed_end: Proposed end time in ISO format
+        message: Optional message explaining the proposed change
+
+    Returns:
+        Status confirmation
+
+    Raises:
+        ValidationError: If datetime values are invalid.
+    """
+    # Validate datetime window
+    start_dt, end_dt = validate_datetime_window(proposed_start, proposed_end)
+
+    # Build payload
+    payload: dict[str, Any] = {
+        "proposedNewTime": {
+            "start": {
+                "dateTime": start_dt.astimezone(timezone.utc).isoformat(),
+                "timeZone": "UTC",
+            },
+            "end": {
+                "dateTime": end_dt.astimezone(timezone.utc).isoformat(),
+                "timeZone": "UTC",
+            },
+        },
+        "sendResponse": True,
+    }
+
+    if message:
+        message_stripped = message.strip()
+        if message_stripped:
+            payload["comment"] = message_stripped
+
+    # Send tentative response with proposed new time
+    graph.request(
+        "POST",
+        f"/me/events/{event_id}/tentativelyAccept",
+        account_id,
+        json=payload,
+    )
+
+    return {"status": "proposed_new_time"}
+
+
+# calendar_get_free_busy
+@mcp.tool(
+    name="calendar_get_free_busy",
+    annotations={
+        "title": "Get Free/Busy Times",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    meta={"category": "calendar", "safety_level": "safe"},
+)
+def calendar_get_free_busy(
+    account_id: str,
+    attendees: str | list[str],
+    start: str,
+    end: str,
+    time_interval: int = 30,
+) -> dict[str, Any]:
+    """📖 Get simplified free/busy times for attendees (read-only, safe for unsupervised use)
+
+    Returns a simplified view of free/busy information for specified attendees.
+    This is similar to calendar_check_availability but focuses on availability
+    view strings rather than detailed schedule information.
+
+    Args:
+        account_id: Microsoft account ID
+        attendees: Email address(es) to check availability for
+        start: Start time in ISO format
+        end: End time in ISO format
+        time_interval: Interval in minutes for availability view (default: 30)
+
+    Returns:
+        Free/busy information with availability view strings
+
+    Raises:
+        ValidationError: If start/end datetimes or attendee addresses are invalid.
+    """
+    # Validate datetime window
+    start_dt, end_dt = validate_datetime_window(start, end)
+
+    # Validate and normalize attendees
+    attendee_candidates = normalize_recipients(attendees, "attendees")
+    attendee_addresses: list[str] = []
+    seen: set[str] = set()
+    for address in attendee_candidates:
+        key = address.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        attendee_addresses.append(address)
+
+    if len(attendee_addresses) > MAX_CALENDAR_ATTENDEES:
+        reason = f"must not exceed {MAX_CALENDAR_ATTENDEES} unique attendees"
+        raise ValidationError(
+            format_validation_error(
+                "attendees",
+                len(attendee_addresses),
+                reason,
+                f"≤ {MAX_CALENDAR_ATTENDEES}",
+            )
+        )
+
+    # Validate time interval
+    if not isinstance(time_interval, int) or time_interval < 5 or time_interval > 1440:
+        raise ValidationError(
+            format_validation_error(
+                "time_interval",
+                time_interval,
+                "must be between 5 and 1440 minutes",
+                "5-1440",
+            )
+        )
+
+    # Build payload
+    payload = {
+        "schedules": attendee_addresses,
+        "startTime": {
+            "dateTime": start_dt.astimezone(timezone.utc).isoformat(),
+            "timeZone": "UTC",
+        },
+        "endTime": {
+            "dateTime": end_dt.astimezone(timezone.utc).isoformat(),
+            "timeZone": "UTC",
+        },
+        "availabilityViewInterval": time_interval,
+    }
+
+    # Make API request
+    result = graph.request("POST", "/me/calendar/getSchedule", account_id, json=payload)
+    if not result:
+        raise ValueError("Failed to get free/busy information")
+
+    return result

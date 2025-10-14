@@ -501,6 +501,195 @@ def file_delete(file_id: str, account_id: str, confirm: bool = False) -> dict[st
     return {"status": "deleted"}
 
 
+# file_copy
+@mcp.tool(
+    name="file_copy",
+    annotations={
+        "title": "Copy File",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={"category": "file", "safety_level": "moderate"},
+)
+def file_copy(
+    file_id: str,
+    destination_folder_id: str,
+    account_id: str,
+    new_name: str | None = None,
+) -> dict[str, Any]:
+    """✏️ Copy a file within OneDrive (requires user confirmation recommended)
+
+    Creates a copy of a file in a specified destination folder. The copy
+    operation is asynchronous and may take time for large files.
+
+    Args:
+        file_id: The file ID to copy
+        destination_folder_id: The destination folder ID
+        account_id: Microsoft account ID
+        new_name: Optional new name for the copied file
+
+    Returns:
+        Copy operation status with location URL to monitor progress
+
+    Raises:
+        ValueError: If file_id or destination_folder_id is invalid
+    """
+    account = validate_account_id(account_id)
+    graph_file_id = validate_microsoft_graph_id(file_id, "file_id")
+    dest_folder_id = validate_microsoft_graph_id(
+        destination_folder_id, "destination_folder_id"
+    )
+
+    payload: dict[str, Any] = {"parentReference": {"id": dest_folder_id}}
+
+    if new_name is not None:
+        if not new_name.strip():
+            raise ValueError("new_name cannot be empty")
+        payload["name"] = new_name.strip()
+
+    # Copy is an async operation, returns 202 Accepted with location header
+    result = graph.request(
+        "POST", f"/me/drive/items/{graph_file_id}/copy", account, json=payload
+    )
+
+    # Invalidate cache for destination folder's file list
+    try:
+        cache_manager = get_cache_manager()
+        cache_manager.invalidate_pattern(
+            account, f"file_list:*folder_id={dest_folder_id}*"
+        )
+        # Also invalidate folder tree since child counts changed
+        cache_manager.invalidate_pattern(account, "folder_get_tree:*")
+    except Exception:
+        pass
+
+    return result if result else {"status": "copy initiated"}
+
+
+# file_move
+@mcp.tool(
+    name="file_move",
+    annotations={
+        "title": "Move File",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={"category": "file", "safety_level": "moderate"},
+)
+def file_move(
+    file_id: str,
+    destination_folder_id: str,
+    account_id: str,
+) -> dict[str, Any]:
+    """✏️ Move a file to a different folder (requires user confirmation recommended)
+
+    Moves a file to a different parent folder within OneDrive.
+
+    Args:
+        file_id: The file ID to move
+        destination_folder_id: The destination folder ID
+        account_id: Microsoft account ID
+
+    Returns:
+        Updated file object with new parentReference
+
+    Raises:
+        ValueError: If file_id or destination_folder_id is invalid
+    """
+    account = validate_account_id(account_id)
+    graph_file_id = validate_microsoft_graph_id(file_id, "file_id")
+    dest_folder_id = validate_microsoft_graph_id(
+        destination_folder_id, "destination_folder_id"
+    )
+
+    payload = {"parentReference": {"id": dest_folder_id}}
+
+    result = graph.request(
+        "PATCH", f"/me/drive/items/{graph_file_id}", account, json=payload
+    )
+    if not result:
+        raise ValueError("Failed to move file")
+
+    # Invalidate cache for both source and destination folder file lists
+    try:
+        cache_manager = get_cache_manager()
+        # Invalidate all file lists since we don't know source folder
+        cache_manager.invalidate_pattern(account, "file_list:*")
+        # Invalidate folder tree since child counts changed
+        cache_manager.invalidate_pattern(account, "folder_get_tree:*")
+    except Exception:
+        pass
+
+    return result
+
+
+# file_rename
+@mcp.tool(
+    name="file_rename",
+    annotations={
+        "title": "Rename File",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={"category": "file", "safety_level": "moderate"},
+)
+def file_rename(
+    file_id: str,
+    new_name: str,
+    account_id: str,
+) -> dict[str, Any]:
+    """✏️ Rename a file (requires user confirmation recommended)
+
+    Updates the name of an existing OneDrive file.
+
+    Args:
+        file_id: The file ID to rename
+        new_name: New name for the file
+        account_id: Microsoft account ID
+
+    Returns:
+        Updated file object with new name
+
+    Raises:
+        ValueError: If file_id is invalid or new_name is empty
+    """
+    account = validate_account_id(account_id)
+    graph_file_id = validate_microsoft_graph_id(file_id, "file_id")
+
+    if not new_name or not new_name.strip():
+        raise ValueError("new_name cannot be empty")
+
+    new_name = new_name.strip()
+
+    payload = {"name": new_name}
+
+    result = graph.request(
+        "PATCH", f"/me/drive/items/{graph_file_id}", account, json=payload
+    )
+    if not result:
+        raise ValueError("Failed to rename file")
+
+    # Invalidate cache for file lists in parent folder
+    try:
+        cache_manager = get_cache_manager()
+        # Get parent folder ID if available
+        if "parentReference" in result and "id" in result["parentReference"]:
+            parent_id = result["parentReference"]["id"]
+            cache_manager.invalidate_pattern(
+                account, f"file_list:*folder_id={parent_id}*"
+            )
+    except Exception:
+        pass
+
+    return result
+
+
 def _list_folders_impl(
     account_id: str,
     path: str | None = "/",
@@ -541,3 +730,134 @@ def _list_folders_impl(
             )
 
     return folders
+
+
+# file_share
+@mcp.tool(
+    name="file_share",
+    annotations={
+        "title": "Share File",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={"category": "file", "safety_level": "moderate"},
+)
+def file_share(
+    file_id: str,
+    account_id: str,
+    permission_type: str = "view",
+    scope: str = "anonymous",
+) -> dict[str, Any]:
+    """✏️ Create a sharing link for a OneDrive file (requires user confirmation recommended)
+
+    Creates a sharing link that allows others to access the file. Permission types
+    control what recipients can do with the file.
+
+    Args:
+        file_id: The file ID to share
+        account_id: Microsoft account ID
+        permission_type: Type of permission - "view" or "edit" (default: "view")
+        scope: Link scope - "anonymous" or "organization" (default: "anonymous")
+
+    Returns:
+        Sharing link details including the web URL
+
+    Raises:
+        ValueError: If file_id is invalid or permission_type/scope is unsupported
+    """
+    account = validate_account_id(account_id)
+    graph_file_id = validate_microsoft_graph_id(file_id, "file_id")
+
+    # Validate permission_type
+    if permission_type not in ["view", "edit"]:
+        raise ValidationError(
+            format_validation_error(
+                "permission_type",
+                permission_type,
+                "unsupported value",
+                "'view' or 'edit'",
+            )
+        )
+
+    # Validate scope
+    if scope not in ["anonymous", "organization"]:
+        raise ValidationError(
+            format_validation_error(
+                "scope",
+                scope,
+                "unsupported value",
+                "'anonymous' or 'organization'",
+            )
+        )
+
+    payload = {
+        "type": permission_type,
+        "scope": scope,
+    }
+
+    result = graph.request(
+        "POST", f"/me/drive/items/{graph_file_id}/createLink", account, json=payload
+    )
+
+    if not result:
+        raise ValueError(f"Failed to create sharing link for file {graph_file_id}")
+
+    return result
+
+
+# file_download_url
+@mcp.tool(
+    name="file_download_url",
+    annotations={
+        "title": "Get File Download URL",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    meta={"category": "file", "safety_level": "safe"},
+)
+def file_download_url(
+    file_id: str,
+    account_id: str,
+) -> dict[str, Any]:
+    """📖 Get direct download URL for a OneDrive file (read-only, safe for unsupervised use)
+
+    Returns a temporary download URL that can be used to download the file directly
+    without authentication. The URL expires after a short period.
+
+    Args:
+        file_id: The file ID to get download URL for
+        account_id: Microsoft account ID
+
+    Returns:
+        Dictionary containing the download URL and file metadata
+
+    Raises:
+        ValueError: If file_id is invalid or file not found
+    """
+    account = validate_account_id(account_id)
+    graph_file_id = validate_microsoft_graph_id(file_id, "file_id")
+
+    # Request file metadata with download URL
+    params = {"$select": "id,name,size,@microsoft.graph.downloadUrl"}
+
+    result = graph.request(
+        "GET", f"/me/drive/items/{graph_file_id}", account, params=params
+    )
+
+    if not result:
+        raise ValueError(f"File with ID {graph_file_id} not found")
+
+    download_url = result.get("@microsoft.graph.downloadUrl")
+    if not download_url:
+        raise ValueError(f"No download URL available for file {graph_file_id}")
+
+    return {
+        "id": result.get("id"),
+        "name": result.get("name"),
+        "size": result.get("size"),
+        "download_url": download_url,
+    }

@@ -1039,9 +1039,9 @@ def email_reply(
     return {"status": "sent"}
 
 
-# reply_all_email
+# email_reply_all
 @mcp.tool(
-    name="reply_all_email",
+    name="email_reply_all",
     annotations={
         "title": "Reply All to Email",
         "readOnlyHint": False,
@@ -1055,7 +1055,7 @@ def email_reply(
         "requires_confirmation": True,
     },
 )
-def reply_all_email(
+def email_reply_all(
     account_id: str, email_id: str, body: str, confirm: bool = False
 ) -> dict[str, str]:
     """📧 Reply to all recipients of an email (always require user confirmation)
@@ -1095,6 +1095,107 @@ def reply_all_email(
     require_confirm(confirm, "reply to all recipients")
     endpoint = f"/me/messages/{email_id}/replyAll"
     payload = {"message": {"body": {"contentType": "Text", "content": body_stripped}}}
+    graph.request("POST", endpoint, account_id, json=payload)
+    return {"status": "sent"}
+
+
+# email_forward
+@mcp.tool(
+    name="email_forward",
+    annotations={
+        "title": "Forward Email",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={
+        "category": "email",
+        "safety_level": "dangerous",
+        "requires_confirmation": True,
+    },
+)
+def email_forward(
+    account_id: str,
+    email_id: str,
+    to: str | list[str],
+    cc: str | list[str] | None = None,
+    body: str | None = None,
+    confirm: bool = False,
+) -> dict[str, str]:
+    """📧 Forward an email to recipients (always require user confirmation)
+
+    WARNING: Email will be forwarded immediately to specified recipients.
+    This action cannot be undone.
+
+    Addresses are validated, deduplicated across To/CC, and limited to
+    500 unique recipients in total.
+
+    Args:
+        account_id: Microsoft account ID
+        email_id: The email ID to forward
+        to: Recipient email address(es)
+        cc: CC recipient email address(es) (optional)
+        body: Optional comment/message to include with forward (plain text)
+        confirm: Must be True to confirm sending (prevents accidents)
+
+    Returns:
+        Status confirmation
+
+    Raises:
+        ValidationError: If recipients are invalid, exceed limits,
+            or confirm is False.
+    """
+    to_normalized = normalize_recipients(to, "to")
+    cc_normalized = normalize_recipients(cc, "cc") if cc else []
+
+    seen: set[str] = set()
+    to_unique: list[str] = []
+    cc_unique: list[str] = []
+
+    for address in to_normalized:
+        key = address.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        to_unique.append(address)
+
+    for address in cc_normalized:
+        key = address.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        cc_unique.append(address)
+
+    total_unique = len(to_unique) + len(cc_unique)
+    if total_unique > MAX_EMAIL_RECIPIENTS:
+        reason = f"must not exceed {MAX_EMAIL_RECIPIENTS} unique recipients"
+        raise ValidationError(
+            format_validation_error(
+                "recipients",
+                total_unique,
+                reason,
+                f"≤ {MAX_EMAIL_RECIPIENTS}",
+            )
+        )
+
+    require_confirm(confirm, "forward email")
+
+    payload: dict[str, Any] = {
+        "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_unique],
+    }
+
+    if cc_unique:
+        payload["ccRecipients"] = [
+            {"emailAddress": {"address": addr}} for addr in cc_unique
+        ]
+
+    if body:
+        body_stripped = body.strip()
+        if body_stripped:
+            payload["comment"] = body_stripped
+
+    endpoint = f"/me/messages/{email_id}/forward"
     graph.request("POST", endpoint, account_id, json=payload)
     return {"status": "sent"}
 
@@ -1189,3 +1290,324 @@ def email_get_attachment(
         "size": len(content_bytes),
         "saved_to": str(destination),
     }
+
+
+# email_mark_read
+@mcp.tool(
+    name="email_mark_read",
+    annotations={
+        "title": "Mark Email Read/Unread",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    meta={"category": "email", "safety_level": "moderate"},
+)
+def email_mark_read(
+    email_id: str,
+    account_id: str,
+    is_read: bool = True,
+) -> dict[str, Any]:
+    """✏️ Mark an email as read or unread (requires user confirmation recommended)
+
+    Simpler alternative to email_update for marking emails as read/unread.
+
+    Args:
+        email_id: The email ID to update
+        account_id: Microsoft account ID
+        is_read: Whether to mark as read (True) or unread (False) (default: True)
+
+    Returns:
+        Updated email object
+
+    Raises:
+        ValueError: If email_id is invalid
+        ValidationError: If is_read is not a boolean
+    """
+    account = validate_account_id(account_id)
+    message_id = validate_microsoft_graph_id(email_id, "email_id")
+
+    if not isinstance(is_read, bool):
+        raise ValidationError(
+            format_validation_error(
+                "is_read",
+                is_read,
+                "must be a boolean value",
+                "True or False",
+            )
+        )
+
+    payload = {"isRead": is_read}
+
+    result = graph.request("PATCH", f"/me/messages/{message_id}", account, json=payload)
+
+    if not result:
+        raise ValueError(f"Failed to update email {message_id} - no response")
+
+    # Invalidate cache for the specific email and email lists
+    try:
+        cache_manager = get_cache_manager()
+        cache_manager.invalidate_pattern(account, f"email_get:*email_id={message_id}*")
+        cache_manager.invalidate_pattern(account, "email_list:*")
+    except Exception:
+        # Don't fail the operation if cache invalidation fails
+        pass
+
+    return result
+
+
+# email_flag
+@mcp.tool(
+    name="email_flag",
+    annotations={
+        "title": "Flag Email",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    meta={"category": "email", "safety_level": "moderate"},
+)
+def email_flag(
+    email_id: str,
+    account_id: str,
+    flag_status: str = "flagged",
+) -> dict[str, Any]:
+    """✏️ Flag or unflag an email (requires user confirmation recommended)
+
+    Simpler alternative to email_update for flagging emails.
+
+    Args:
+        email_id: The email ID to update
+        account_id: Microsoft account ID
+        flag_status: Flag status - "notFlagged", "flagged", or "complete" (default: "flagged")
+
+    Returns:
+        Updated email object
+
+    Raises:
+        ValueError: If email_id is invalid or flag_status is unsupported
+    """
+    account = validate_account_id(account_id)
+    message_id = validate_microsoft_graph_id(email_id, "email_id")
+
+    # Validate flag_status
+    validated_status = validate_choices(
+        flag_status,
+        FLAG_STATUS_CHOICES,
+        "flag_status",
+    )
+
+    payload = {
+        "flag": {
+            "flagStatus": validated_status,
+        }
+    }
+
+    result = graph.request("PATCH", f"/me/messages/{message_id}", account, json=payload)
+
+    if not result:
+        raise ValueError(f"Failed to update email {message_id} - no response")
+
+    # Invalidate cache for the specific email
+    try:
+        cache_manager = get_cache_manager()
+        cache_manager.invalidate_pattern(account, f"email_get:*email_id={message_id}*")
+    except Exception:
+        # Don't fail the operation if cache invalidation fails
+        pass
+
+    return result
+
+
+# email_add_category
+@mcp.tool(
+    name="email_add_category",
+    annotations={
+        "title": "Add Email Category",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={"category": "email", "safety_level": "moderate"},
+)
+def email_add_category(
+    email_id: str,
+    account_id: str,
+    categories: str | list[str],
+) -> dict[str, Any]:
+    """✏️ Add categories to an email (requires user confirmation recommended)
+
+    Simpler alternative to email_update for managing email categories.
+    This replaces all existing categories with the specified ones.
+
+    Args:
+        email_id: The email ID to update
+        account_id: Microsoft account ID
+        categories: Category name(s) to apply (single string or list)
+
+    Returns:
+        Updated email object
+
+    Raises:
+        ValueError: If email_id is invalid
+        ValidationError: If categories is empty or contains invalid values
+    """
+    account = validate_account_id(account_id)
+    message_id = validate_microsoft_graph_id(email_id, "email_id")
+
+    # Normalize categories to list
+    if isinstance(categories, str):
+        categories_list = [categories]
+    elif isinstance(categories, list):
+        categories_list = categories
+    else:
+        raise ValidationError(
+            format_validation_error(
+                "categories",
+                categories,
+                "must be a string or list of strings",
+                "Category name or list of category names",
+            )
+        )
+
+    # Validate each category
+    validated_categories: list[str] = []
+    for index, category in enumerate(categories_list):
+        if not isinstance(category, str):
+            raise ValidationError(
+                format_validation_error(
+                    f"categories[{index}]",
+                    category,
+                    "must be a string",
+                    "Category name string",
+                )
+            )
+        trimmed = category.strip()
+        if not trimmed:
+            raise ValidationError(
+                format_validation_error(
+                    f"categories[{index}]",
+                    category,
+                    "cannot be empty",
+                    "Non-empty category name",
+                )
+            )
+        validated_categories.append(trimmed)
+
+    if not validated_categories:
+        raise ValidationError(
+            format_validation_error(
+                "categories",
+                categories,
+                "must contain at least one non-empty category",
+                "Non-empty category list",
+            )
+        )
+
+    payload = {"categories": validated_categories}
+
+    result = graph.request("PATCH", f"/me/messages/{message_id}", account, json=payload)
+
+    if not result:
+        raise ValueError(f"Failed to update email {message_id} - no response")
+
+    # Invalidate cache for the specific email
+    try:
+        cache_manager = get_cache_manager()
+        cache_manager.invalidate_pattern(account, f"email_get:*email_id={message_id}*")
+    except Exception:
+        # Don't fail the operation if cache invalidation fails
+        pass
+
+    return result
+
+
+# email_archive
+@mcp.tool(
+    name="email_archive",
+    annotations={
+        "title": "Archive Email",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    meta={
+        "category": "email",
+        "safety_level": "moderate",
+        "requires_confirmation": False,
+    },
+)
+def email_archive(
+    email_id: str,
+    account_id: str,
+) -> dict[str, Any]:
+    """✏️ Archive an email (requires user confirmation recommended)
+
+    Quick action to move an email to the Archive folder. This is a convenience
+    wrapper around email_move that specifically targets the archive folder.
+
+    Args:
+        email_id: The email ID to archive
+        account_id: Microsoft account ID
+
+    Returns:
+        Status confirmation with new email ID
+
+    Raises:
+        ValueError: If email_id is invalid or archive folder not found
+    """
+    account = validate_account_id(account_id)
+    message_id = validate_microsoft_graph_id(email_id, "email_id")
+
+    # Get the archive folder
+    folder_path = FOLDERS["archive"]
+
+    folders = graph.request("GET", "/me/mailFolders", account)
+    folder_id = None
+
+    if not folders:
+        raise ValueError("Failed to retrieve mail folders")
+    if "value" not in folders:
+        raise ValueError(f"Unexpected folder response structure: {folders}")
+
+    for folder in folders["value"]:
+        display_name = folder.get("displayName", "")
+        well_known = folder.get("wellKnownName", "")
+        if (
+            isinstance(well_known, str)
+            and well_known.casefold() == folder_path.casefold()
+        ):
+            folder_id = folder["id"]
+            break
+        if isinstance(display_name, str) and display_name.casefold() == "archive":
+            folder_id = folder["id"]
+            break
+
+    if not folder_id:
+        raise ValueError(
+            "Archive folder not found. This may indicate the account does not "
+            "have an archive folder enabled."
+        )
+
+    payload = {"destinationId": folder_id}
+    result = graph.request(
+        "POST", f"/me/messages/{message_id}/move", account, json=payload
+    )
+    if not result:
+        raise ValueError("Failed to archive email - no response from server")
+    if "id" not in result:
+        raise ValueError(f"Failed to archive email - unexpected response: {result}")
+
+    # Invalidate cache for email lists (folder contents changed)
+    try:
+        cache_manager = get_cache_manager()
+        cache_manager.invalidate_pattern(account, "email_list:*")
+    except Exception:
+        # Don't fail the operation if cache invalidation fails
+        pass
+
+    return {"status": "archived", "new_id": result["id"]}

@@ -38,6 +38,59 @@ ALLOWED_CALENDAR_UPDATE_KEYS = (
 )
 
 
+def _get_user_email_with_fallback(account_id: str) -> str:
+    """Get user email with fallback chain for profiles missing mail field.
+
+    Implements a fallback strategy:
+    1. Try mail field (primary email)
+    2. Fallback to userPrincipalName (usually email-like)
+    3. Fallback to first item in otherMails array
+    4. Raise ValueError if no email found
+
+    Args:
+        account_id: Microsoft account identifier.
+
+    Returns:
+        User email address.
+
+    Raises:
+        ValueError: If no email address can be determined from user profile.
+    """
+    # Request user info with all possible email fields
+    user_info = graph.request(
+        "GET",
+        "/me?$select=mail,userPrincipalName,otherMails",
+        account_id,
+    )
+
+    if not user_info:
+        raise ValueError("Failed to retrieve user profile information")
+
+    # Try mail field first (primary email)
+    mail = user_info.get("mail")
+    if mail and isinstance(mail, str) and mail.strip():
+        return mail.strip()
+
+    # Fallback to userPrincipalName (usually email format)
+    upn = user_info.get("userPrincipalName")
+    if upn and isinstance(upn, str) and upn.strip():
+        return upn.strip()
+
+    # Fallback to first item in otherMails array
+    other_mails = user_info.get("otherMails")
+    if other_mails and isinstance(other_mails, list) and len(other_mails) > 0:
+        first_other = other_mails[0]
+        if first_other and isinstance(first_other, str) and first_other.strip():
+            return first_other.strip()
+
+    # No email found in any field
+    raise ValueError(
+        "Unable to determine user email address. "
+        "The user profile is missing mail, userPrincipalName, "
+        "and otherMails fields."
+    )
+
+
 # calendar_list_events
 @mcp.tool(
     name="calendar_list_events",
@@ -101,7 +154,9 @@ def calendar_list_events(
     if use_cache and not force_refresh:
         try:
             cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(account_id, "calendar_list_events", cache_params)
+            cached_result = cache_manager.get_cached(
+                account_id, "calendar_list_events", cache_params
+            )
 
             if cached_result:
                 data, state = cached_result
@@ -147,7 +202,9 @@ def calendar_list_events(
     if use_cache:
         try:
             cache_manager = get_cache_manager()
-            cache_manager.set_cached(account_id, "calendar_list_events", cache_params, events)
+            cache_manager.set_cached(
+                account_id, "calendar_list_events", cache_params, events
+            )
         except Exception:
             # If cache storage fails, still return the result
             pass
@@ -193,7 +250,9 @@ def calendar_get_event(
     if use_cache and not force_refresh:
         try:
             cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(account_id, "calendar_get_event", cache_params)
+            cached_result = cache_manager.get_cached(
+                account_id, "calendar_get_event", cache_params
+            )
 
             if cached_result:
                 data, state = cached_result
@@ -216,7 +275,9 @@ def calendar_get_event(
     if use_cache:
         try:
             cache_manager = get_cache_manager()
-            cache_manager.set_cached(account_id, "calendar_get_event", cache_params, result)
+            cache_manager.set_cached(
+                account_id, "calendar_get_event", cache_params, result
+            )
         except Exception:
             # If cache storage fails, still return the result
             pass
@@ -710,11 +771,10 @@ def calendar_check_availability(
                 )
             )
 
-    me_info = graph.request("GET", "/me", account_id)
-    if not me_info or "mail" not in me_info or not me_info["mail"]:
-        raise ValueError("Failed to get user email address")
-    schedules = [me_info["mail"]]
-    current_keys = {me_info["mail"].casefold()}
+    # Get user email with fallback chain
+    user_email = _get_user_email_with_fallback(account_id)
+    schedules = [user_email]
+    current_keys = {user_email.casefold()}
     for address in attendee_addresses:
         key = address.casefold()
         if key in current_keys:

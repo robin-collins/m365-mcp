@@ -4,7 +4,6 @@ Tests cache behavior for the cache manager used by folder_get_tree, email_list, 
 """
 
 import pytest
-import time
 from src.m365_mcp.cache import CacheManager
 from src.m365_mcp.cache_config import CacheState, generate_cache_key
 
@@ -41,8 +40,20 @@ class TestCacheKeyGeneration:
 
     def test_email_list_key_generation(self, test_account_id):
         """Test cache key generation for email_list."""
-        params1 = {"folder": "inbox", "folder_id": None, "folder_path": "inbox", "limit": 10, "include_body": True}
-        params2 = {"folder": "sent", "folder_id": None, "folder_path": "sent", "limit": 10, "include_body": True}
+        params1 = {
+            "folder": "inbox",
+            "folder_id": None,
+            "folder_path": "inbox",
+            "limit": 10,
+            "include_body": True,
+        }
+        params2 = {
+            "folder": "sent",
+            "folder_id": None,
+            "folder_path": "sent",
+            "limit": 10,
+            "include_body": True,
+        }
 
         key1 = generate_cache_key(test_account_id, "email_list", params1)
         key2 = generate_cache_key(test_account_id, "email_list", params2)

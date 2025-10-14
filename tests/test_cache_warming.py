@@ -47,13 +47,17 @@ def mock_tool_executor():
     """Create mock tool executor function."""
     call_log = []
 
-    def executor(account_id: str, operation: str, params: dict[str, Any]) -> dict[str, Any]:
+    def executor(
+        account_id: str, operation: str, params: dict[str, Any]
+    ) -> dict[str, Any]:
         """Mock tool executor that logs calls and returns test data."""
-        call_log.append({
-            "account_id": account_id,
-            "operation": operation,
-            "params": params,
-        })
+        call_log.append(
+            {
+                "account_id": account_id,
+                "operation": operation,
+                "params": params,
+            }
+        )
 
         # Return operation-specific test data
         if operation == "folder_get_tree":
@@ -62,7 +66,7 @@ def mock_tool_executor():
                 "children": [
                     {"id": "folder-1", "name": "Documents"},
                     {"id": "folder-2", "name": "Pictures"},
-                ]
+                ],
             }
         elif operation == "email_list":
             return {
@@ -90,7 +94,9 @@ def mock_tool_executor():
 class TestCacheWarmerInit:
     """Tests for CacheWarmer initialization."""
 
-    def test_init_with_valid_parameters(self, cache_manager, mock_accounts, mock_tool_executor):
+    def test_init_with_valid_parameters(
+        self, cache_manager, mock_accounts, mock_tool_executor
+    ):
         """Test initialization with valid parameters."""
         warmer = CacheWarmer(cache_manager, mock_tool_executor, mock_accounts)
 
@@ -114,7 +120,9 @@ class TestCacheWarmerInit:
 class TestBuildWarmingQueue:
     """Tests for warming queue building."""
 
-    def test_build_queue_with_single_account(self, cache_manager, mock_accounts, mock_tool_executor):
+    def test_build_queue_with_single_account(
+        self, cache_manager, mock_accounts, mock_tool_executor
+    ):
         """Test queue building with single account."""
         single_account = [mock_accounts[0]]
         warmer = CacheWarmer(cache_manager, mock_tool_executor, single_account)
@@ -130,7 +138,9 @@ class TestBuildWarmingQueue:
         assert queue[0]["priority"] == 1
         assert queue[0]["throttle_sec"] == 5
 
-    def test_build_queue_with_multiple_accounts(self, cache_manager, mock_accounts, mock_tool_executor):
+    def test_build_queue_with_multiple_accounts(
+        self, cache_manager, mock_accounts, mock_tool_executor
+    ):
         """Test queue building with multiple accounts."""
         warmer = CacheWarmer(cache_manager, mock_tool_executor, mock_accounts)
 
@@ -143,7 +153,9 @@ class TestBuildWarmingQueue:
         account_ids = {item["account_id"] for item in queue}
         assert account_ids == {"account-1", "account-2"}
 
-    def test_queue_sorted_by_priority(self, cache_manager, mock_accounts, mock_tool_executor):
+    def test_queue_sorted_by_priority(
+        self, cache_manager, mock_accounts, mock_tool_executor
+    ):
         """Test that queue is sorted by priority."""
         warmer = CacheWarmer(cache_manager, mock_tool_executor, mock_accounts)
 
@@ -218,7 +230,7 @@ class TestWarmingLoop:
             "account-1",
             "folder_get_tree",
             {"folder_id": "root", "max_depth": 10},
-            {"pre_cached": True}
+            {"pre_cached": True},
         )
 
         queue = warmer._build_warming_queue()
@@ -239,6 +251,7 @@ class TestWarmingLoop:
         self, cache_manager, mock_accounts
     ):
         """Test that warming loop handles operation failures."""
+
         def failing_executor(account_id: str, operation: str, params: dict[str, Any]):
             """Executor that always fails."""
             raise Exception("Simulated failure")
@@ -318,7 +331,9 @@ class TestStartWarming:
 class TestWarmingStatus:
     """Tests for get_warming_status method."""
 
-    def test_status_before_warming(self, cache_manager, mock_accounts, mock_tool_executor):
+    def test_status_before_warming(
+        self, cache_manager, mock_accounts, mock_tool_executor
+    ):
         """Test status before warming starts."""
         warmer = CacheWarmer(cache_manager, mock_tool_executor, mock_accounts)
 

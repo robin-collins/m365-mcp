@@ -58,7 +58,7 @@ async def get_session():
 
 
 async def get_account_info(session):
-    """Get account info"""
+    """Get account info including account type"""
     result = await session.call_tool("account_list", {})
     assert not result.isError
     accounts = parse_result(result, "account_list")
@@ -66,7 +66,11 @@ async def get_account_info(session):
         "No accounts found - please authenticate first"
     )
 
-    return {"email": accounts[0]["username"], "account_id": accounts[0]["account_id"]}
+    return {
+        "email": accounts[0]["username"],
+        "account_id": accounts[0]["account_id"],
+        "account_type": accounts[0].get("account_type", "unknown"),
+    }
 
 
 @pytest.mark.asyncio
@@ -80,6 +84,9 @@ async def test_list_accounts():
         assert len(accounts) > 0
         assert "username" in accounts[0]
         assert "account_id" in accounts[0]
+        assert "account_type" in accounts[0]
+        # account_type should be one of: "personal", "work_school", or "unknown"
+        assert accounts[0]["account_type"] in ["personal", "work_school", "unknown"]
 
 
 @pytest.mark.asyncio
@@ -1150,7 +1157,12 @@ async def test_send_email():
 
 @pytest.mark.asyncio
 async def test_unified_search():
-    """Test unified_search tool"""
+    """Test unified_search tool.
+
+    Note: Personal accounts use sequential search fallback,
+    work/school accounts use the unified search API.
+    Both should work correctly.
+    """
     async for session in get_session():
         account_info = await get_account_info(session)
 

@@ -28,25 +28,25 @@ from dataclasses import dataclass
 
 # Default cache database location (~/.m365_mcp_cache.db)
 CACHE_DB_PATH = os.environ.get(
-    "M365_MCP_CACHE_DB_PATH",
-    str(Path.home() / ".m365_mcp_cache.db")
+    "M365_MCP_CACHE_DB_PATH", str(Path.home() / ".m365_mcp_cache.db")
 )
 
 # SQLCipher encryption settings
 SQLCIPHER_SETTINGS = {
-    "kdf_iter": 256000,        # PBKDF2 iterations (higher = more secure, slower)
+    "kdf_iter": 256000,  # PBKDF2 iterations (higher = more secure, slower)
     "cipher_page_size": 4096,  # Page size in bytes
-    "cipher_use_hmac": True,   # Use HMAC for authentication
+    "cipher_use_hmac": True,  # Use HMAC for authentication
 }
 
 # Connection pool settings
-CONNECTION_POOL_SIZE = 5       # Maximum concurrent connections
-CONNECTION_TIMEOUT = 30.0      # Connection timeout in seconds
+CONNECTION_POOL_SIZE = 5  # Maximum concurrent connections
+CONNECTION_TIMEOUT = 30.0  # Connection timeout in seconds
 
 
 # ============================================================================
 # TTL POLICIES
 # ============================================================================
+
 
 @dataclass
 class TTLPolicy:
@@ -58,6 +58,7 @@ class TTLPolicy:
 
     After stale_seconds, data is expired and must be refreshed before serving.
     """
+
     fresh_seconds: int
     stale_seconds: int
 
@@ -78,61 +79,56 @@ TTL_POLICIES: Dict[str, TTLPolicy] = {
     # Folder Operations (relatively static)
     "folder_get_tree": TTLPolicy(
         fresh_seconds=30 * 60,  # 30 minutes fresh
-        stale_seconds=2 * 60 * 60  # 2 hours stale
+        stale_seconds=2 * 60 * 60,  # 2 hours stale
     ),
     "folder_list": TTLPolicy(
         fresh_seconds=15 * 60,  # 15 minutes fresh
-        stale_seconds=1 * 60 * 60  # 1 hour stale
+        stale_seconds=1 * 60 * 60,  # 1 hour stale
     ),
-
     # Email Operations (frequently changing)
     "email_list": TTLPolicy(
-        fresh_seconds=2 * 60,   # 2 minutes fresh
-        stale_seconds=10 * 60   # 10 minutes stale
+        fresh_seconds=2 * 60,  # 2 minutes fresh
+        stale_seconds=10 * 60,  # 10 minutes stale
     ),
     "email_get": TTLPolicy(
         fresh_seconds=15 * 60,  # 15 minutes fresh
-        stale_seconds=1 * 60 * 60  # 1 hour stale
+        stale_seconds=1 * 60 * 60,  # 1 hour stale
     ),
-
     # File Operations (moderately changing)
     "file_list": TTLPolicy(
         fresh_seconds=10 * 60,  # 10 minutes fresh
-        stale_seconds=1 * 60 * 60  # 1 hour stale
+        stale_seconds=1 * 60 * 60,  # 1 hour stale
     ),
     "file_get": TTLPolicy(
         fresh_seconds=20 * 60,  # 20 minutes fresh
-        stale_seconds=2 * 60 * 60  # 2 hours stale
+        stale_seconds=2 * 60 * 60,  # 2 hours stale
     ),
-
     # Contact Operations (relatively static)
     "contact_list": TTLPolicy(
         fresh_seconds=20 * 60,  # 20 minutes fresh
-        stale_seconds=2 * 60 * 60  # 2 hours stale
+        stale_seconds=2 * 60 * 60,  # 2 hours stale
     ),
     "contact_get": TTLPolicy(
         fresh_seconds=30 * 60,  # 30 minutes fresh
-        stale_seconds=4 * 60 * 60  # 4 hours stale
+        stale_seconds=4 * 60 * 60,  # 4 hours stale
     ),
-
     # Calendar Operations (time-sensitive)
     "calendar_list_events": TTLPolicy(
-        fresh_seconds=5 * 60,   # 5 minutes fresh
-        stale_seconds=30 * 60   # 30 minutes stale
+        fresh_seconds=5 * 60,  # 5 minutes fresh
+        stale_seconds=30 * 60,  # 30 minutes stale
     ),
     "calendar_get_event": TTLPolicy(
         fresh_seconds=10 * 60,  # 10 minutes fresh
-        stale_seconds=1 * 60 * 60  # 1 hour stale
+        stale_seconds=1 * 60 * 60,  # 1 hour stale
     ),
-
     # Search Operations (very time-sensitive)
     "search_emails": TTLPolicy(
-        fresh_seconds=1 * 60,   # 1 minute fresh
-        stale_seconds=5 * 60    # 5 minutes stale
+        fresh_seconds=1 * 60,  # 1 minute fresh
+        stale_seconds=5 * 60,  # 5 minutes stale
     ),
     "search_files": TTLPolicy(
-        fresh_seconds=1 * 60,   # 1 minute fresh
-        stale_seconds=5 * 60    # 5 minutes stale
+        fresh_seconds=1 * 60,  # 1 minute fresh
+        stale_seconds=5 * 60,  # 5 minutes stale
     ),
 }
 
@@ -140,6 +136,7 @@ TTL_POLICIES: Dict[str, TTLPolicy] = {
 # ============================================================================
 # CACHE LIMITS
 # ============================================================================
+
 
 @dataclass
 class CacheLimits:
@@ -153,14 +150,14 @@ class CacheLimits:
 
     # Cleanup Thresholds
     cleanup_threshold: float = 0.8  # Trigger cleanup at 80% (1.6 GB)
-    cleanup_target: float = 0.6     # Clean down to 60% (1.2 GB)
+    cleanup_target: float = 0.6  # Clean down to 60% (1.2 GB)
 
     # Account Limits
     max_entries_per_account: int = 10000  # Max entries per account
 
     # Compression
     compression_threshold: int = 50 * 1024  # Compress entries >= 50 KB
-    compression_level: int = 6              # gzip compression level (1-9)
+    compression_level: int = 6  # gzip compression level (1-9)
 
 
 # Default cache limits instance
@@ -172,7 +169,9 @@ CACHE_LIMITS = CacheLimits()
 # ============================================================================
 
 # Enable cache warming on server startup
-CACHE_WARMING_ENABLED = os.environ.get("M365_MCP_CACHE_WARMING", "true").lower() == "true"
+CACHE_WARMING_ENABLED = (
+    os.environ.get("M365_MCP_CACHE_WARMING", "true").lower() == "true"
+)
 
 # Operations to warm cache with on startup
 # Format: (operation_name, priority, throttle_sec, params)
@@ -182,23 +181,21 @@ CACHE_WARMING_OPERATIONS = [
         "operation": "folder_get_tree",
         "priority": 1,
         "throttle_sec": 5,
-        "params": {"folder_id": "root", "max_depth": 10}
+        "params": {"folder_id": "root", "max_depth": 10},
     },
-
     # Priority 2: Email list (frequently accessed)
     {
         "operation": "email_list",
         "priority": 2,
         "throttle_sec": 3,
-        "params": {"folder_id": "inbox", "limit": 50}
+        "params": {"folder_id": "inbox", "limit": 50},
     },
-
     # Priority 3: Contact list (commonly used)
     {
         "operation": "contact_list",
         "priority": 3,
         "throttle_sec": 2,
-        "params": {"limit": 100}
+        "params": {"limit": 100},
     },
 ]
 
@@ -207,10 +204,9 @@ CACHE_WARMING_OPERATIONS = [
 # CACHE KEY GENERATION
 # ============================================================================
 
+
 def generate_cache_key(
-    account_id: str,
-    resource_type: str,
-    parameters: Optional[Dict[str, Any]] = None
+    account_id: str, resource_type: str, parameters: Optional[Dict[str, Any]] = None
 ) -> str:
     """Generate deterministic cache key from operation parameters.
 
@@ -232,7 +228,7 @@ def generate_cache_key(
     # Add hash of parameters if provided
     if parameters:
         # Sort parameters for deterministic hashing
-        param_json = json.dumps(parameters, sort_keys=True, separators=(',', ':'))
+        param_json = json.dumps(parameters, sort_keys=True, separators=(",", ":"))
         param_hash = hashlib.sha256(param_json.encode()).hexdigest()[:16]
         key_parts.append(param_hash)
 
@@ -280,8 +276,8 @@ def get_ttl_policy(resource_type: str) -> TTLPolicy:
 
     # Default policy for unknown resource types (conservative)
     return TTLPolicy(
-        fresh_seconds=5 * 60,   # 5 minutes fresh
-        stale_seconds=15 * 60   # 15 minutes stale
+        fresh_seconds=5 * 60,  # 5 minutes fresh
+        stale_seconds=15 * 60,  # 15 minutes stale
     )
 
 
@@ -289,9 +285,11 @@ def get_ttl_policy(resource_type: str) -> TTLPolicy:
 # CACHE STATE ENUM
 # ============================================================================
 
+
 class CacheState(Enum):
     """Cache entry state based on TTL policies."""
-    FRESH = "fresh"      # Data is current, serve immediately
-    STALE = "stale"      # Data is outdated, serve but refresh in background
+
+    FRESH = "fresh"  # Data is current, serve immediately
+    STALE = "stale"  # Data is outdated, serve but refresh in background
     EXPIRED = "expired"  # Data is too old, must refresh before serving
     MISSING = "missing"  # No cached data available

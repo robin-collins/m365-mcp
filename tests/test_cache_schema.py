@@ -81,7 +81,13 @@ class TestDatabaseCreation:
             conn.execute("PRAGMA cipher_page_size = 4096")
 
             # Read and execute migration script
-            migration_path = Path(__file__).parent.parent / "src" / "m365_mcp" / "migrations" / "001_init_cache.sql"
+            migration_path = (
+                Path(__file__).parent.parent
+                / "src"
+                / "m365_mcp"
+                / "migrations"
+                / "001_init_cache.sql"
+            )
             with open(migration_path, "r") as f:
                 migration_sql = f.read()
 
@@ -157,7 +163,13 @@ class TestDatabaseCreation:
             conn.execute(f"PRAGMA key = '{encryption_key}'")
 
             # Execute migration
-            migration_path = Path(__file__).parent.parent / "src" / "m365_mcp" / "migrations" / "001_init_cache.sql"
+            migration_path = (
+                Path(__file__).parent.parent
+                / "src"
+                / "m365_mcp"
+                / "migrations"
+                / "001_init_cache.sql"
+            )
             with open(migration_path, "r") as f:
                 conn.executescript(f.read())
 
@@ -204,26 +216,20 @@ class TestCacheConfiguration:
 
         # Key with parameters
         key2 = generate_cache_key(
-            "acc-123",
-            "folder_get_tree",
-            {"folder_id": "root", "max_depth": 10}
+            "acc-123", "folder_get_tree", {"folder_id": "root", "max_depth": 10}
         )
         assert key2.startswith("folder_get_tree:acc-123:")
         assert len(key2.split(":")) == 3
 
         # Same parameters should produce same key
         key3 = generate_cache_key(
-            "acc-123",
-            "folder_get_tree",
-            {"folder_id": "root", "max_depth": 10}
+            "acc-123", "folder_get_tree", {"folder_id": "root", "max_depth": 10}
         )
         assert key2 == key3
 
         # Different parameter order should produce same key (deterministic)
         key4 = generate_cache_key(
-            "acc-123",
-            "folder_get_tree",
-            {"max_depth": 10, "folder_id": "root"}
+            "acc-123", "folder_get_tree", {"max_depth": 10, "folder_id": "root"}
         )
         assert key2 == key4
 

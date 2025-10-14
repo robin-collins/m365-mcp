@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from ..mcp_instance import mcp
 from .. import graph
 from ..validators import validate_limit, validate_onedrive_path
-from ..cache_config import CacheState, generate_cache_key
+from ..cache_config import generate_cache_key
 from .cache_tools import get_cache_manager
 
 
@@ -100,13 +100,15 @@ def folder_list(
         "folder_id": folder_id,
         "limit": limit,
     }
-    cache_key = generate_cache_key(account_id, "folder_list", cache_params)
+    generate_cache_key(account_id, "folder_list", cache_params)
 
     # Try to get from cache if enabled and not forcing refresh
     if use_cache and not force_refresh:
         try:
             cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(account_id, "folder_list", cache_params)
+            cached_result = cache_manager.get_cached(
+                account_id, "folder_list", cache_params
+            )
 
             if cached_result:
                 data, state = cached_result
@@ -255,13 +257,15 @@ def folder_get_tree(
         "folder_id": folder_id,
         "max_depth": max_depth,
     }
-    cache_key = generate_cache_key(account_id, "folder_get_tree", cache_params)
+    generate_cache_key(account_id, "folder_get_tree", cache_params)
 
     # Try to get from cache if enabled and not forcing refresh
     if use_cache and not force_refresh:
         try:
             cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(account_id, "folder_get_tree", cache_params)
+            cached_result = cache_manager.get_cached(
+                account_id, "folder_get_tree", cache_params
+            )
 
             if cached_result:
                 data, state = cached_result
@@ -338,7 +342,9 @@ def folder_get_tree(
     if use_cache:
         try:
             cache_manager = get_cache_manager()
-            cache_manager.set_cached(account_id, "folder_get_tree", cache_params, result)
+            cache_manager.set_cached(
+                account_id, "folder_get_tree", cache_params, result
+            )
         except Exception:
             # If cache storage fails, still return the result
             pass

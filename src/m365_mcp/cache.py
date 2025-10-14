@@ -9,7 +9,6 @@ import json
 import gzip
 import logging
 import time
-from datetime import datetime, timedelta
 from pathlib import Path
 from contextlib import contextmanager
 from typing import Any, Optional
@@ -47,7 +46,7 @@ class CacheManager:
         self,
         db_path: Optional[str] = None,
         encryption_enabled: bool = True,
-        max_connections: int = 5
+        max_connections: int = 5,
     ):
         """
         Initialize cache manager.
@@ -148,10 +147,7 @@ class CacheManager:
         logger.info("Database schema initialized")
 
     def get_cached(
-        self,
-        account_id: str,
-        resource_type: str,
-        params: dict[str, Any]
+        self, account_id: str, resource_type: str, params: dict[str, Any]
     ) -> Optional[tuple[Any, CacheState]]:
         """
         Retrieve cached data with state detection.
@@ -169,6 +165,7 @@ class CacheManager:
 
         # Get TTL policy for this resource type
         from .cache_config import TTLPolicy
+
         ttl_policy = TTL_POLICIES.get(resource_type)
         if not ttl_policy:
             logger.warning(f"No TTL policy for {resource_type}, using default")
@@ -181,7 +178,7 @@ class CacheManager:
                 FROM cache_entries
                 WHERE cache_key = ?
                 """,
-                (cache_key,)
+                (cache_key,),
             )
             row = cursor.fetchone()
 
@@ -209,7 +206,9 @@ class CacheManager:
                 state = CacheState.STALE
             else:
                 # Expired, delete and return None
-                conn.execute("DELETE FROM cache_entries WHERE cache_key = ?", (cache_key,))
+                conn.execute(
+                    "DELETE FROM cache_entries WHERE cache_key = ?", (cache_key,)
+                )
                 return None
 
             # Update access tracking
@@ -219,17 +218,13 @@ class CacheManager:
                 SET accessed_at = ?, hit_count = hit_count + 1
                 WHERE cache_key = ?
                 """,
-                (time.time(), cache_key)
+                (time.time(), cache_key),
             )
 
             return (data, state)
 
     def set_cached(
-        self,
-        account_id: str,
-        resource_type: str,
-        params: dict[str, Any],
-        data: Any
+        self, account_id: str, resource_type: str, params: dict[str, Any], data: Any
     ) -> None:
         """
         Store data in cache with compression and encryption.
@@ -266,6 +261,7 @@ class CacheManager:
 
         # Calculate fresh_until and expires_at based on TTL policy
         from .cache_config import TTLPolicy
+
         ttl_policy = TTL_POLICIES.get(resource_type)
         if not ttl_policy:
             ttl_policy = TTLPolicy(fresh_seconds=300, stale_seconds=1800)
@@ -282,8 +278,18 @@ class CacheManager:
                  data_size_bytes, created_at, accessed_at, fresh_until, expires_at, hit_count)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
                 """,
-                (cache_key, account_id, resource_type, data_bytes, compressed,
-                 len(data_bytes), now, now, fresh_until, expires_at)
+                (
+                    cache_key,
+                    account_id,
+                    resource_type,
+                    data_bytes,
+                    compressed,
+                    len(data_bytes),
+                    now,
+                    now,
+                    fresh_until,
+                    expires_at,
+                ),
             )
 
         # Check if cleanup needed
@@ -308,10 +314,7 @@ class CacheManager:
                 self._cleanup_to_target()
 
     def invalidate_pattern(
-        self,
-        pattern: str,
-        account_id: Optional[str] = None,
-        reason: str = "manual"
+        self, pattern: str, account_id: Optional[str] = None, reason: str = "manual"
     ) -> int:
         """
         Invalidate cache entries matching pattern.
@@ -341,7 +344,7 @@ class CacheManager:
             # Count matching entries first
             cursor = conn.execute(
                 f"SELECT COUNT(*) as count FROM cache_entries WHERE {where_clause}",
-                params
+                params,
             )
             count = cursor.fetchone()["count"]
 
@@ -352,14 +355,11 @@ class CacheManager:
                 (account_id, pattern, reason, invalidated_at, entries_invalidated)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (log_account, pattern, reason, time.time(), count)
+                (log_account, pattern, reason, time.time(), count),
             )
 
             # Delete matching entries
-            conn.execute(
-                f"DELETE FROM cache_entries WHERE {where_clause}",
-                params
-            )
+            conn.execute(f"DELETE FROM cache_entries WHERE {where_clause}", params)
 
             if count > 0:
                 logger.info(f"Invalidated {count} entries matching '{pattern}'")
@@ -380,11 +380,13 @@ class CacheManager:
                 DELETE FROM cache_entries
                 WHERE expires_at < ?
                 """,
-                (now,)
+                (now,),
             )
 
             # Check remaining size
-            cursor = conn.execute("SELECT SUM(data_size_bytes) as total FROM cache_entries")
+            cursor = conn.execute(
+                "SELECT SUM(data_size_bytes) as total FROM cache_entries"
+            )
             row = cursor.fetchone()
             current_bytes = row["total"] if row and row["total"] else 0
 
@@ -408,7 +410,7 @@ class CacheManager:
                         )
                     )
                     """,
-                    (bytes_to_free,)
+                    (bytes_to_free,),
                 )
 
             logger.info(f"Cleanup complete, target size: {target_bytes} bytes")
@@ -430,7 +432,7 @@ class CacheManager:
                 DELETE FROM cache_entries
                 WHERE expires_at < ?
                 """,
-                (now,)
+                (now,),
             )
             count = cursor.rowcount
 
@@ -493,9 +495,11 @@ class CacheManager:
                 "avg_bytes": overall["avg_bytes"] or 0,
                 "total_hits": overall["total_hits"] or 0,
                 "max_bytes": CACHE_LIMITS.max_total_bytes,
-                "usage_percent": (overall["total_bytes"] or 0) / CACHE_LIMITS.max_total_bytes * 100,
+                "usage_percent": (overall["total_bytes"] or 0)
+                / CACHE_LIMITS.max_total_bytes
+                * 100,
                 "by_account": by_account,
-                "by_resource": by_resource
+                "by_resource": by_resource,
             }
 
     def enqueue_task(
@@ -503,7 +507,7 @@ class CacheManager:
         account_id: str,
         operation: str,
         parameters: dict[str, Any],
-        priority: int = 5
+        priority: int = 5,
     ) -> str:
         """
         Enqueue a background task.
@@ -530,7 +534,14 @@ class CacheManager:
                 )
                 VALUES (?, ?, ?, ?, ?, 'queued', 0, ?)
                 """,
-                (task_id, account_id, operation, json.dumps(parameters), priority, time.time())
+                (
+                    task_id,
+                    account_id,
+                    operation,
+                    json.dumps(parameters),
+                    priority,
+                    time.time(),
+                ),
             )
 
         logger.info(
@@ -539,8 +550,8 @@ class CacheManager:
                 "task_id": task_id,
                 "account_id": account_id,
                 "operation": operation,
-                "priority": priority
-            }
+                "priority": priority,
+            },
         )
 
         return task_id
@@ -566,7 +577,7 @@ class CacheManager:
                 FROM cache_tasks
                 WHERE task_id = ?
                 """,
-                (task_id,)
+                (task_id,),
             )
 
             row = cursor.fetchone()
@@ -576,7 +587,9 @@ class CacheManager:
                     "task_id": row["task_id"],
                     "account_id": row["account_id"],
                     "operation": row["operation"],
-                    "parameters": json.loads(row["parameters_json"]) if row["parameters_json"] else {},
+                    "parameters": json.loads(row["parameters_json"])
+                    if row["parameters_json"]
+                    else {},
                     "priority": row["priority"],
                     "status": row["status"],
                     "retry_count": row["retry_count"],
@@ -584,7 +597,7 @@ class CacheManager:
                     "started_at": row["started_at"],
                     "completed_at": row["completed_at"],
                     "result": row["result_json"],
-                    "error": row["last_error"]
+                    "error": row["last_error"],
                 }
 
             return None
@@ -593,7 +606,7 @@ class CacheManager:
         self,
         account_id: Optional[str] = None,
         status: Optional[str] = None,
-        limit: int = 100
+        limit: int = 100,
     ) -> list[dict[str, Any]]:
         """
         List tasks with optional filtering.
@@ -636,7 +649,9 @@ class CacheManager:
                     "task_id": row["task_id"],
                     "account_id": row["account_id"],
                     "operation": row["operation"],
-                    "parameters": json.loads(row["parameters_json"]) if row["parameters_json"] else {},
+                    "parameters": json.loads(row["parameters_json"])
+                    if row["parameters_json"]
+                    else {},
                     "priority": row["priority"],
                     "status": row["status"],
                     "retry_count": row["retry_count"],
@@ -644,7 +659,7 @@ class CacheManager:
                     "started_at": row["started_at"],
                     "completed_at": row["completed_at"],
                     "result": row["result_json"],
-                    "error": row["last_error"]
+                    "error": row["last_error"],
                 }
                 for row in cursor
             ]

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from .cache import CacheManager
-from .cache_config import CACHE_WARMING_OPERATIONS, CacheState, generate_cache_key
+from .cache_config import CACHE_WARMING_OPERATIONS, CacheState
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +151,9 @@ class CacheWarmer:
                         self.cache_manager.set_cached(
                             account_id, operation, params, result
                         )
-                        logger.debug(f"Cached {operation} for account {account_id[:8]}...")
+                        logger.debug(
+                            f"Cached {operation} for account {account_id[:8]}..."
+                        )
 
                     self.operations_completed += 1
 

@@ -17,10 +17,35 @@ from .. import auth
 def account_list() -> list[dict[str, str]]:
     """📖 List all signed-in Microsoft accounts (read-only, safe for unsupervised use)
 
-    Returns a list of authenticated Microsoft accounts with their usernames and account IDs.
+    Returns a list of authenticated Microsoft accounts with their usernames, account IDs,
+    and account types (personal or work/school).
+
+    Returns:
+        List of account dictionaries with:
+        - username: Account email/username
+        - account_id: Unique account identifier
+        - account_type: "personal", "work_school", or "unknown"
+
+    Example:
+        [
+            {
+                "username": "user@outlook.com",
+                "account_id": "abc123...",
+                "account_type": "personal"
+            },
+            {
+                "username": "user@contoso.com",
+                "account_id": "def456...",
+                "account_type": "work_school"
+            }
+        ]
     """
     return [
-        {"username": acc.username, "account_id": acc.account_id}
+        {
+            "username": acc.username,
+            "account_id": acc.account_id,
+            "account_type": acc.account_type,
+        }
         for acc in auth.list_accounts()
     ]
 
@@ -129,6 +154,7 @@ def account_complete_auth(flow_cache: str) -> dict[str, str]:
     accounts = app.get_accounts()
     if accounts:
         # Find the account that matches the token we just got
+        matched_account = None
         for account in accounts:
             if (
                 account.get("username", "").lower()
@@ -136,19 +162,23 @@ def account_complete_auth(flow_cache: str) -> dict[str, str]:
                 .get("preferred_username", "")
                 .lower()
             ):
-                return {
-                    "status": "success",
-                    "username": account["username"],
-                    "account_id": account["home_account_id"],
-                    "message": f"Successfully authenticated {account['username']}",
-                }
-        # If exact match not found, return the last account
-        account = accounts[-1]
+                matched_account = account
+                break
+
+        # If exact match not found, use the last account
+        if not matched_account:
+            matched_account = accounts[-1]
+
+        # Detect and cache account type
+        account_id = matched_account["home_account_id"]
+        account_type = auth._get_account_type(account_id, matched_account["username"])
+
         return {
             "status": "success",
-            "username": account["username"],
-            "account_id": account["home_account_id"],
-            "message": f"Successfully authenticated {account['username']}",
+            "username": matched_account["username"],
+            "account_id": account_id,
+            "account_type": account_type,
+            "message": f"Successfully authenticated {matched_account['username']}",
         }
 
     return {

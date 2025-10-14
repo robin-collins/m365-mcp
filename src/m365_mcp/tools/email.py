@@ -6,7 +6,6 @@ from typing import Any
 
 from .. import graph
 from ..mcp_instance import mcp
-from ..cache_config import CacheState, generate_cache_key
 from .cache_tools import get_cache_manager
 from ..validators import (
     ValidationError,
@@ -213,7 +212,9 @@ def email_list(
     if use_cache and not force_refresh:
         try:
             cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(account_id, "email_list", cache_params)
+            cached_result = cache_manager.get_cached(
+                account_id, "email_list", cache_params
+            )
 
             if cached_result:
                 data, state = cached_result
@@ -348,7 +349,9 @@ def email_get(
     if use_cache and not force_refresh:
         try:
             cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(account_id, "email_get", cache_params)
+            cached_result = cache_manager.get_cached(
+                account_id, "email_get", cache_params
+            )
 
             if cached_result:
                 data, state = cached_result

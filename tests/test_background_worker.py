@@ -5,9 +5,7 @@ Tests for background worker task queue system.
 import asyncio
 import pytest
 import tempfile
-import time
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock
 
 from src.m365_mcp.cache import CacheManager
 from src.m365_mcp.background_worker import BackgroundWorker
@@ -35,6 +33,7 @@ def cache_manager(temp_cache_db):
 @pytest.fixture
 def mock_tool_executor():
     """Create a mock tool executor."""
+
     async def executor(operation: str, parameters: dict):
         # Simulate successful execution
         await asyncio.sleep(0.01)
@@ -52,7 +51,7 @@ class TestTaskEnqueuing:
             account_id="test-account",
             operation="folder_get_tree",
             parameters={"folder_id": "root"},
-            priority=5
+            priority=5,
         )
 
         assert task_id is not None
@@ -75,7 +74,7 @@ class TestTaskEnqueuing:
                 account_id=f"account-{i}",
                 operation="email_list",
                 parameters={"folder": "inbox"},
-                priority=i + 1
+                priority=i + 1,
             )
             task_ids.append(task_id)
 
@@ -96,7 +95,7 @@ class TestTaskStatusTracking:
             account_id="test-account",
             operation="folder_list",
             parameters={},
-            priority=3
+            priority=3,
         )
 
         status = cache_manager.get_task_status(task_id)
@@ -111,7 +110,7 @@ class TestTaskStatusTracking:
                 account_id=f"account-{i}",
                 operation="email_list",
                 parameters={},
-                priority=5
+                priority=5,
             )
 
         tasks = cache_manager.list_tasks()
@@ -162,7 +161,7 @@ class TestBackgroundWorker:
             account_id="test-account",
             operation="folder_get_tree",
             parameters={"folder_id": "root"},
-            priority=1
+            priority=1,
         )
 
         # Process the task
@@ -233,6 +232,7 @@ class TestRetryLogic:
     @pytest.mark.asyncio
     async def test_task_fails_after_max_retries(self, cache_manager):
         """Test task marked failed after max retries."""
+
         async def always_failing_executor(operation, parameters):
             raise Exception("Always fails")
 

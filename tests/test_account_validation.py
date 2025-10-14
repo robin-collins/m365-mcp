@@ -10,19 +10,31 @@ from src.m365_mcp.tools import account as account_tools
 
 
 def test_account_list_serialises_namedtuple(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure account_list exposes username/account_id pairs."""
+    """Ensure account_list exposes username/account_id/account_type triples."""
 
     accounts = [
-        account_tools.auth.Account(username="ada@example.com", account_id="acc-1"),
-        account_tools.auth.Account(username="grace@example.com", account_id="acc-2"),
+        account_tools.auth.Account(
+            username="ada@example.com", account_id="acc-1", account_type="work_school"
+        ),
+        account_tools.auth.Account(
+            username="grace@example.com", account_id="acc-2", account_type="personal"
+        ),
     ]
     monkeypatch.setattr(account_tools.auth, "list_accounts", lambda: accounts)
 
     result = account_tools.account_list.fn()
 
     assert result == [
-        {"username": "ada@example.com", "account_id": "acc-1"},
-        {"username": "grace@example.com", "account_id": "acc-2"},
+        {
+            "username": "ada@example.com",
+            "account_id": "acc-1",
+            "account_type": "work_school",
+        },
+        {
+            "username": "grace@example.com",
+            "account_id": "acc-2",
+            "account_type": "personal",
+        },
     ]
 
 
@@ -110,7 +122,7 @@ def test_account_complete_auth_returns_pending_status(
 def test_account_complete_auth_returns_success_and_writes_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Successful completion returns matched account details."""
+    """Successful completion returns matched account details including account type."""
 
     flow_cache = {"device_code": "EFGH"}
 
@@ -138,6 +150,7 @@ def test_account_complete_auth_returns_success_and_writes_cache(
         def acquire_token_by_device_flow(self, flow: dict[str, Any]) -> dict[str, Any]:
             return {
                 "id_token_claims": {"preferred_username": "ada@example.com"},
+                "access_token": "fake-access-token",
             }
 
         def get_accounts(self) -> list[dict[str, str]]:
@@ -151,8 +164,12 @@ def test_account_complete_auth_returns_success_and_writes_cache(
     def fake_write_cache(content: str) -> None:
         writes.append(content)
 
+    def fake_get_account_type(account_id: str, username: str) -> str:
+        return "work_school"
+
     monkeypatch.setattr(account_tools.auth, "get_app", lambda: FakeApp())
     monkeypatch.setattr(account_tools.auth, "_write_cache", fake_write_cache)
+    monkeypatch.setattr(account_tools.auth, "_get_account_type", fake_get_account_type)
 
     result = account_tools.account_complete_auth.fn(str(flow_cache))
 
@@ -160,6 +177,7 @@ def test_account_complete_auth_returns_success_and_writes_cache(
         "status": "success",
         "username": "ada@example.com",
         "account_id": "acc-1",
+        "account_type": "work_school",
         "message": "Successfully authenticated ada@example.com",
     }
     assert writes == ["cache"]

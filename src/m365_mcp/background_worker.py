@@ -11,7 +11,6 @@ import logging
 import time
 import traceback
 from typing import Any, Optional
-from datetime import datetime, timedelta
 
 from .cache import CacheManager
 
@@ -39,7 +38,7 @@ class BackgroundWorker:
         cache_manager: CacheManager,
         tool_executor: Any,
         max_retries: int = 3,
-        initial_backoff: float = 1.0
+        initial_backoff: float = 1.0,
     ):
         """
         Initialize the background worker.
@@ -59,10 +58,7 @@ class BackgroundWorker:
 
         logger.info(
             "BackgroundWorker initialized",
-            extra={
-                "max_retries": max_retries,
-                "initial_backoff": initial_backoff
-            }
+            extra={"max_retries": max_retries, "initial_backoff": initial_backoff},
         )
 
     async def start(self) -> None:
@@ -136,7 +132,7 @@ class BackgroundWorker:
             except Exception as e:
                 logger.error(
                     f"Unexpected error in worker loop: {e}",
-                    extra={"error": str(e), "traceback": traceback.format_exc()}
+                    extra={"error": str(e), "traceback": traceback.format_exc()},
                 )
                 # Sleep longer on errors to avoid error loops
                 await asyncio.sleep(5.0)
@@ -168,15 +164,13 @@ class BackgroundWorker:
             extra={
                 "task_id": task_id,
                 "operation": operation,
-                "priority": task.get("priority", 5)
-            }
+                "priority": task.get("priority", 5),
+            },
         )
 
         # Mark task as running
         self._update_task_status(
-            task_id=task_id,
-            status="running",
-            started_at=time.time()
+            task_id=task_id, status="running", started_at=time.time()
         )
 
         try:
@@ -185,16 +179,17 @@ class BackgroundWorker:
 
             # Mark task as completed
             import json
+
             self._update_task_status(
                 task_id=task_id,
                 status="completed",
                 completed_at=time.time(),
-                result_json=json.dumps(result)
+                result_json=json.dumps(result),
             )
 
             logger.info(
                 f"Task {task_id} completed successfully",
-                extra={"task_id": task_id, "operation": operation}
+                extra={"task_id": task_id, "operation": operation},
             )
 
             return True
@@ -229,6 +224,7 @@ class BackgroundWorker:
 
                 if row:
                     import json
+
                     return {
                         "task_id": row[0],
                         "account_id": row[1],
@@ -237,7 +233,7 @@ class BackgroundWorker:
                         "priority": row[4],
                         "status": row[5],
                         "retry_count": row[6],
-                        "created_at": row[7]
+                        "created_at": row[7],
                     }
 
                 return None
@@ -246,12 +242,7 @@ class BackgroundWorker:
             logger.error(f"Error getting next task: {e}")
             return None
 
-    def _update_task_status(
-        self,
-        task_id: str,
-        status: str,
-        **kwargs
-    ) -> None:
+    def _update_task_status(self, task_id: str, status: str, **kwargs) -> None:
         """
         Update task status and related fields.
 
@@ -275,23 +266,21 @@ class BackgroundWorker:
                 conn.execute(
                     f"""
                     UPDATE cache_tasks
-                    SET {', '.join(set_fields)}
+                    SET {", ".join(set_fields)}
                     WHERE task_id = ?
                     """,
-                    values
+                    values,
                 )
                 conn.commit()
 
         except Exception as e:
             logger.error(
                 f"Error updating task status: {e}",
-                extra={"task_id": task_id, "status": status}
+                extra={"task_id": task_id, "status": status},
             )
 
     async def _handle_task_failure(
-        self,
-        task: dict[str, Any],
-        error: Exception
+        self, task: dict[str, Any], error: Exception
     ) -> None:
         """
         Handle task failure with retry logic.
@@ -310,7 +299,7 @@ class BackgroundWorker:
 
         if retry_count < self.max_retries:
             # Calculate exponential backoff delay
-            backoff_delay = self.initial_backoff * (2 ** retry_count)
+            backoff_delay = self.initial_backoff * (2**retry_count)
 
             logger.warning(
                 f"Task {task_id} failed, will retry in {backoff_delay}s",
@@ -318,8 +307,8 @@ class BackgroundWorker:
                     "task_id": task_id,
                     "retry_count": retry_count + 1,
                     "max_retries": self.max_retries,
-                    "error": error_message
-                }
+                    "error": error_message,
+                },
             )
 
             # Update task for retry
@@ -327,7 +316,7 @@ class BackgroundWorker:
                 task_id=task_id,
                 status="queued",
                 retry_count=retry_count + 1,
-                last_error=error_message
+                last_error=error_message,
             )
 
             # Sleep for backoff period
@@ -341,21 +330,19 @@ class BackgroundWorker:
                     "task_id": task_id,
                     "operation": task.get("operation"),
                     "error": error_message,
-                    "traceback": traceback.format_exc()
-                }
+                    "traceback": traceback.format_exc(),
+                },
             )
 
             self._update_task_status(
                 task_id=task_id,
                 status="failed",
                 completed_at=time.time(),
-                last_error=error_message
+                last_error=error_message,
             )
 
     async def _execute_operation(
-        self,
-        operation: str,
-        parameters: dict[str, Any]
+        self, operation: str, parameters: dict[str, Any]
     ) -> dict[str, Any]:
         """
         Execute a tool operation.
@@ -377,8 +364,4 @@ class BackgroundWorker:
         # Execute the tool operation
         result = await self.tool_executor(operation, parameters)
 
-        return {
-            "success": True,
-            "operation": operation,
-            "result": result
-        }
+        return {"success": True, "operation": operation, "result": result}

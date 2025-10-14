@@ -30,7 +30,9 @@ def _setup_signal_handlers() -> None:
 
     def signal_handler(signum, frame):
         sig_name = signal.Signals(signum).name
-        logger.warning(f"Received signal {sig_name} ({signum}), shutting down gracefully")
+        logger.warning(
+            f"Received signal {sig_name} ({signum}), shutting down gracefully"
+        )
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, signal_handler)
@@ -52,7 +54,13 @@ def _log_startup_info() -> None:
     logger.info(f"Python: {sys.version}")
     logger.info(f"Working Directory: {os.getcwd()}")
     logger.info("Environment Variables:")
-    for key in ["M365_MCP_CLIENT_ID", "MCP_TRANSPORT", "MCP_HOST", "MCP_PORT", "MCP_AUTH_METHOD"]:
+    for key in [
+        "M365_MCP_CLIENT_ID",
+        "MCP_TRANSPORT",
+        "MCP_HOST",
+        "MCP_PORT",
+        "MCP_AUTH_METHOD",
+    ]:
         value = os.getenv(key, "not set")
         # Mask sensitive values
         if "CLIENT_ID" in key and value != "not set":
@@ -116,7 +124,9 @@ def main() -> None:
 
         # SECURITY: Warn if binding to all interfaces
         if host in ["0.0.0.0", "::", ""]:
-            logger.warning(f"Binding to all network interfaces ({host}) - ensure firewall is configured!")
+            logger.warning(
+                f"Binding to all network interfaces ({host}) - ensure firewall is configured!"
+            )
             print(
                 "⚠️  WARNING: Binding to all network interfaces. Ensure firewall is configured!",
                 file=sys.stderr,
@@ -143,7 +153,9 @@ def main() -> None:
 
             # Require explicit opt-in to run without auth
             if os.getenv("MCP_ALLOW_INSECURE") != "true":
-                logger.error("Refusing to start insecure HTTP server without MCP_ALLOW_INSECURE=true")
+                logger.error(
+                    "Refusing to start insecure HTTP server without MCP_ALLOW_INSECURE=true"
+                )
                 print(
                     "Error: Refusing to start insecure HTTP server. Set MCP_ALLOW_INSECURE=true to override",
                     file=sys.stderr,
@@ -205,7 +217,9 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
 
     # Validate token is sufficiently secure
     if len(auth_token) < 32:
-        logger.warning(f"MCP_AUTH_TOKEN is too short ({len(auth_token)} chars, minimum 32 recommended)")
+        logger.warning(
+            f"MCP_AUTH_TOKEN is too short ({len(auth_token)} chars, minimum 32 recommended)"
+        )
         print(
             "⚠️  WARNING: MCP_AUTH_TOKEN is too short (minimum 32 characters recommended)",
             file=sys.stderr,
@@ -233,14 +247,18 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
 
         # Skip auth for common browser requests (return 404 instead of 401)
         if request.url.path in ["/favicon.ico", "/robots.txt"]:
-            logger.debug(f"Ignoring browser request: {request.url.path} from {client_ip}")
+            logger.debug(
+                f"Ignoring browser request: {request.url.path} from {client_ip}"
+            )
             return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
         logger.debug(f"Request: {request.method} {request.url.path} from {client_ip}")
 
         auth_header = request.headers.get("Authorization")
         if not auth_header:
-            logger.warning(f"Unauthorized request (missing auth header) from {client_ip} to {request.url.path}")
+            logger.warning(
+                f"Unauthorized request (missing auth header) from {client_ip} to {request.url.path}"
+            )
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Missing Authorization header"},
@@ -248,7 +266,9 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
             )
 
         if not auth_header.startswith("Bearer "):
-            logger.warning(f"Unauthorized request (invalid auth format) from {client_ip} to {request.url.path}")
+            logger.warning(
+                f"Unauthorized request (invalid auth format) from {client_ip} to {request.url.path}"
+            )
             return JSONResponse(
                 status_code=401,
                 content={
@@ -259,7 +279,9 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
 
         token = auth_header[7:]  # Remove "Bearer " prefix
         if token != auth_token:
-            logger.warning(f"Unauthorized request (invalid token) from {client_ip} to {request.url.path}")
+            logger.warning(
+                f"Unauthorized request (invalid token) from {client_ip} to {request.url.path}"
+            )
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Invalid authentication token"},

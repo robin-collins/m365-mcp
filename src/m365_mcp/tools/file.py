@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
@@ -11,6 +12,8 @@ import httpx
 
 from .. import graph
 from ..mcp_instance import mcp
+from ..cache_config import CacheState, generate_cache_key
+from .cache_tools import get_cache_manager
 from ..validators import (
     ValidationError,
     ensure_safe_path,
@@ -50,10 +53,15 @@ def file_list(
     folder_id: str | None = None,
     limit: int = 50,
     type_filter: str = "all",
+    use_cache: bool = True,
+    force_refresh: bool = False,
 ) -> list[dict[str, Any]]:
     """📖 List files and/or folders in OneDrive (read-only, safe for unsupervised use)
 
     Returns items from OneDrive with names, sizes, and modification dates.
+
+    Caching: Results are cached for 10 minutes (fresh) / 1 hour (stale).
+    Use force_refresh=True to bypass cache and fetch fresh data.
 
     Args:
         account_id: Microsoft account ID
@@ -61,9 +69,12 @@ def file_list(
         folder_id: Direct folder ID (takes precedence over path)
         limit: Maximum items to return (1-500, default: 50)
         type_filter: Filter by type - "all", "files", or "folders" (default: "all")
+        use_cache: Whether to use cached data if available (default: True)
+        force_refresh: Force refresh from API, bypassing cache (default: False)
 
     Returns:
-        List of items matching the filter criteria
+        List of items matching the filter criteria.
+        Each item includes _cache_status and _cached_at fields.
     """
     validate_account_id(account_id)
     limit = validate_limit(limit, 1, 500)
@@ -76,6 +87,30 @@ def file_list(
                 "'all', 'files', or 'folders'",
             )
         )
+
+    # Generate cache key from parameters
+    cache_params = {
+        "path": path,
+        "folder_id": folder_id,
+        "limit": limit,
+        "type_filter": type_filter,
+    }
+
+    # Try to get from cache if enabled and not forcing refresh
+    if use_cache and not force_refresh:
+        try:
+            cache_manager = get_cache_manager()
+            cached_result = cache_manager.get_cached(account_id, "file_list", cache_params)
+
+            if cached_result:
+                data, state = cached_result
+                # Add cache status to each item in the list
+                for item in data:
+                    item["_cache_status"] = state.value
+                return data
+        except Exception:
+            # If cache fails, continue to API call
+            pass
 
     # Determine endpoint
     if folder_id:
@@ -98,6 +133,8 @@ def file_list(
 
     # Apply type filtering
     result = []
+    cached_at = datetime.now(timezone.utc).isoformat()
+
     for item in items:
         is_folder = "folder" in item
         is_file = "file" in item
@@ -116,8 +153,19 @@ def file_list(
                 "size": item.get("size", 0),
                 "modified": item.get("lastModifiedDateTime"),
                 "download_url": item.get("@microsoft.graph.downloadUrl"),
+                "_cache_status": "miss",  # Fresh from API
+                "_cached_at": cached_at,
             }
         )
+
+    # Store in cache if enabled
+    if use_cache:
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.set_cached(account_id, "file_list", cache_params, result)
+        except Exception:
+            # If cache storage fails, still return the result
+            pass
 
     return result
 
@@ -338,6 +386,20 @@ def file_create(
     result = graph.upload_large_file(f"/me/drive/root:{target}:", data, account)
     if not result:
         raise RuntimeError(f"Failed to create file at path: {target}")
+
+    # Invalidate cache for file lists and folder tree
+    try:
+        cache_manager = get_cache_manager()
+        # Get parent folder ID if available
+        if "parentReference" in result and "id" in result["parentReference"]:
+            parent_id = result["parentReference"]["id"]
+            cache_manager.invalidate_pattern(account, f"file_list:*folder_id={parent_id}*")
+        # Always invalidate folder tree
+        cache_manager.invalidate_pattern(account, "folder_get_tree:*")
+    except Exception:
+        # Don't fail the operation if cache invalidation fails
+        pass
+
     return result
 
 
@@ -378,6 +440,18 @@ def file_update(file_id: str, local_file_path: str, account_id: str) -> dict[str
     )
     if not result:
         raise RuntimeError(f"Failed to update file with ID: {graph_file_id}")
+
+    # Invalidate cache for file lists (metadata like size/modified date changed)
+    try:
+        cache_manager = get_cache_manager()
+        # Get parent folder ID if available
+        if "parentReference" in result and "id" in result["parentReference"]:
+            parent_id = result["parentReference"]["id"]
+            cache_manager.invalidate_pattern(account, f"file_list:*folder_id={parent_id}*")
+    except Exception:
+        # Don't fail the operation if cache invalidation fails
+        pass
+
     return result
 
 
@@ -407,6 +481,18 @@ def file_delete(file_id: str, account_id: str, confirm: bool = False) -> dict[st
     account = validate_account_id(account_id)
     graph_file_id = validate_microsoft_graph_id(file_id, "file_id")
     graph.request("DELETE", f"/me/drive/items/{graph_file_id}", account)
+
+    # Invalidate cache for file lists and folder tree
+    try:
+        cache_manager = get_cache_manager()
+        # Invalidate all file lists
+        cache_manager.invalidate_pattern(account, "file_list:*")
+        # Invalidate folder tree
+        cache_manager.invalidate_pattern(account, "folder_get_tree:*")
+    except Exception:
+        # Don't fail the operation if cache invalidation fails
+        pass
+
     return {"status": "deleted"}
 
 

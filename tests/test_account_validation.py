@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from src.microsoft_mcp.tools import account as account_tools
+from src.m365_mcp.tools import account as account_tools
 
 
 def test_account_list_serialises_namedtuple(monkeypatch: pytest.MonkeyPatch) -> None:

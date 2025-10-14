@@ -7,7 +7,6 @@ and separate log levels for different components.
 
 import logging
 import logging.handlers
-import os
 import sys
 import shutil
 from pathlib import Path
@@ -89,11 +88,7 @@ def archive_existing_logs(log_dir: Path) -> dict[str, any]:
         - 'archive_dir': str or None - Archive directory path if archived
         - 'file_count': int - Number of files archived
     """
-    result = {
-        'archived': False,
-        'archive_dir': None,
-        'file_count': 0
-    }
+    result = {"archived": False, "archive_dir": None, "file_count": 0}
 
     if not log_dir.exists():
         return result
@@ -117,14 +112,13 @@ def archive_existing_logs(log_dir: Path) -> dict[str, any]:
             archived_count += 1
         except Exception as e:
             # Print to stderr since logging isn't setup yet
-            print(
-                f"Warning: Failed to archive {log_file.name}: {e}",
-                file=sys.stderr
-            )
+            print(f"Warning: Failed to archive {log_file.name}: {e}", file=sys.stderr)
 
-    result['archived'] = archived_count > 0
-    result['archive_dir'] = str(archive_dir.relative_to(log_dir)) if archived_count > 0 else None
-    result['file_count'] = archived_count
+    result["archived"] = archived_count > 0
+    result["archive_dir"] = (
+        str(archive_dir.relative_to(log_dir)) if archived_count > 0 else None
+    )
+    result["file_count"] = archived_count
 
     return result
 
@@ -216,7 +210,7 @@ def setup_logging(
     logger = logging.getLogger("microsoft_mcp.logging")
 
     # Log archival status first
-    if archive_info['archived']:
+    if archive_info["archived"]:
         logger.info(
             f"Previous logs archived: {archive_info['file_count']} file(s) → "
             f"{archive_info['archive_dir']}"

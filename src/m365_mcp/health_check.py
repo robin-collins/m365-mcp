@@ -268,14 +268,14 @@ def main() -> int:
             )
 
             if result.success:
-                print(f"✓ Health check passed")
+                print("✓ Health check passed")
                 print(f"  Status: {result.status_code}")
                 print(f"  Response time: {result.response_time_ms:.2f}ms")
                 if result.details:
                     print(f"  Details: {result.details}")
                 return 0
             else:
-                print(f"✗ Health check failed")
+                print("✗ Health check failed")
                 if result.status_code:
                     print(f"  Status: {result.status_code}")
                 print(f"  Response time: {result.response_time_ms:.2f}ms")

@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 import pytest
 
-from src.microsoft_mcp import graph
+from src.m365_mcp import graph
 
 
 @pytest.fixture
@@ -198,7 +198,11 @@ def ensure_port_8000_free():
                     if "8000" in line:
                         # Use awk to get column 7, sed to remove last 8 chars
                         pid_result = subprocess.run(
-                            ["bash", "-c", f"echo '{line}' | awk '{{print $7}}' | sed 's/.{{8}}$//'"],
+                            [
+                                "bash",
+                                "-c",
+                                f"echo '{line}' | awk '{{print $7}}' | sed 's/.{{8}}$//'",
+                            ],
                             capture_output=True,
                             text=True,
                             timeout=2,

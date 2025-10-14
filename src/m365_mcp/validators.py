@@ -515,7 +515,12 @@ def validate_microsoft_graph_id(
     identifier: str,
     param_name: str = "identifier",
 ) -> str:
-    """Validate Microsoft Graph resource identifiers."""
+    """Validate Microsoft Graph resource identifiers.
+
+    Microsoft Graph IDs are typically base64-encoded strings that may contain
+    alphanumeric characters, plus signs, slashes, equals signs, hyphens,
+    underscores, and other URL-safe characters.
+    """
     if not isinstance(identifier, str):
         reason = "must be a string"
         _log_failure(param_name, reason, identifier)
@@ -534,7 +539,9 @@ def validate_microsoft_graph_id(
         raise ValidationError(
             format_validation_error(param_name, identifier, reason, "Non-empty string")
         )
-    if not re.fullmatch(r"[A-Za-z0-9\-._!]{1,256}", trimmed):
+    # Allow base64 characters (A-Z, a-z, 0-9, +, /, =) and URL-safe variants (-, _)
+    # Also allow common Graph ID characters like ! and .
+    if not re.fullmatch(r"[A-Za-z0-9\-._!+=/$]{1,512}", trimmed):
         reason = "contains unsupported characters"
         _log_failure(param_name, reason, identifier)
         raise ValidationError(
@@ -542,7 +549,7 @@ def validate_microsoft_graph_id(
                 param_name,
                 identifier,
                 reason,
-                "Alphanumeric with - . _ !",
+                "Alphanumeric with - . _ ! + = / $",
             )
         )
     return trimmed

@@ -4,8 +4,8 @@ from typing import Any
 
 import pytest
 
-from src.microsoft_mcp.tools import contact as contact_tools
-from src.microsoft_mcp.validators import ValidationError
+from src.m365_mcp.tools import contact as contact_tools
+from src.m365_mcp.validators import ValidationError
 
 
 def test_contact_list_rejects_invalid_limit(mock_account_id: str) -> None:

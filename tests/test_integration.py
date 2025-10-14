@@ -339,6 +339,7 @@ async def test_reply_all_email():
                     "account_id": account_info["account_id"],
                     "email_id": test_email.get("id"),
                     "body": "This is a test reply to all",
+                    "confirm": True,
                 },
             )
             assert not result.isError
@@ -744,7 +745,7 @@ async def test_get_file():
     async for session in get_session():
         account_info = await get_account_info(session)
         test_content = "Test file content"
-        test_filename = f"mcp-test-get-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
+        test_filename = f"/mcp-test-get-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
 
         # Create a temporary local file
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as local_file:
@@ -767,8 +768,10 @@ async def test_get_file():
         file_data = parse_result(create_result)
         file_id = file_data.get("id")
 
-        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-            tmp_path = tmp_file.name
+        # Create a temp path that doesn't exist yet
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".txt")
+        os.close(tmp_fd)
+        os.unlink(tmp_path)  # Remove the file so download can create it
 
         try:
             result = await session.call_tool(
@@ -785,7 +788,8 @@ async def test_get_file():
             assert "path" in retrieved_file
             assert retrieved_file["path"] == tmp_path
             assert "name" in retrieved_file
-            assert retrieved_file["name"] == test_filename
+            # The filename is returned without the leading /
+            assert retrieved_file["name"] == test_filename.lstrip("/")
             assert "size_mb" in retrieved_file
 
             with open(tmp_path, "r") as f:
@@ -814,7 +818,7 @@ async def test_create_file():
         account_info = await get_account_info(session)
         test_content = f"MCP Integration Test\nTimestamp: {datetime.now().isoformat()}"
         test_filename = (
-            f"mcp-test-create-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
+            f"/mcp-test-create-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
         )
 
         # Create a temporary local file
@@ -861,7 +865,7 @@ async def test_update_file():
         account_info = await get_account_info(session)
         test_content = "Original content"
         test_filename = (
-            f"mcp-test-update-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
+            f"/mcp-test-update-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
         )
 
         # Create a temporary local file
@@ -927,7 +931,7 @@ async def test_delete_file():
         account_info = await get_account_info(session)
         test_content = "File to be deleted"
         test_filename = (
-            f"mcp-test-delete-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
+            f"/mcp-test-delete-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
         )
 
         # Create a temporary local file
@@ -1018,9 +1022,10 @@ async def test_get_attachment():
         assert email_detail.get("attachments"), "Email should have attachments"
         attachment = email_detail["attachments"][0]
 
-        # Test getting the attachment
-        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as save_file:
-            save_path = save_file.name
+        # Test getting the attachment - create a path that doesn't exist yet
+        tmp_fd, save_path = tempfile.mkstemp(suffix=".txt")
+        os.close(tmp_fd)
+        os.unlink(save_path)  # Remove the file so download can create it
 
         try:
             result = await session.call_tool(

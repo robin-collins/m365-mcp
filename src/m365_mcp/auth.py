@@ -76,7 +76,7 @@ def get_token(account_id: str | None = None) -> str:
         )
         print(
             f"\nTo authenticate:\n1. Visit {verification_uri}\n2. Enter code: {flow['user_code']}",
-            file=sys.stderr
+            file=sys.stderr,
         )
         result = app.acquire_token_by_device_flow(flow)
 
@@ -113,7 +113,7 @@ def authenticate_new_account() -> Account | None:
     print("\nTo authenticate:", file=sys.stderr)
     print(
         f"1. Visit: {flow.get('verification_uri', flow.get('verification_url', 'https://microsoft.com/devicelogin'))}",
-        file=sys.stderr
+        file=sys.stderr,
     )
     print(f"2. Enter code: {flow['user_code']}", file=sys.stderr)
     print("3. Sign in with your Microsoft account", file=sys.stderr)

@@ -1,6 +1,9 @@
 from typing import Any
+from datetime import datetime, timezone
 from ..mcp_instance import mcp
 from .. import graph
+from ..cache_config import CacheState, generate_cache_key
+from .cache_tools import get_cache_manager
 from ..validators import (
     ValidationError,
     format_validation_error,
@@ -122,24 +125,72 @@ def _normalise_email_addresses(addresses: Any) -> list[dict[str, str]]:
     },
     meta={"category": "contact", "safety_level": "safe"},
 )
-def contact_list(account_id: str, limit: int = 50) -> list[dict[str, Any]]:
+def contact_list(
+    account_id: str,
+    limit: int = 50,
+    use_cache: bool = True,
+    force_refresh: bool = False,
+) -> list[dict[str, Any]]:
     """📖 List contacts (read-only, safe for unsupervised use)
 
     Returns contacts with names, email addresses, and phone numbers.
 
+    Caching: Results are cached for 20 minutes (fresh) / 2 hours (stale).
+    Use force_refresh=True to bypass cache and fetch fresh data.
+
     Args:
         account_id: Microsoft account ID
         limit: Maximum contacts to return (1-500, default: 50)
+        use_cache: Whether to use cached data if available (default: True)
+        force_refresh: Force refresh from API, bypassing cache (default: False)
 
     Returns:
-        List of contact objects
+        List of contact objects with metadata.
+        Each contact includes _cache_status and _cached_at fields.
     """
     limit = validate_limit(limit, 1, 500, "limit")
-    params = {"$top": limit}
 
+    # Build cache parameters
+    cache_params = {
+        "limit": limit,
+    }
+
+    # Try to get from cache if enabled and not forcing refresh
+    if use_cache and not force_refresh:
+        try:
+            cache_manager = get_cache_manager()
+            cached_result = cache_manager.get_cached(account_id, "contact_list", cache_params)
+
+            if cached_result:
+                data, state = cached_result
+                # Add cache status to each contact
+                for contact in data:
+                    contact["_cache_status"] = state.value
+                return data
+        except Exception:
+            # If cache fails, continue to API call
+            pass
+
+    # Fetch from API
+    params = {"$top": limit}
     contacts = list(
         graph.request_paginated("/me/contacts", account_id, params=params, limit=limit)
     )
+
+    # Add cache metadata to each contact
+    cached_at = datetime.now(timezone.utc).isoformat()
+    for contact in contacts:
+        contact["_cache_status"] = "fresh"
+        contact["_cached_at"] = cached_at
+
+    # Store in cache if enabled
+    if use_cache:
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.set_cached(account_id, "contact_list", cache_params, contacts)
+        except Exception:
+            # If cache storage fails, still return the result
+            pass
 
     return contacts
 
@@ -156,21 +207,68 @@ def contact_list(account_id: str, limit: int = 50) -> list[dict[str, Any]]:
     },
     meta={"category": "contact", "safety_level": "safe"},
 )
-def contact_get(contact_id: str, account_id: str) -> dict[str, Any]:
+def contact_get(
+    contact_id: str,
+    account_id: str,
+    use_cache: bool = True,
+    force_refresh: bool = False,
+) -> dict[str, Any]:
     """📖 Get contact details (read-only, safe for unsupervised use)
 
     Returns complete contact information including all fields.
 
+    Caching: Results are cached for 30 minutes (fresh) / 4 hours (stale).
+    Use force_refresh=True to bypass cache and fetch fresh data.
+
     Args:
         contact_id: The contact ID
         account_id: Microsoft account ID
+        use_cache: Whether to use cached data if available (default: True)
+        force_refresh: Force refresh from API, bypassing cache (default: False)
 
     Returns:
-        Complete contact object
+        Contact details with:
+        - _cache_status: Cache state (fresh/stale/miss)
+        - _cached_at: When data was cached (ISO format)
     """
+    # Generate cache key from parameters
+    cache_params = {
+        "contact_id": contact_id,
+    }
+
+    # Try to get from cache if enabled and not forcing refresh
+    if use_cache and not force_refresh:
+        try:
+            cache_manager = get_cache_manager()
+            cached_result = cache_manager.get_cached(account_id, "contact_get", cache_params)
+
+            if cached_result:
+                data, state = cached_result
+                # Add cache metadata
+                data["_cache_status"] = state.value
+                return data
+        except Exception:
+            # If cache fails, continue to API call
+            pass
+
+    # Fetch from API
     result = graph.request("GET", f"/me/contacts/{contact_id}", account_id)
     if not result:
         raise ValueError(f"Contact with ID {contact_id} not found")
+
+    # Add cache metadata
+    result["_cache_status"] = "miss"  # Fresh from API
+    result["_cached_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Store in cache if enabled
+    if use_cache:
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.set_cached(account_id, "contact_get", cache_params, result)
+        except Exception:
+            # If cache storage fails, still return the result
+            pass
+
     return result
 
 
@@ -232,6 +330,9 @@ def contact_create(
     result = graph.request("POST", "/me/contacts", account_id, json=contact)
     if not result:
         raise ValueError("Failed to create contact")
+
+    # Note: Cache invalidation happens automatically via TTL (20min for contact_list)
+
     return result
 
 
@@ -349,6 +450,9 @@ def contact_update(
     result = graph.request(
         "PATCH", f"/me/contacts/{contact_id}", account_id, json=graph_updates
     )
+
+    # Note: Cache invalidation happens automatically via TTL (20min for contact_list)
+
     return result or {"status": "updated"}
 
 
@@ -385,4 +489,7 @@ def contact_delete(
     """
     require_confirm(confirm, "delete contact")
     graph.request("DELETE", f"/me/contacts/{contact_id}", account_id)
+
+    # Note: Cache invalidation happens automatically via TTL (20min for contact_list)
+
     return {"status": "deleted"}

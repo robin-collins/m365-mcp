@@ -13,7 +13,7 @@ M365 MCP is a Model Context Protocol (MCP) server that provides AI assistants wi
 - **`src/m365_mcp/server.py`**: Entry point that initializes the FastMCP server
 - **`src/m365_mcp/auth.py`**: Handles MSAL authentication using device flow, token caching to `~/.m365_mcp_token_cache.json`, and multi-account management
 - **`src/m365_mcp/graph.py`**: HTTP client wrapper for Microsoft Graph API with retry logic, pagination, chunked uploads (15×320 KiB chunks), and rate limiting handling
-- **`src/m365_mcp/tools.py`**: Defines 35 MCP tools using FastMCP decorators (`@mcp.tool`)
+- **`src/m365_mcp/tools.py`**: Defines 51 MCP tools using FastMCP decorators (`@mcp.tool`)
 - **`authenticate.py`**: Standalone script for interactive account authentication
 
 ### Key Design Patterns

@@ -4,12 +4,12 @@ from collections.abc import Callable
 
 import pytest
 
-from src.microsoft_mcp.tools.calendar import calendar_delete_event
-from src.microsoft_mcp.tools.contact import contact_delete
-from src.microsoft_mcp.tools.email import email_delete, email_reply, email_send
-from src.microsoft_mcp.tools.email_rules import emailrules_delete
-from src.microsoft_mcp.tools.file import file_delete
-from src.microsoft_mcp.validators import ValidationError
+from src.m365_mcp.tools.calendar import calendar_delete_event
+from src.m365_mcp.tools.contact import contact_delete
+from src.m365_mcp.tools.email import email_delete, email_reply, email_send
+from src.m365_mcp.tools.email_rules import emailrules_delete
+from src.m365_mcp.tools.file import file_delete
+from src.m365_mcp.validators import ValidationError
 
 
 def _record(response: object, calls: list[str]) -> Callable[[], object]:

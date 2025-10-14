@@ -93,6 +93,15 @@ from .server import (
     server_get_version,
 )
 
+# Cache management functions
+from .cache_tools import (
+    cache_task_get_status,
+    cache_task_list,
+    cache_get_stats,
+    cache_invalidate,
+    cache_warming_status,
+)
+
 # Common constants (using from email.py as they are consistent across files)
 from .email import FOLDERS
 
@@ -159,6 +168,12 @@ __all__ = [
     "search_unified",
     # Server functions
     "server_get_version",
+    # Cache functions
+    "cache_task_get_status",
+    "cache_task_list",
+    "cache_get_stats",
+    "cache_invalidate",
+    "cache_warming_status",
     # Constants
     "FOLDERS",
 ]

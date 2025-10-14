@@ -624,6 +624,7 @@ dependencies = [
     { name = "httpx" },
     { name = "keyring" },
     { name = "msal" },
+    { name = "pysqlcipher3" },
     { name = "python-dotenv" },
     { name = "sqlcipher3" },
     { name = "uvicorn" },
@@ -645,6 +646,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "keyring", specifier = ">=25.6.0" },
     { name = "msal", specifier = ">=1.32.3" },
+    { name = "pysqlcipher3", specifier = ">=1.2.0" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
     { name = "sqlcipher3", specifier = ">=0.5.4" },
     { name = "uvicorn", specifier = ">=0.32.0" },
@@ -1044,6 +1046,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/f7/16/6b4fbdd1fef59a029
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f6/a2/e309afbb459f50507103793aaef85ca4348b66814c86bc73908bdeb66d12/pyright-1.1.406-py3-none-any.whl", hash = "sha256:1d81fb43c2407bf566e97e57abb01c811973fdb21b2df8df59f870f688bdca71", size = 5980982, upload-time = "2025-10-02T01:04:43.137Z" },
 ]
+
+[[package]]
+name = "pysqlcipher3"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/9d/eb/abc035ae8dda359dff865168dffe39d9a61f115cc6100f53276e6d4554c2/pysqlcipher3-1.2.0.tar.gz", hash = "sha256:3c8033812655947ebf29a809ac5106b2bc69be0274eaccef6b58f4580c8d06c5", size = 102845, upload-time = "2023-01-29T23:14:22.304Z" }
 
 [[package]]
 name = "pytest"

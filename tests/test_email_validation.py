@@ -4,8 +4,8 @@ from typing import Any
 
 import pytest
 
-from src.microsoft_mcp.tools import email as email_tools
-from src.microsoft_mcp.validators import ValidationError
+from src.m365_mcp.tools import email as email_tools
+from src.m365_mcp.validators import ValidationError
 
 
 def test_email_send_rejects_invalid_to_before_confirm(

@@ -41,6 +41,6 @@
 - Run Ruff, Pyright, and the pytest suite before submitting; note any intentionally skipped checks in the PR description.
 
 ## Security & Configuration Tips
-- Copy `.env.example` to `.env`, set `MICROSOFT_MCP_CLIENT_ID`, and avoid committing secrets or local token caches.
+- Copy `.env.example` to `.env`, set `M365_MCP_CLIENT_ID`, and avoid committing secrets or local token caches.
 - Generate bearer tokens for HTTP transport with `openssl rand -hex 32` and rotate them when sharing environments.
-- When testing new accounts, clear or back up `~/.microsoft_mcp_token_cache.json` to avoid leaking credentials between runs.
+- When testing new accounts, clear or back up `~/.m365_mcp_token_cache.json` to avoid leaking credentials between runs.

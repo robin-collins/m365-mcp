@@ -7,8 +7,8 @@ from typing import Any, Callable
 import httpx
 import pytest
 
-from src.microsoft_mcp.tools import file as file_tools
-from src.microsoft_mcp.validators import ValidationError
+from src.m365_mcp.tools import file as file_tools
+from src.m365_mcp.validators import ValidationError
 
 
 @pytest.fixture

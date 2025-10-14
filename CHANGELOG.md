@@ -7,6 +7,104 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Encryption Key Management**: Added comprehensive encryption key management system for secure cache implementation
+  - Implemented `EncryptionKeyManager` class in `src/m365_mcp/encryption.py` (273 lines)
+  - 256-bit AES encryption key generation using cryptographically secure random values
+  - Multi-source key retrieval with priority order:
+    1. System keyring (Linux Secret Service API/GNOME Keyring/KWallet, macOS Keychain, Windows Credential Manager)
+    2. Environment variable (`M365_MCP_CACHE_KEY`)
+    3. Automatic generation with keyring storage
+  - Cross-platform support (Linux/macOS/Windows)
+  - Graceful degradation for headless server deployments
+  - Comprehensive unit test coverage (28 tests, 100% passing)
+  - Test file: `tests/test_encryption.py` (309 lines)
+  - Prepares foundation for encrypted SQLite cache system
+
+- **Cache Database Schema**: Created comprehensive SQLite database schema for encrypted cache system
+  - Migration script: `src/m365_mcp/migrations/001_init_cache.sql` (171 lines)
+  - Four main tables:
+    - `cache_entries`: Stores cached API responses with compression and TTL management
+    - `cache_tasks`: Background task queue for cache warming and async operations
+    - `cache_invalidation`: Audit trail for cache invalidation operations
+    - `cache_stats`: System-wide cache performance metrics
+  - 9 performance indexes for optimal query performance
+  - Schema version tracking with migration history
+  - Initial data seeding for statistics tracking
+  - Full encryption at rest via SQLCipher integration
+
+- **Cache Configuration System**: Implemented comprehensive cache configuration module
+  - Configuration file: `src/m365_mcp/cache_config.py` (244 lines)
+  - TTL Policies for 12 resource types:
+    - Folder operations: 15-30min fresh, 1-2h stale
+    - Email operations: 2-15min fresh, 10min-1h stale
+    - File operations: 10-20min fresh, 1-2h stale
+    - Contact operations: 20-30min fresh, 2-4h stale
+    - Calendar operations: 5-10min fresh, 30min-1h stale
+    - Search operations: 1min fresh, 5min stale
+  - Three-state cache model (Fresh/Stale/Expired/Missing)
+  - Cache limits configuration:
+    - Max entry size: 10MB
+    - Max total size: 2GB soft limit
+    - Cleanup threshold: 80% (triggers at 1.6GB)
+    - Cleanup target: 60% (cleans down to 1.2GB)
+    - Max entries per account: 10,000
+    - Compression threshold: 50KB
+  - Cache warming operations configuration
+  - Cache key generation and parsing utilities
+  - Test file: `tests/test_cache_schema.py` (10 tests, all passing)
+
+- **Encrypted Cache Manager**: Implemented comprehensive cache manager with encryption, compression, and TTL support
+  - Cache manager: `src/m365_mcp/cache.py` (481 lines)
+  - `CacheManager` class with full lifecycle management:
+    - Encrypted database operations via SQLCipher (AES-256)
+    - Connection pooling (max 5 connections) with proper cleanup
+    - Automatic gzip compression for entries ≥50KB
+    - Three-state TTL detection (Fresh/Stale/Expired)
+    - Pattern-based cache invalidation with wildcard support
+    - Automatic cleanup at 80% capacity threshold
+    - LRU eviction when needed
+    - Comprehensive cache statistics
+  - Migration utilities: `src/m365_mcp/cache_migration.py` (121 lines)
+    - Migrate from unencrypted to encrypted cache
+    - Automatic detection and migration on startup
+    - Backup creation for safety
+  - Core methods implemented:
+    - `get_cached()`: Retrieve with decompression and state detection
+    - `set_cached()`: Store with compression and encryption
+    - `invalidate_pattern()`: Wildcard pattern invalidation
+    - `cleanup_expired()`: Manual cleanup of expired entries
+    - `_check_cleanup()`: Automatic cleanup trigger at 80%
+    - `_cleanup_to_target()`: Clean to 60% target size
+    - `get_stats()`: Comprehensive statistics by account and resource type
+  - Test file: `tests/test_cache.py` (361 lines, 19 tests, all passing)
+  - Test coverage:
+    - Encrypted read/write operations
+    - Compression for large entries (≥50KB)
+    - Fresh/Stale/Expired state detection
+    - Pattern invalidation with wildcards
+    - Automatic cleanup at 80% threshold
+    - Connection pooling
+    - Encryption at rest verification
+    - Cache statistics tracking
+    - Hit count tracking
+
+### Fixed
+
+- **OneDrive Folder Tree Hanging Issue**: Fixed `folder_get_tree` tool causing server hang and unresponsive behavior
+  - Removed inefficient `childCount > 0` check that caused unnecessary API calls
+  - The `childCount` includes both files AND folders, leading to API calls even for folders with only files
+  - Fixed by always recursing and letting empty results naturally terminate recursion
+  - Added try-catch error handling to prevent entire tree failure on single branch errors
+  - Improved efficiency by only making API calls when subfolders exist
+  - Server now properly handles Ctrl+C interrupts during folder tree operations
+  - Location: `src/m365_mcp/tools/folder.py:185-226`
+
+### Changed
+
+- **Environment Variable Loading in Startup Script**: Enhanced `start_mcp_with_monitoring.sh` to automatically load environment variables from `.env` file in addition to shell environment. The `.env` file takes precedence over shell environment variables. This allows users to keep all configuration in the `.env` file without requiring shell environment variable exports.
+
 ### Changed - BREAKING
 
 - **Project Renamed**: Renamed from `microsoft-mcp` to `m365-mcp` for cleaner branding and consistency

@@ -5,8 +5,8 @@ from typing import Any, Callable, Dict
 
 import pytest
 
-from src.microsoft_mcp.tools import search as search_tools
-from src.microsoft_mcp.validators import ValidationError
+from src.m365_mcp.tools import search as search_tools
+from src.m365_mcp.validators import ValidationError
 
 
 @pytest.mark.parametrize(

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.microsoft_mcp import validators
+from src.m365_mcp import validators
 
 
 def test_ensure_safe_path_allows_workspace(tmp_path: Path) -> None:

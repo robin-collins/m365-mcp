@@ -2,9 +2,9 @@ import json
 import logging
 import os
 import sys
-import msal
 import pathlib as pl
-from typing import NamedTuple
+import msal
+from typing import NamedTuple, Any
 
 # Note: Environment variables should be loaded by the caller (server.py or authenticate.py)
 # before importing this module
@@ -12,7 +12,21 @@ from typing import NamedTuple
 # Store token cache in user's home directory for proper permissions and portability
 CACHE_FILE = pl.Path.home() / ".m365_mcp_token_cache.json"
 METADATA_FILE = pl.Path.home() / ".m365_mcp_account_metadata.json"
-SCOPES = ["https://graph.microsoft.com/.default"]
+SCOPES = [
+    "Calendars.Read",
+    "Calendars.ReadBasic",
+    "Calendars.ReadWrite",
+    "Contacts.Read",
+    "Contacts.ReadWrite",
+    "Files.Read.All",
+    "Files.ReadWrite",
+    "Files.ReadWrite.All",
+    "Mail.ReadWrite",
+    "Mail.Send",
+    "MailboxSettings.ReadWrite",
+    "People.Read",
+    "User.Read"
+]
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +36,27 @@ class Account(NamedTuple):
     account_id: str
     account_type: str  # "personal", "work_school", or "unknown"
 
+
+def _select_account(
+    accounts: list[dict[str, str]],
+    result: dict[str, Any],
+    fallback: dict[str, str] | None,
+) -> dict[str, str] | None:
+    """Select the account that matches the token result, if possible."""
+    if fallback:
+        return fallback
+
+    preferred_username = None
+    id_token_claims = result.get("id_token_claims")
+    if isinstance(id_token_claims, dict):
+        preferred_username = id_token_claims.get("preferred_username")
+
+    if preferred_username:
+        for account in accounts:
+            if account.get("username", "").lower() == preferred_username.lower():
+                return account
+
+    return accounts[0] if accounts else None
 
 def _read_cache() -> str | None:
     try:
@@ -138,6 +173,14 @@ def get_token(account_id: str | None = None) -> str:
 
     result = app.acquire_token_silent(SCOPES, account=account)
 
+    if result and "error" in result:
+        logger.warning(
+            "Silent token acquisition failed: %s - %s",
+            result.get("error"),
+            result.get("error_description", "no description"),
+        )
+        result = None
+
     if not result:
         flow = app.initiate_device_flow(scopes=SCOPES)
         if "user_code" not in flow:
@@ -153,6 +196,10 @@ def get_token(account_id: str | None = None) -> str:
             file=sys.stderr,
         )
         result = app.acquire_token_by_device_flow(flow)
+        accounts = app.get_accounts()
+        account = _select_account(accounts, result, account)
+    else:
+        account = _select_account(accounts, result, account)
 
     if "error" in result:
         raise Exception(

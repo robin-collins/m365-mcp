@@ -1,7 +1,9 @@
 import datetime as dt
+from datetime import datetime, timezone
 from typing import Any, Sequence
 from ..mcp_instance import mcp
 from .. import graph
+from .cache_tools import get_cache_manager
 from ..validators import (
     ValidationError,
     format_validation_error,
@@ -100,6 +102,8 @@ def search_files(
     query: str,
     account_id: str,
     limit: int = 50,
+    use_cache: bool = True,
+    force_refresh: bool = False,
 ) -> list[dict[str, Any]]:
     """📖 Search for files in OneDrive (read-only, safe for unsupervised use)
 
@@ -109,15 +113,40 @@ def search_files(
         query: Search query string (1-512 characters)
         account_id: Microsoft account ID
         limit: Maximum results to return (1-500, default: 50)
+        use_cache: Whether to use cache (default: True)
+        force_refresh: Bypass cache and fetch fresh data (default: False)
 
     Returns:
         List of matching files with metadata
     """
     limit = validate_limit(limit, 1, 500, "limit")
     search_query = _validate_search_query(query)
+
+    # Build cache parameters
+    cache_params = {
+        "query": search_query,
+        "limit": limit,
+    }
+
+    # Check cache if enabled
+    if use_cache and not force_refresh:
+        try:
+            cache_manager = get_cache_manager()
+            cached_result = cache_manager.get_cached(account_id, "search_files", cache_params)
+            if cached_result:
+                data, state = cached_result
+                # Add cache status to each file
+                for file in data:
+                    file["_cache_status"] = state.value
+                return data
+        except Exception:
+            # If cache fails, continue to API call
+            pass
+
+    # Fetch from API
     items = list(graph.search_query(search_query, ["driveItem"], account_id, limit))
 
-    return [
+    results = [
         {
             "id": item["id"],
             "name": item["name"],
@@ -128,6 +157,23 @@ def search_files(
         }
         for item in items
     ]
+
+    # Add cache metadata to each file
+    cached_at = datetime.now(timezone.utc).isoformat()
+    for file in results:
+        file["_cache_status"] = "fresh"
+        file["_cached_at"] = cached_at
+
+    # Store in cache
+    if use_cache:
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.set_cached(account_id, "search_files", cache_params, results)
+        except Exception:
+            # If cache storage fails, still return the result
+            pass
+
+    return results
 
 
 # search_emails
@@ -147,6 +193,8 @@ def search_emails(
     account_id: str,
     limit: int = 50,
     folder: str | None = None,
+    use_cache: bool = True,
+    force_refresh: bool = False,
 ) -> list[dict[str, Any]]:
     """📖 Search emails across mailbox (read-only, safe for unsupervised use)
 
@@ -157,12 +205,38 @@ def search_emails(
         account_id: Microsoft account ID
         limit: Maximum results to return (1-500, default: 50)
         folder: Optional folder to search within (e.g., "inbox", "sent")
+        use_cache: Whether to use cache (default: True)
+        force_refresh: Bypass cache and fetch fresh data (default: False)
 
     Returns:
         List of matching emails with metadata
     """
     limit = validate_limit(limit, 1, 500, "limit")
     search_query = _validate_search_query(query)
+
+    # Build cache parameters
+    cache_params = {
+        "query": search_query,
+        "limit": limit,
+        "folder": folder,
+    }
+
+    # Check cache if enabled
+    if use_cache and not force_refresh:
+        try:
+            cache_manager = get_cache_manager()
+            cached_result = cache_manager.get_cached(account_id, "search_emails", cache_params)
+            if cached_result:
+                data, state = cached_result
+                # Add cache status to each email
+                for email in data:
+                    email["_cache_status"] = state.value
+                return data
+        except Exception:
+            # If cache fails, continue to API call
+            pass
+
+    # Fetch from API
     if folder:
         # For folder-specific search, use the traditional endpoint
         folder_key = validate_folder_choice(folder, EMAIL_FOLDER_NAMES, "folder")
@@ -175,11 +249,28 @@ def search_emails(
             "$select": "id,subject,from,toRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead",
         }
 
-        return list(
+        results = list(
             graph.request_paginated(endpoint, account_id, params=params, limit=limit)
         )
+    else:
+        results = list(graph.search_query(search_query, ["message"], account_id, limit))
 
-    return list(graph.search_query(search_query, ["message"], account_id, limit))
+    # Add cache metadata to each email
+    cached_at = datetime.now(timezone.utc).isoformat()
+    for email in results:
+        email["_cache_status"] = "fresh"
+        email["_cached_at"] = cached_at
+
+    # Store in cache
+    if use_cache:
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.set_cached(account_id, "search_emails", cache_params, results)
+        except Exception:
+            # If cache storage fails, still return the result
+            pass
+
+    return results
 
 
 # search_events
@@ -200,6 +291,8 @@ def search_events(
     days_ahead: int = 365,
     days_back: int = 365,
     limit: int = 50,
+    use_cache: bool = True,
+    force_refresh: bool = False,
 ) -> list[dict[str, Any]]:
     """📖 Search calendar events (read-only, safe for unsupervised use)
 
@@ -211,6 +304,8 @@ def search_events(
         days_ahead: Days to look forward (0-730, default: 365)
         days_back: Days to look back (0-730, default: 365)
         limit: Maximum results to return (1-500, default: 50)
+        use_cache: Whether to use cache (default: True)
+        force_refresh: Bypass cache and fetch fresh data (default: False)
 
     Returns:
         List of matching events
@@ -219,6 +314,30 @@ def search_events(
     days_back = validate_limit(days_back, 0, 730, "days_back")
     limit = validate_limit(limit, 1, 500, "limit")
     search_query = _validate_search_query(query)
+
+    # Build cache parameters
+    cache_params = {
+        "query": search_query,
+        "days_ahead": days_ahead,
+        "days_back": days_back,
+        "limit": limit,
+    }
+
+    # Check cache if enabled
+    if use_cache and not force_refresh:
+        try:
+            cache_manager = get_cache_manager()
+            cached_result = cache_manager.get_cached(account_id, "search_events", cache_params)
+            if cached_result:
+                data, state = cached_result
+                # Add cache status to each event
+                for event in data:
+                    event["_cache_status"] = state.value
+                return data
+        except Exception:
+            # If cache fails, continue to API call
+            pass
+
     events = list(graph.search_query(search_query, ["event"], account_id, limit))
 
     # Filter by date range if needed
@@ -248,7 +367,22 @@ def search_events(
             if event_start <= end and event_end >= start:
                 filtered_events.append(event)
 
-        return filtered_events
+        events = filtered_events
+
+    # Add cache metadata to each event
+    cached_at = datetime.now(timezone.utc).isoformat()
+    for event in events:
+        event["_cache_status"] = "fresh"
+        event["_cached_at"] = cached_at
+
+    # Store in cache
+    if use_cache:
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.set_cached(account_id, "search_events", cache_params, events)
+        except Exception:
+            # If cache storage fails, still return the result
+            pass
 
     return events
 
@@ -269,6 +403,8 @@ def search_contacts(
     query: str,
     account_id: str,
     limit: int = 50,
+    use_cache: bool = True,
+    force_refresh: bool = False,
 ) -> list[dict[str, Any]]:
     """📖 Search contacts (read-only, safe for unsupervised use)
 
@@ -278,12 +414,36 @@ def search_contacts(
         query: Search query string (1-512 characters)
         account_id: Microsoft account ID
         limit: Maximum results to return (1-500, default: 50)
+        use_cache: Whether to use cache (default: True)
+        force_refresh: Bypass cache and fetch fresh data (default: False)
 
     Returns:
         List of matching contacts
     """
     limit = validate_limit(limit, 1, 500, "limit")
     search_query = _validate_search_query(query)
+
+    # Build cache parameters
+    cache_params = {
+        "query": search_query,
+        "limit": limit,
+    }
+
+    # Check cache if enabled
+    if use_cache and not force_refresh:
+        try:
+            cache_manager = get_cache_manager()
+            cached_result = cache_manager.get_cached(account_id, "search_contacts", cache_params)
+            if cached_result:
+                data, state = cached_result
+                # Add cache status to each contact
+                for contact in data:
+                    contact["_cache_status"] = state.value
+                return data
+        except Exception:
+            # If cache fails, continue to API call
+            pass
+
     params = {
         "$search": f'"{search_query}"',
         "$top": limit,
@@ -292,6 +452,21 @@ def search_contacts(
     contacts = list(
         graph.request_paginated("/me/contacts", account_id, params=params, limit=limit)
     )
+
+    # Add cache metadata to each contact
+    cached_at = datetime.now(timezone.utc).isoformat()
+    for contact in contacts:
+        contact["_cache_status"] = "fresh"
+        contact["_cached_at"] = cached_at
+
+    # Store in cache
+    if use_cache:
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.set_cached(account_id, "search_contacts", cache_params, contacts)
+        except Exception:
+            # If cache storage fails, still return the result
+            pass
 
     return contacts
 
@@ -313,6 +488,8 @@ def search_unified(
     account_id: str,
     entity_types: list[str] | None = None,
     limit: int = 50,
+    use_cache: bool = True,
+    force_refresh: bool = False,
 ) -> dict[str, list[dict[str, Any]]]:
     """📖 Search across multiple Microsoft 365 resources (read-only, safe for unsupervised use)
 
@@ -323,15 +500,41 @@ def search_unified(
         account_id: Microsoft account ID
         entity_types: Types to search: 'message', 'event', 'driveItem' (default: all)
         limit: Maximum results per type (1-500, default: 50)
+        use_cache: Whether to use cache (default: True)
+        force_refresh: Bypass cache and fetch fresh data (default: False)
 
     Returns:
         Dictionary with results grouped by entity type
     """
     validated_entity_types = _validate_entity_types(entity_types)
-    results = {entity_type: [] for entity_type in validated_entity_types}
-
     limit = validate_limit(limit, 1, 500, "limit")
     search_query = _validate_search_query(query)
+
+    # Build cache parameters
+    cache_params = {
+        "query": search_query,
+        "entity_types": sorted(validated_entity_types),
+        "limit": limit,
+    }
+
+    # Check cache if enabled
+    if use_cache and not force_refresh:
+        try:
+            cache_manager = get_cache_manager()
+            cached_result = cache_manager.get_cached(account_id, "search_unified", cache_params)
+            if cached_result:
+                data, state = cached_result
+                # Add cache status to items in each category
+                for category, items in data.items():
+                    for item in items:
+                        item["_cache_status"] = state.value
+                return data
+        except Exception:
+            # If cache fails, continue to API call
+            pass
+
+    results = {entity_type: [] for entity_type in validated_entity_types}
+
     items = list(
         graph.search_query(search_query, validated_entity_types, account_id, limit)
     )
@@ -348,4 +551,22 @@ def search_unified(
         else:
             results.setdefault("other", []).append(item)
 
-    return {k: v for k, v in results.items() if v}
+    filtered_results = {k: v for k, v in results.items() if v}
+
+    # Add cache metadata to each item
+    cached_at = datetime.now(timezone.utc).isoformat()
+    for category, items in filtered_results.items():
+        for item in items:
+            item["_cache_status"] = "fresh"
+            item["_cached_at"] = cached_at
+
+    # Store in cache
+    if use_cache:
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.set_cached(account_id, "search_unified", cache_params, filtered_results)
+        except Exception:
+            # If cache storage fails, still return the result
+            pass
+
+    return filtered_results

@@ -14,7 +14,15 @@
       "Bash(pgrep:*)",
       "Bash(bash:*)",
       "Bash(ast-grep --lang Python -p 'print($$$)' src/)",
-      "Bash(cat .git/config)"
+      "Bash(cat .git/config)",
+      "Bash(uv build)",
+      "Bash(uv publish)",
+      "mcp__m365-mcp__account_list",
+      "mcp__m365-mcp__folder_get_tree",
+      "Read(//home/tech/**)",
+      "mcp__m365__account_list",
+      "mcp__m365__folder_get_tree",
+      "Bash(ast-grep:*)"
     ],
     "deny": [],
     "ask": []

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from src.microsoft_mcp.tools import email_folders as email_folder_tools
-from src.microsoft_mcp.tools import file as file_tools
-from src.microsoft_mcp.tools import folder as folder_tools
-from src.microsoft_mcp.validators import ValidationError
+from src.m365_mcp.tools import email_folders as email_folder_tools
+from src.m365_mcp.tools import file as file_tools
+from src.m365_mcp.tools import folder as folder_tools
+from src.m365_mcp.validators import ValidationError
 
 
 def test_folder_list_rejects_invalid_limit(mock_account_id: str) -> None:

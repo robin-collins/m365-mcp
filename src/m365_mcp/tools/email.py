@@ -1,11 +1,13 @@
 import base64
 import logging
 import pathlib as pl
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from .. import graph
 from ..mcp_instance import mcp
+from ..cache_config import CacheState, generate_cache_key
+from .cache_tools import get_cache_manager
 from ..validators import (
     ValidationError,
     ensure_safe_path,
@@ -162,10 +164,15 @@ def email_list(
     folder_id: str | None = None,
     limit: int = 10,
     include_body: bool = True,
+    use_cache: bool = True,
+    force_refresh: bool = False,
 ) -> list[dict[str, Any]]:
     """📖 List emails from a mailbox folder (read-only, safe for unsupervised use)
 
     Returns recent emails with subject, sender, date, size, and attachment info.
+
+    Caching: Results are cached for 2 minutes (fresh) / 10 minutes (stale).
+    Use force_refresh=True to bypass cache and fetch fresh data.
 
     Args:
         account_id: Microsoft account ID
@@ -173,9 +180,12 @@ def email_list(
         folder_id: Direct folder ID - takes precedence over folder name
         limit: Maximum emails to return (1-200, default: 10)
         include_body: Whether to include email body content (default: True)
+        use_cache: Whether to use cached data if available (default: True)
+        force_refresh: Force refresh from API, bypassing cache (default: False)
 
     Returns:
-        List of email messages with metadata and optionally body content
+        List of email messages with metadata and optionally body content.
+        Each message includes _cache_status and _cached_at fields.
     """
     limit = validate_limit(limit, 1, 200, "limit")
     # Determine which folder to use
@@ -189,6 +199,31 @@ def email_list(
     else:
         # Default to inbox
         folder_path = "inbox"
+
+    # Generate cache key from parameters
+    cache_params = {
+        "folder": folder,
+        "folder_id": folder_id,
+        "folder_path": folder_path,
+        "limit": limit,
+        "include_body": include_body,
+    }
+
+    # Try to get from cache if enabled and not forcing refresh
+    if use_cache and not force_refresh:
+        try:
+            cache_manager = get_cache_manager()
+            cached_result = cache_manager.get_cached(account_id, "email_list", cache_params)
+
+            if cached_result:
+                data, state = cached_result
+                # Add cache status to each email in the list
+                for email in data:
+                    email["_cache_status"] = state.value
+                return data
+        except Exception:
+            # If cache fails, continue to API call
+            pass
 
     if include_body:
         select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead"
@@ -209,6 +244,21 @@ def email_list(
             limit=limit,
         )
     )
+
+    # Add cache metadata to each email
+    cached_at = datetime.now(timezone.utc).isoformat()
+    for email in emails:
+        email["_cache_status"] = "miss"  # Fresh from API
+        email["_cached_at"] = cached_at
+
+    # Store in cache if enabled
+    if use_cache:
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.set_cached(account_id, "email_list", cache_params, emails)
+        except Exception:
+            # If cache storage fails, still return the result
+            pass
 
     return emails
 
@@ -259,11 +309,16 @@ def email_get(
     include_body: bool = True,
     body_max_length: int = 50000,
     include_attachments: bool = True,
+    use_cache: bool = True,
+    force_refresh: bool = False,
 ) -> dict[str, Any]:
     """📖 Get detailed information about a specific email (read-only, safe for unsupervised use)
 
     Includes full headers, body content, and attachment metadata.
     Body content is truncated at 50,000 characters by default.
+
+    Caching: Results are cached for 15 minutes (fresh) / 1 hour (stale).
+    Use force_refresh=True to bypass cache and fetch fresh data.
 
     Args:
         email_id: The email ID
@@ -271,8 +326,40 @@ def email_get(
         include_body: Whether to include the email body (default: True)
         body_max_length: Maximum characters for body content (1-500000, default: 50000)
         include_attachments: Whether to include attachment metadata (default: True)
+        use_cache: Whether to use cached data if available (default: True)
+        force_refresh: Force refresh from API, bypassing cache (default: False)
+
+    Returns:
+        Email details with:
+        - _cache_status: Cache state (fresh/stale/miss)
+        - _cached_at: When data was cached (ISO format)
     """
     body_max_length = validate_limit(body_max_length, 1, 500_000, "body_max_length")
+
+    # Generate cache key from parameters
+    cache_params = {
+        "email_id": email_id,
+        "include_body": include_body,
+        "body_max_length": body_max_length,
+        "include_attachments": include_attachments,
+    }
+
+    # Try to get from cache if enabled and not forcing refresh
+    if use_cache and not force_refresh:
+        try:
+            cache_manager = get_cache_manager()
+            cached_result = cache_manager.get_cached(account_id, "email_get", cache_params)
+
+            if cached_result:
+                data, state = cached_result
+                # Add cache metadata
+                data["_cache_status"] = state.value
+                return data
+        except Exception:
+            # If cache fails, continue to API call
+            pass
+
+    # Fetch from API
     params = {}
     if include_attachments:
         params["$expand"] = "attachments($select=id,name,size,contentType)"
@@ -299,6 +386,19 @@ def email_get(
         for attachment in result["attachments"]:
             if "contentBytes" in attachment:
                 del attachment["contentBytes"]
+
+    # Add cache metadata
+    result["_cache_status"] = "miss"  # Fresh from API
+    result["_cached_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Store in cache if enabled
+    if use_cache:
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.set_cached(account_id, "email_get", cache_params, result)
+        except Exception:
+            # If cache storage fails, still return the result
+            pass
 
     return result
 
@@ -539,6 +639,14 @@ def email_send(
             for att in processed_attachments
         ]
         graph.request("POST", "/me/sendMail", account_id, json={"message": message})
+
+        # Invalidate cache for sent folder
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.invalidate_pattern(account_id, "email_list:*folder*sent*")
+        except Exception:
+            pass
+
         return {"status": "sent"}
     elif has_large_attachments:
         # Create draft first, then add large attachments, then send
@@ -575,11 +683,27 @@ def email_send(
                 )
 
         graph.request("POST", f"/me/messages/{message_id}/send", account_id)
+
+        # Invalidate cache for sent folder
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.invalidate_pattern(account_id, "email_list:*folder*sent*")
+        except Exception:
+            pass
+
         return {"status": "sent"}
     else:
         graph.request(
             "POST", "/me/sendMail", account_id, json={"message": build_message()}
         )
+
+        # Invalidate cache for sent folder
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.invalidate_pattern(account_id, "email_list:*folder*sent*")
+        except Exception:
+            pass
+
         return {"status": "sent"}
 
 
@@ -706,6 +830,15 @@ def email_update(
     )
     if not result:
         raise ValueError(f"Failed to update email {email_id} - no response")
+
+    # Invalidate cache for the specific email
+    try:
+        cache_manager = get_cache_manager()
+        cache_manager.invalidate_pattern(account_id, f"email_get:*email_id={email_id}*")
+    except Exception:
+        # Don't fail the operation if cache invalidation fails
+        pass
+
     return result
 
 
@@ -744,6 +877,18 @@ def email_delete(
     """
     require_confirm(confirm, "delete email")
     graph.request("DELETE", f"/me/messages/{email_id}", account_id)
+
+    # Invalidate cache for email lists and specific email
+    try:
+        cache_manager = get_cache_manager()
+        # Invalidate all email lists
+        cache_manager.invalidate_pattern(account_id, "email_list:*")
+        # Invalidate the specific email
+        cache_manager.invalidate_pattern(account_id, f"email_get:*email_id={email_id}*")
+    except Exception:
+        # Don't fail the operation if cache invalidation fails
+        pass
+
     return {"status": "deleted"}
 
 
@@ -819,6 +964,15 @@ def email_move(
         raise ValueError("Failed to move email - no response from server")
     if "id" not in result:
         raise ValueError(f"Failed to move email - unexpected response: {result}")
+
+    # Invalidate cache for email lists (folder contents changed)
+    try:
+        cache_manager = get_cache_manager()
+        cache_manager.invalidate_pattern(account_id, "email_list:*")
+    except Exception:
+        # Don't fail the operation if cache invalidation fails
+        pass
+
     return {"status": "moved", "new_id": result["id"]}
 
 
@@ -877,6 +1031,66 @@ def email_reply(
 
     require_confirm(confirm, "reply to email")
     endpoint = f"/me/messages/{email_id}/reply"
+    payload = {"message": {"body": {"contentType": "Text", "content": body_stripped}}}
+    graph.request("POST", endpoint, account_id, json=payload)
+    return {"status": "sent"}
+
+
+# reply_all_email
+@mcp.tool(
+    name="reply_all_email",
+    annotations={
+        "title": "Reply All to Email",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={
+        "category": "email",
+        "safety_level": "dangerous",
+        "requires_confirmation": True,
+    },
+)
+def reply_all_email(
+    account_id: str, email_id: str, body: str, confirm: bool = False
+) -> dict[str, str]:
+    """📧 Reply to all recipients of an email (always require user confirmation)
+
+    WARNING: Reply will be sent immediately to ALL recipients (original sender,
+    To, and Cc recipients). This action cannot be undone.
+
+    Body content is stripped of surrounding whitespace and must not be
+    empty before sending.
+
+    Args:
+        account_id: Microsoft account ID
+        email_id: The email ID to reply to
+        body: Reply message body (plain text)
+        confirm: Must be True to confirm sending (prevents accidents)
+
+    Returns:
+        Status confirmation
+
+    Raises:
+        ValidationError: If the reply body is empty/whitespace or confirm
+            is False.
+    """
+    if not isinstance(body, str):
+        reason = "must be a string"
+        raise ValidationError(
+            format_validation_error("body", body, reason, "Non-empty reply body")
+        )
+
+    body_stripped = body.strip()
+    if not body_stripped:
+        reason = "cannot be empty"
+        raise ValidationError(
+            format_validation_error("body", body, reason, "Non-empty reply body")
+        )
+
+    require_confirm(confirm, "reply to all recipients")
+    endpoint = f"/me/messages/{email_id}/replyAll"
     payload = {"message": {"body": {"contentType": "Text", "content": body_stripped}}}
     graph.request("POST", endpoint, account_id, json=payload)
     return {"status": "sent"}

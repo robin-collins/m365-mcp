@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from .. import graph
 from ..mcp_instance import mcp
+from .cache_tools import get_cache_manager
 from ..validators import (
     ValidationError,
     format_validation_error,
@@ -15,6 +16,7 @@ from ..validators import (
     validate_datetime_window,
     validate_iso_datetime,
     validate_json_payload,
+    validate_limit,
     validate_timezone,
 )
 
@@ -36,6 +38,123 @@ ALLOWED_CALENDAR_UPDATE_KEYS = (
 )
 
 
+# calendar_list_events
+@mcp.tool(
+    name="calendar_list_events",
+    annotations={
+        "title": "List Calendar Events",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    meta={"category": "calendar", "safety_level": "safe"},
+)
+def calendar_list_events(
+    account_id: str,
+    days_ahead: int = 7,
+    include_details: bool = False,
+    limit: int = 50,
+    use_cache: bool = True,
+    force_refresh: bool = False,
+) -> list[dict[str, Any]]:
+    """📖 List upcoming calendar events (read-only, safe for unsupervised use)
+
+    Returns calendar events from now until the specified number of days ahead.
+
+    Caching: Results are cached for 5 minutes (fresh) / 30 minutes (stale).
+    Use force_refresh=True to bypass cache and fetch fresh data.
+
+    Args:
+        account_id: Microsoft account ID
+        days_ahead: Number of days ahead to look for events (1-365, default: 7)
+        include_details: Include full event details like attendees and body (default: False)
+        limit: Maximum events to return (1-200, default: 50)
+        use_cache: Whether to use cached data if available (default: True)
+        force_refresh: Force refresh from API, bypassing cache (default: False)
+
+    Returns:
+        List of calendar events with metadata.
+        Each event includes _cache_status and _cached_at fields.
+    """
+    # Validate parameters
+    if not isinstance(days_ahead, int) or days_ahead < 1 or days_ahead > 365:
+        reason = "must be between 1 and 365"
+        raise ValidationError(
+            format_validation_error("days_ahead", days_ahead, reason, "1-365")
+        )
+
+    limit = validate_limit(limit, 1, 200, "limit")
+
+    # Calculate time window
+    now = datetime.now(timezone.utc)
+    end_time = now + timedelta(days=days_ahead)
+
+    # Build cache parameters
+    cache_params = {
+        "days_ahead": days_ahead,
+        "include_details": include_details,
+        "limit": limit,
+    }
+
+    # Check cache if enabled
+    if use_cache and not force_refresh:
+        try:
+            cache_manager = get_cache_manager()
+            cached_result = cache_manager.get_cached(account_id, "calendar_list_events", cache_params)
+
+            if cached_result:
+                data, state = cached_result
+                # Add cache status to each event
+                for event in data:
+                    event["_cache_status"] = state.value
+                return data
+        except Exception:
+            # If cache fails, continue to API call
+            pass
+
+    # Build select fields based on include_details
+    if include_details:
+        select_fields = "id,subject,start,end,location,body,attendees,organizer,isAllDay,isCancelled,recurrence,onlineMeeting"
+    else:
+        select_fields = "id,subject,start,end,location,organizer,isAllDay,isCancelled"
+
+    # Query parameters
+    params = {
+        "$filter": f"start/dateTime ge '{now.isoformat()}' and start/dateTime le '{end_time.isoformat()}'",
+        "$select": select_fields,
+        "$orderby": "start/dateTime",
+        "$top": limit,
+    }
+
+    # Fetch from API
+    events = list(
+        graph.request_paginated(
+            "/me/calendar/events",
+            account_id,
+            params=params,
+            limit=limit,
+        )
+    )
+
+    # Add cache metadata to each event
+    cached_at = datetime.now(timezone.utc).isoformat()
+    for event in events:
+        event["_cache_status"] = "fresh"
+        event["_cached_at"] = cached_at
+
+    # Store in cache
+    if use_cache:
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.set_cached(account_id, "calendar_list_events", cache_params, events)
+        except Exception:
+            # If cache storage fails, still return the result
+            pass
+
+    return events
+
+
 # calendar_get_event
 @mcp.tool(
     name="calendar_get_event",
@@ -48,7 +167,12 @@ ALLOWED_CALENDAR_UPDATE_KEYS = (
     },
     meta={"category": "calendar", "safety_level": "safe"},
 )
-def calendar_get_event(event_id: str, account_id: str) -> dict[str, Any]:
+def calendar_get_event(
+    event_id: str,
+    account_id: str,
+    use_cache: bool = True,
+    force_refresh: bool = False,
+) -> dict[str, Any]:
     """📖 Get full event details (read-only, safe for unsupervised use)
 
     Returns complete event information including recurrence patterns and online meeting details.
@@ -56,13 +180,47 @@ def calendar_get_event(event_id: str, account_id: str) -> dict[str, Any]:
     Args:
         event_id: The event ID
         account_id: Microsoft account ID
+        use_cache: Whether to use cache (default: True)
+        force_refresh: Bypass cache and fetch fresh data (default: False)
 
     Returns:
         Complete event object with all metadata
     """
+    # Build cache parameters
+    cache_params = {"event_id": event_id}
+
+    # Check cache if enabled
+    if use_cache and not force_refresh:
+        try:
+            cache_manager = get_cache_manager()
+            cached_result = cache_manager.get_cached(account_id, "calendar_get_event", cache_params)
+
+            if cached_result:
+                data, state = cached_result
+                data["_cache_status"] = state.value
+                return data
+        except Exception:
+            # If cache fails, continue to API call
+            pass
+
+    # Fetch from API
     result = graph.request("GET", f"/me/events/{event_id}", account_id)
     if not result:
         raise ValueError(f"Event with ID {event_id} not found")
+
+    # Add cache metadata
+    result["_cache_status"] = "fresh"
+    result["_cached_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Store in cache
+    if use_cache:
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.set_cached(account_id, "calendar_get_event", cache_params, result)
+        except Exception:
+            # If cache storage fails, still return the result
+            pass
+
     return result
 
 
@@ -167,6 +325,10 @@ def calendar_create_event(
     result = graph.request("POST", "/me/events", account_id, json=event)
     if not result:
         raise ValueError("Failed to create event")
+
+    # Note: Cache invalidation for calendar events happens automatically via TTL
+    # No manual invalidation needed as calendar list caches are short-lived (5min)
+
     return result
 
 
@@ -351,6 +513,9 @@ def calendar_update_event(
     result = graph.request(
         "PATCH", f"/me/events/{event_id}", account_id, json=formatted_updates
     )
+
+    # Note: Cache invalidation happens automatically via TTL (5min for calendar_list_events)
+
     return result or {"status": "updated"}
 
 
@@ -395,6 +560,9 @@ def calendar_delete_event(
         graph.request("POST", f"/me/events/{event_id}/cancel", account_id, json={})
     else:
         graph.request("DELETE", f"/me/events/{event_id}", account_id)
+
+    # Note: Cache invalidation happens automatically via TTL (5min for calendar_list_events)
+
     return {"status": "deleted"}
 
 
@@ -543,7 +711,7 @@ def calendar_check_availability(
             )
 
     me_info = graph.request("GET", "/me", account_id)
-    if not me_info or "mail" not in me_info:
+    if not me_info or "mail" not in me_info or not me_info["mail"]:
         raise ValueError("Failed to get user email address")
     schedules = [me_info["mail"]]
     current_keys = {me_info["mail"].casefold()}

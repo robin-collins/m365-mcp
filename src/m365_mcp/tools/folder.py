@@ -1,7 +1,10 @@
 from typing import Any
+from datetime import datetime, timezone
 from ..mcp_instance import mcp
 from .. import graph
 from ..validators import validate_limit, validate_onedrive_path
+from ..cache_config import CacheState, generate_cache_key
+from .cache_tools import get_cache_manager
 
 
 def _list_folders_impl(
@@ -65,27 +68,82 @@ def folder_list(
     path: str = "/",
     folder_id: str | None = None,
     limit: int = 50,
-) -> list[dict[str, Any]]:
+    use_cache: bool = True,
+    force_refresh: bool = False,
+) -> dict[str, Any]:
     """📖 List only folders (not files) in OneDrive (read-only, safe for unsupervised use)
 
     Returns folders with child counts and hierarchy information.
+
+    Caching: Results are cached for 15 minutes (fresh) / 1 hour (stale).
+    Use force_refresh=True to bypass cache and fetch fresh data.
 
     Args:
         account_id: Microsoft account ID
         path: Path to list folders from (e.g., "/Documents", default: "/")
         folder_id: Direct folder ID (takes precedence over path)
         limit: Maximum folders to return (1-500, default: 50)
+        use_cache: Whether to use cached data if available (default: True)
+        force_refresh: Force refresh from API, bypassing cache (default: False)
 
     Returns:
-        List of folder objects with: id, name, childCount, path, parentId
+        Dictionary with:
+        - folders: List of folder objects with id, name, childCount, path, parentId
+        - _cache_status: Cache state (fresh/stale/miss)
+        - _cached_at: When data was cached (ISO format)
     """
     limit = validate_limit(limit, 1, 500, "limit")
-    return _list_folders_impl(
+
+    # Generate cache key from parameters
+    cache_params = {
+        "path": path,
+        "folder_id": folder_id,
+        "limit": limit,
+    }
+    cache_key = generate_cache_key(account_id, "folder_list", cache_params)
+
+    # Try to get from cache if enabled and not forcing refresh
+    if use_cache and not force_refresh:
+        try:
+            cache_manager = get_cache_manager()
+            cached_result = cache_manager.get_cached(account_id, "folder_list", cache_params)
+
+            if cached_result:
+                data, state = cached_result
+                # Return cached data with cache status
+                return {
+                    "folders": data["folders"],
+                    "_cache_status": state.value,
+                    "_cached_at": data.get("_cached_at"),
+                }
+        except Exception:
+            # If cache fails, continue to API call
+            pass
+
+    # Fetch from API
+    folders = _list_folders_impl(
         account_id=account_id,
         path=path,
         folder_id=folder_id,
         limit=limit,
     )
+
+    result = {
+        "folders": folders,
+        "_cache_status": "miss",  # Fresh from API
+        "_cached_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Store in cache if enabled
+    if use_cache:
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.set_cached(account_id, "folder_list", cache_params, result)
+        except Exception:
+            # If cache storage fails, still return the result
+            pass
+
+    return result
 
 
 # folder_get
@@ -165,22 +223,54 @@ def folder_get_tree(
     path: str = "/",
     folder_id: str | None = None,
     max_depth: int = 10,
+    use_cache: bool = True,
+    force_refresh: bool = False,
 ) -> dict[str, Any]:
     """📖 Recursively build a tree of OneDrive folders (read-only, safe for unsupervised use)
 
     Returns a hierarchical tree structure showing all folders and nested subfolders.
     Useful for understanding OneDrive folder organization.
 
+    Caching: Results are cached for 30 minutes (fresh) / 2 hours (stale).
+    Use force_refresh=True to bypass cache and fetch fresh data.
+
     Args:
         account_id: Microsoft account ID
         path: Starting path (default: "/")
         folder_id: Starting folder ID (takes precedence over path)
         max_depth: Maximum recursion depth (1-25, default: 10)
+        use_cache: Whether to use cached data if available (default: True)
+        force_refresh: Force refresh from API, bypassing cache (default: False)
 
     Returns:
-        Nested tree structure with folders and their children
+        Nested tree structure with folders and their children, including:
+        - _cache_status: Cache state (fresh/stale/miss)
+        - _cached_at: When data was cached (ISO format)
     """
     max_depth = validate_limit(max_depth, 1, 25, "max_depth")
+
+    # Generate cache key from parameters
+    cache_params = {
+        "path": path,
+        "folder_id": folder_id,
+        "max_depth": max_depth,
+    }
+    cache_key = generate_cache_key(account_id, "folder_get_tree", cache_params)
+
+    # Try to get from cache if enabled and not forcing refresh
+    if use_cache and not force_refresh:
+        try:
+            cache_manager = get_cache_manager()
+            cached_result = cache_manager.get_cached(account_id, "folder_get_tree", cache_params)
+
+            if cached_result:
+                data, state = cached_result
+                # Return cached data with cache status
+                data["_cache_status"] = state.value
+                return data
+        except Exception:
+            # If cache fails, continue to API call
+            pass
 
     def _build_drive_folder_tree(
         item_id: str | None, item_path: str | None, current_depth: int
@@ -197,7 +287,7 @@ def folder_get_tree(
                 folder_id=item_id,
                 limit=None,
             )
-        except Exception as e:
+        except Exception:
             # Log error but don't fail entire tree operation
             # Return empty list to stop recursion on this branch
             return []
@@ -235,9 +325,22 @@ def folder_get_tree(
 
     tree_data = _build_drive_folder_tree(start_id, start_path, 0)
 
-    return {
+    result = {
         "root_folder_id": folder_id,
         "root_path": start_path if start_path is not None else None,
         "max_depth": max_depth,
         "folders": tree_data,
+        "_cache_status": "miss",  # Fresh from API
+        "_cached_at": datetime.now(timezone.utc).isoformat(),
     }
+
+    # Store in cache if enabled
+    if use_cache:
+        try:
+            cache_manager = get_cache_manager()
+            cache_manager.set_cached(account_id, "folder_get_tree", cache_params, result)
+        except Exception:
+            # If cache storage fails, still return the result
+            pass
+
+    return result

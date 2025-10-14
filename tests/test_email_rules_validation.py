@@ -4,8 +4,8 @@ from typing import Any
 
 import pytest
 
-from src.microsoft_mcp.tools import email_rules as email_rules_tools
-from src.microsoft_mcp.validators import ValidationError
+from src.m365_mcp.tools import email_rules as email_rules_tools
+from src.m365_mcp.validators import ValidationError
 
 
 def test_emailrules_update_rejects_sequence_below_one(

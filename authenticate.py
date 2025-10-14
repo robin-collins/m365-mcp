@@ -44,6 +44,7 @@ def main():
 
     # Import auth module after loading environment
     from m365_mcp import auth
+
     if not os.getenv("M365_MCP_CLIENT_ID"):
         print("Error: M365_MCP_CLIENT_ID environment variable is required")
         print("\nPlease set it in your .env file or environment:")

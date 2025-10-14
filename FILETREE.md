@@ -27,7 +27,7 @@ m365-mcp/
 ├── HTTP_APP_METHOD_FIX.md                   # **NEW** Fix for http_app() method issue (2025-10-06)
 ├── MIGRATION_SSE_TO_HTTP.md                 # **NEW** Migration notes from SSE to Streamable HTTP
 ├── monitor_mcp_server.sh                   # **NEW** Health monitoring script with auto-recovery
-├── start_mcp_with_monitoring.sh            # **NEW** Server startup script with monitoring
+├── start_mcp_with_monitoring.sh            # **MODIFIED** Server startup script with monitoring (supports .env file loading)
 ├── pyproject.toml                          # **MODIFIED** Python project configuration (added fastapi, uvicorn)
 ├── README.md                               # Project documentation
 ├── uv.lock                                 # UV package lock file
@@ -43,7 +43,37 @@ m365-mcp/
 │   └── m365_mcp/
 │       ├── __init__.py                     # Package initialization
 │       ├── auth.py                         # **MODIFIED** MSAL authentication & token management (env loading removed)
+│       ├── cache_config.py                 # **NEW** Cache configuration and policies (244 lines)
+│       │                                   #   - TTL policies for 12 resource types (Fresh/Stale/Expired)
+│       │                                   #   - Cache limits and cleanup thresholds
+│       │                                   #   - Cache warming operations configuration
+│       │                                   #   - Cache key generation and parsing utilities
+│       ├── encryption.py                   # **NEW** Encryption key management for secure cache (273 lines)
+│       │                                   #   - EncryptionKeyManager class with 256-bit AES key generation
+│       │                                   #   - Multi-source key retrieval (keyring → env var → generate)
+│       │                                   #   - Cross-platform keyring support (Linux/macOS/Windows)
+│       │                                   #   - Graceful degradation for headless environments
+│       ├── cache.py                        # **NEW** Encrypted cache manager with compression and TTL (481 lines)
+│       │                                   #   - CacheManager class with full lifecycle management
+│       │                                   #   - Encrypted SQLite operations via SQLCipher (AES-256)
+│       │                                   #   - Connection pooling (max 5 connections)
+│       │                                   #   - Automatic gzip compression for entries ≥50KB
+│       │                                   #   - Three-state TTL detection (Fresh/Stale/Expired)
+│       │                                   #   - Pattern-based cache invalidation with wildcards
+│       │                                   #   - Automatic cleanup at 80% capacity
+│       │                                   #   - LRU eviction and statistics tracking
+│       ├── cache_migration.py              # **NEW** Cache migration utilities (121 lines)
+│       │                                   #   - Migrate from unencrypted to encrypted cache
+│       │                                   #   - Automatic detection and migration on startup
+│       │                                   #   - Backup creation for safety
 │       ├── graph.py                        # Microsoft Graph API client wrapper
+│       ├── migrations/                     # **NEW** Database schema migrations
+│       │   └── 001_init_cache.sql          # **NEW** Initial cache system schema (171 lines)
+│       │                                   #   - cache_entries: Cached API responses with TTL
+│       │                                   #   - cache_tasks: Background task queue
+│       │                                   #   - cache_invalidation: Invalidation audit log
+│       │                                   #   - cache_stats: Performance metrics
+│       │                                   #   - 9 performance indexes
 │       ├── health_check.py                 # **NEW** Health check utility module with async/sync functions
 │       │                                   #   - check_health() - Single health check
 │       │                                   #   - continuous_health_check() - Continuous monitoring
@@ -135,6 +165,28 @@ m365-mcp/
 ├── tests/
 │   ├── __init__.py                         # Test package initialization
 │   ├── conftest.py                         # Shared pytest fixtures for Graph API mocking
+│   ├── test_cache_schema.py                # **NEW** Cache schema and configuration tests (10 tests)
+│   │                                       #   - Database creation with encryption (3 tests)
+│   │                                       #   - Schema migration execution and verification
+│   │                                       #   - Table structure validation
+│   │                                       #   - Cache key generation and parsing (2 tests)
+│   │                                       #   - TTL policy configuration (3 tests)
+│   │                                       #   - Cache limits and state constants (2 tests)
+│   ├── test_cache.py                       # **NEW** Cache manager comprehensive tests (361 lines, 19 tests)
+│   │                                       #   - Cache basics: initialization, set/get, miss handling (5 tests)
+│   │                                       #   - Compression: small/large entry handling (2 tests)
+│   │                                       #   - TTL: Fresh/Stale/Expired state detection (3 tests)
+│   │                                       #   - Invalidation: exact match and wildcard patterns (3 tests)
+│   │                                       #   - Cleanup: expired entries and LRU eviction (1 test)
+│   │                                       #   - Statistics: cache metrics and hit tracking (3 tests)
+│   │                                       #   - Encryption: encrypted at rest verification (2 tests)
+│   ├── test_encryption.py                  # **NEW** Encryption key management tests (309 lines, 28 tests)
+│   │                                       #   - Key generation tests (5 tests)
+│   │                                       #   - Key validation tests (4 tests)
+│   │                                       #   - Keyring integration tests (7 tests)
+│   │                                       #   - Environment variable fallback tests (4 tests)
+│   │                                       #   - get_or_create_key workflow tests (5 tests)
+│   │                                       #   - Cross-platform compatibility tests (3 tests)
 │   ├── test_integration.py                 # **MODIFIED** Integration tests (supports TEST_ENV_FILE env var)
 │   └── tools/                              # Planned module-specific validation suites (future work)
 │       ├── test_email_validation.py        # Planned email tool validation tests
@@ -218,7 +270,7 @@ m365-mcp/
 
 ## Tool Naming Convention
 
-All 50 MCP tools follow the `category_verb_entity` naming pattern for better organization:
+All 51 MCP tools follow the `category_verb_entity` naming pattern for better organization:
 
 **Categories:**
 
@@ -231,10 +283,11 @@ All 50 MCP tools follow the `category_verb_entity` naming pattern for better org
 - `file_` - OneDrive file operations (5 tools)
 - `folder_` - OneDrive folder navigation (3 tools)
 - `search_` - Search operations (5 tools)
+- `server_` - Server information (1 tool)
 
 **Safety Levels:**
 
-- 📖 **Safe (23 tools)** - Read-only operations, safe for unsupervised use
+- 📖 **Safe (24 tools)** - Read-only operations, safe for unsupervised use
 - ✏️ **Moderate (19 tools)** - Write/modify operations, requires user confirmation recommended
 - 📧 **Dangerous (3 tools)** - Send operations (email), always require user confirmation
 - 🔴 **Critical (5 tools)** - Delete operations, always require user confirmation with `confirm=True` parameter
@@ -301,11 +354,11 @@ Tools with `confirm=True` parameter (8 tools):
 **Modified:**
 
 - `src/m365_mcp/tools.py` - Refactored to import from modular tools/ directory
-- `src/m365_mcp/tools/__init__.py` - **NEW** Package exports for all 50 tools
+- `src/m365_mcp/tools/__init__.py` - **NEW** Package exports for all 51 tools
 
 **Added:**
 
-- `src/m365_mcp/tools/` - **NEW** Modular tool implementations (9 files)
+- `src/m365_mcp/tools/` - **NEW** Modular tool implementations (10 files)
   - `account.py` - 3 account management tools
   - `calendar.py` - 6 calendar tools
   - `contact.py` - 5 contact management tools
@@ -347,7 +400,7 @@ Tools with `confirm=True` parameter (8 tools):
 
 - `MailboxSettings.ReadWrite` - Not yet added to Azure app
 
-**Tool Count:** 41 → 50 (message rule tools added)
+**Tool Count:** 41 → 51 (message rule tools and server tools added)
 
 **Total Statistics:**
 
@@ -355,6 +408,7 @@ Tools with `confirm=True` parameter (8 tools):
 - Email folder tools: +3 (38 total)
 - OneDrive folder tools: +3 (41 total)
 - Message rule tools: +9 (50 total)
+- Server tools: +1 (51 total)
 - Enhanced tools: 2 (`list_emails`, `list_files`)
 - Helper functions: 2 (`_list_mail_folders_impl`, `_list_folders_impl`)
 

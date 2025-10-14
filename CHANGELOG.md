@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **📧 Email Archive Tool**: Added `email_archive` quick action tool for convenient email archiving
+  - `email_archive(email_id, account_id)` - Move emails to Archive folder with single command (✏️ moderate)
+  - Convenience wrapper around `email_move` that specifically targets the archive folder
+  - Includes automatic cache invalidation for affected email lists
+  - Added 2 validation tests in `tests/test_email_quick_actions_validation.py`
+
+### Changed
+
+- **Tool Naming Consistency**: Renamed `reply_all_email` to `email_reply_all` for consistency with naming conventions
+  - Updated function name in `src/m365_mcp/tools/email.py:1058`
+  - Updated MCP tool registration name from "reply_all_email" to "email_reply_all"
+  - Updated test function name in `tests/test_integration.py` from `test_reply_all_email` to `test_email_reply_all`
+  - All references and documentation updated to reflect the new name
+
 ### Fixed
 
 - **Type Safety Improvements**: Resolved all 48 pyright type errors for improved code quality
@@ -19,7 +35,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated `_check_upn_domain` to accept `str | None` parameter
   - Added type ignore comments for sqlcipher3 in test files
 
+### Testing
+
+- **Complete Integration Test Suite**: Rewrote all integration tests using working async pattern
+  - `tests/test_integration.py` - 34 integration tests, all passing (125.80s, ~3.7s per test)
+  - Tests cover: emails (10), calendar (7), contacts (5), files (5), search (4), attachments (1), account (1), send (1)
+  - Uses proven async pattern: `async for session in get_session()` for stability
+  - Each test spawns independent MCP server session (no session-scoped fixtures due to asyncio task group limitations)
+- **Email Folder Tools Integration Tests**: Added comprehensive integration tests for all 6 new email folder management tools
+  - `tests/test_email_folders_integration.py` - 7 integration tests, all passing (16.49s, ~2.4s per test)
+  - Tests verify: list, get, get_tree, create, delete, rename, and move operations
+  - Tests include proper cleanup with try/finally blocks for created resources
+  - `tests/test_email_folders_validation.py` - 17 unit tests, all passing
+
 ### Added
+
+- **📁 Email Folder Management Tools**: Added 6 new MCP tools for comprehensive email folder management
+  - `emailfolders_create(display_name, account_id, parent_folder_id?)` - Create new mail folders at root or as child folders (✏️ moderate)
+  - `emailfolders_rename(folder_id, new_display_name, account_id)` - Rename existing mail folders (✏️ moderate)
+  - `emailfolders_move(folder_id, destination_folder_id, account_id)` - Move folders to different parent folders (✏️ moderate)
+  - `emailfolders_delete(folder_id, account_id, confirm)` - Permanently delete folders and all contents (🔴 critical, requires confirmation)
+  - `emailfolders_mark_all_as_read(folder_id, account_id)` - Mark all messages in folder as read (✏️ moderate)
+  - `emailfolders_empty(folder_id, account_id, confirm)` - Permanently delete all messages in folder (🔴 critical, requires confirmation)
+  - All tools follow MCP naming conventions with proper safety annotations
+  - Comprehensive input validation and error handling
+  - Critical operations require explicit `confirm=True` parameter to prevent accidents
+
+- **📂 OneDrive Folder Management Tools**: Added 4 new MCP tools for OneDrive folder management (mirrors email folders pattern)
+  - `folder_create(name, account_id, parent_folder_id?)` - Create OneDrive folders at root or as child folders (✏️ moderate)
+  - `folder_rename(folder_id, new_name, account_id)` - Rename existing OneDrive folders (✏️ moderate)
+  - `folder_move(folder_id, destination_folder_id, account_id)` - Move folders to different parent folders (✏️ moderate)
+  - `folder_delete(folder_id, account_id, confirm)` - Permanently delete folders and all contents (🔴 critical, requires confirmation)
+  - Follows exact same pattern as emailfolders tools for consistency
+  - Full input validation and error handling
+  - Unit tested with 13 tests, all passing
+  - Fills obvious gap identified after emailfolders implementation
 
 - **🚀 High-Performance Encrypted Cache System**: Complete implementation of enterprise-grade caching system with dramatic performance improvements
   - **Core Implementation** (Phase 1-3, previously added):

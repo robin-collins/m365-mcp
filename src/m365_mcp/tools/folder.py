@@ -2,7 +2,12 @@ from typing import Any
 from datetime import datetime, timezone
 from ..mcp_instance import mcp
 from .. import graph
-from ..validators import validate_limit, validate_onedrive_path
+from ..validators import (
+    validate_limit,
+    validate_onedrive_path,
+    validate_microsoft_graph_id,
+    require_confirm,
+)
 from ..cache_config import generate_cache_key
 from .cache_tools import get_cache_manager
 
@@ -348,5 +353,202 @@ def folder_get_tree(
         except Exception:
             # If cache storage fails, still return the result
             pass
+
+    return result
+
+
+# folder_create
+@mcp.tool(
+    name="folder_create",
+    annotations={
+        "title": "Create OneDrive Folder",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={"category": "folder", "safety_level": "moderate"},
+)
+def folder_create(
+    name: str,
+    account_id: str,
+    parent_folder_id: str | None = None,
+) -> dict[str, Any]:
+    """✏️ Create a new OneDrive folder (requires user confirmation recommended)
+
+    Creates a new folder in OneDrive, either at the root level or
+    as a child of an existing folder.
+
+    Args:
+        name: Name for the new folder
+        account_id: Microsoft account ID
+        parent_folder_id: Parent folder ID (None = root level)
+
+    Returns:
+        Created folder object with id, name, and other metadata
+
+    Raises:
+        ValueError: If name is empty or parent_folder_id is invalid
+    """
+    if not name or not name.strip():
+        raise ValueError("name cannot be empty")
+
+    name = name.strip()
+
+    if parent_folder_id:
+        parent_folder_id = validate_microsoft_graph_id(
+            parent_folder_id, "parent_folder_id"
+        )
+        endpoint = f"/me/drive/items/{parent_folder_id}/children"
+    else:
+        endpoint = "/me/drive/root/children"
+
+    payload = {
+        "name": name,
+        "folder": {},  # This tells Graph API to create a folder
+        "@microsoft.graph.conflictBehavior": "rename",
+    }
+
+    result = graph.request("POST", endpoint, account_id, json=payload)
+    if not result:
+        raise ValueError("Failed to create folder")
+    return result
+
+
+# folder_delete
+@mcp.tool(
+    name="folder_delete",
+    annotations={
+        "title": "Delete OneDrive Folder",
+        "readOnlyHint": False,
+        "destructiveHint": True,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={"category": "folder", "safety_level": "critical"},
+)
+def folder_delete(
+    folder_id: str,
+    account_id: str,
+    confirm: bool = False,
+) -> dict[str, str]:
+    """🔴 Delete an OneDrive folder permanently (always require user confirmation)
+
+    WARNING: This action permanently deletes the folder and all its contents
+    (files and subfolders) and cannot be undone.
+
+    Args:
+        folder_id: The folder ID to delete
+        account_id: Microsoft account ID
+        confirm: Must be True to confirm deletion (prevents accidents)
+
+    Returns:
+        Status confirmation
+
+    Raises:
+        ValueError: If folder_id is invalid or confirm is False
+    """
+    require_confirm(confirm, "delete OneDrive folder")
+    folder_id = validate_microsoft_graph_id(folder_id, "folder_id")
+
+    graph.request("DELETE", f"/me/drive/items/{folder_id}", account_id)
+
+    return {"status": "deleted", "folder_id": folder_id}
+
+
+# folder_rename
+@mcp.tool(
+    name="folder_rename",
+    annotations={
+        "title": "Rename OneDrive Folder",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={"category": "folder", "safety_level": "moderate"},
+)
+def folder_rename(
+    folder_id: str,
+    new_name: str,
+    account_id: str,
+) -> dict[str, Any]:
+    """✏️ Rename an OneDrive folder (requires user confirmation recommended)
+
+    Updates the name of an existing OneDrive folder.
+
+    Args:
+        folder_id: The folder ID to rename
+        new_name: New name for the folder
+        account_id: Microsoft account ID
+
+    Returns:
+        Updated folder object with new name
+
+    Raises:
+        ValueError: If folder_id is invalid or new_name is empty
+    """
+    folder_id = validate_microsoft_graph_id(folder_id, "folder_id")
+
+    if not new_name or not new_name.strip():
+        raise ValueError("new_name cannot be empty")
+
+    new_name = new_name.strip()
+
+    payload = {"name": new_name}
+
+    result = graph.request(
+        "PATCH", f"/me/drive/items/{folder_id}", account_id, json=payload
+    )
+    if not result:
+        raise ValueError("Failed to rename folder")
+
+    return result
+
+
+# folder_move
+@mcp.tool(
+    name="folder_move",
+    annotations={
+        "title": "Move OneDrive Folder",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    meta={"category": "folder", "safety_level": "moderate"},
+)
+def folder_move(
+    folder_id: str,
+    destination_folder_id: str,
+    account_id: str,
+) -> dict[str, Any]:
+    """✏️ Move an OneDrive folder to a different parent (requires user confirmation recommended)
+
+    Moves a folder to become a child of a different parent folder.
+
+    Args:
+        folder_id: The folder ID to move
+        destination_folder_id: The destination parent folder ID
+        account_id: Microsoft account ID
+
+    Returns:
+        Updated folder object with new parentReference
+
+    Raises:
+        ValueError: If folder_id or destination_folder_id is invalid
+    """
+    folder_id = validate_microsoft_graph_id(folder_id, "folder_id")
+    destination_folder_id = validate_microsoft_graph_id(
+        destination_folder_id, "destination_folder_id"
+    )
+
+    payload = {"parentReference": {"id": destination_folder_id}}
+
+    result = graph.request(
+        "PATCH", f"/me/drive/items/{folder_id}", account_id, json=payload
+    )
+    if not result:
+        raise ValueError("Failed to move folder")
 
     return result

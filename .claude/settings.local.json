@@ -22,7 +22,9 @@
       "Read(//home/tech/**)",
       "mcp__m365__account_list",
       "mcp__m365__folder_get_tree",
-      "Bash(ast-grep:*)"
+      "Bash(ast-grep:*)",
+      "Bash(uvx ruff format:*)",
+      "Bash(uvx ruff check:*)"
     ],
     "deny": [],
     "ask": []

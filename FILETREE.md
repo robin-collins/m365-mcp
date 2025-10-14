@@ -105,13 +105,13 @@ m365-mcp/
 │       │                                   #   - Validators for accounts, email, datetime, paths, Graph IDs, URLs
 │       │                                   #   - Security helpers: ensure_safe_path, validate_graph_url, validate_onedrive_path
 │       │                                   #   - Sanitised error messaging and logging utilities
-│       └── tools/                          # **NEW** Modular tool implementations (56 tools across 11 files)
+│       └── tools/                          # **NEW** Modular tool implementations (57 tools across 11 files)
 │           ├── __init__.py                  # **NEW** Tool package exports (imports all functions and mcp)
 │           ├── account.py                   # **NEW** Account management tools (3 tools)
 │           ├── calendar.py                  # **NEW** Calendar and event tools (6 tools)
 │           ├── contact.py                   # **NEW** Contact management tools (5 tools)
-│           ├── email.py                     # **NEW** Email operations tools (9 tools)
-│           ├── email_folders.py             # **NEW** Email folder navigation tools (3 tools)
+│           ├── email.py                     # **NEW** Email operations tools (10 tools)
+│           ├── email_folders.py             # **MODIFIED** Email folder management tools (9 tools)
 │           ├── email_rules.py               # **NEW** Email rule/filter management tools (9 tools)
 │           ├── file.py                      # **NEW** OneDrive file operations tools (5 tools)
 │           ├── folder.py                    # **NEW** OneDrive folder navigation tools (3 tools)
@@ -139,7 +139,7 @@ m365-mcp/
 │           │   ├── contact_create                  # Create contact
 │           │   ├── contact_update                  # Update contact
 │           │   └── contact_delete                  # Delete contact (confirm=True)
-│           ├── email.py: 9 tools
+│           ├── email.py: 10 tools
 │           │   ├── email_list                      # List emails (folder_id param)
 │           │   ├── email_get                       # Get email details
 │           │   ├── email_create_draft              # Create draft
@@ -148,11 +148,19 @@ m365-mcp/
 │           │   ├── email_delete                    # Delete email (confirm=True)
 │           │   ├── email_move                      # Move to folder
 │           │   ├── email_reply                     # Reply to sender (confirm=True)
+│           │   ├── email_reply_all                 # Reply to all recipients (confirm=True)
+│           │   ├── email_archive                   # Archive email to Archive folder (✏️ moderate)
 │           │   └── email_get_attachment            # Download attachment
-│           ├── email_folders.py: 3 tools
+│           ├── email_folders.py: 9 tools
 │           │   ├── emailfolders_list               # List root/child folders
 │           │   ├── emailfolders_get                # Get folder details
-│           │   └── emailfolders_get_tree           # Build recursive tree
+│           │   ├── emailfolders_get_tree           # Build recursive tree
+│           │   ├── emailfolders_create             # Create new folder (✏️ moderate)
+│           │   ├── emailfolders_rename             # Rename folder (✏️ moderate)
+│           │   ├── emailfolders_move               # Move folder to parent (✏️ moderate)
+│           │   ├── emailfolders_delete             # Delete folder (🔴 critical, confirm=True)
+│           │   ├── emailfolders_mark_all_as_read   # Mark all as read (✏️ moderate)
+│           │   └── emailfolders_empty              # Empty folder (🔴 critical, confirm=True)
 │           ├── email_rules.py: 9 tools
 │           │   ├── emailrules_list                 # List email filter rules
 │           │   ├── emailrules_get                  # Get rule details
@@ -227,7 +235,34 @@ m365-mcp/
 │   │                                       #   - cache_invalidate pattern matching
 │   │                                       #   - cache_task_enqueue/status/list
 │   │                                       #   - Multi-account cache operations
-│   ├── test_integration.py                 # **MODIFIED** Integration tests (supports TEST_ENV_FILE env var)
+│   ├── test_integration.py                 # **REWRITTEN** Complete integration test suite (986 lines, 34 tests)
+│   │                                       #   - Emails: list, list_without_body, get, create_draft, update, delete, move, reply, reply_all, send (10 tests)
+│   │                                       #   - Calendar: list_events, get_event, create, update, delete, respond, check_availability (7 tests)
+│   │                                       #   - Contacts: list, get, create, update, delete (5 tests)
+│   │                                       #   - Files: list, get, create, update, delete (5 tests)
+│   │                                       #   - Search: files, emails, events, contacts, unified (5 tests)
+│   │                                       #   - Attachments: get_attachment (1 test)
+│   │                                       #   - Account: list_accounts (1 test)
+│   │                                       #   - All tests pass (125.80s for 34 tests, ~3.7s per test)
+│   │                                       #   - Uses proven pattern: async for session in get_session()
+│   ├── test_email_folders_integration.py  # **NEW** Email folder integration tests (298 lines, 7 tests)
+│   │                                       #   - Test list, get, get_tree, create, delete, rename, and move operations
+│   │                                       #   - All tests pass (16.49s for 7 tests, ~2.4s per test)
+│   │                                       #   - Proper cleanup with try/finally blocks
+│   ├── test_email_folders_validation.py   # **NEW** Email folder validation tests (365 lines, 17 tests)
+│   │                                       #   - Create folder validation (5 tests)
+│   │                                       #   - Delete folder validation (3 tests)
+│   │                                       #   - Rename folder validation (3 tests)
+│   │                                       #   - Move folder validation (3 tests)
+│   │                                       #   - Mark all as read validation (2 tests)
+│   │                                       #   - Empty folder validation (1 test)
+│   │                                       #   - All tests pass (unit tests with mocked Graph API)
+│   ├── test_folder_validation.py          # **NEW** OneDrive folder validation tests (295 lines, 13 tests)
+│   │                                       #   - Create folder validation (5 tests: root, parent, empty name, whitespace, strips)
+│   │                                       #   - Delete folder validation (3 tests: success, no confirm, default false)
+│   │                                       #   - Rename folder validation (4 tests: success, empty, whitespace, strips)
+│   │                                       #   - Move folder validation (1 test: success)
+│   │                                       #   - All tests pass (unit tests with mocked Graph API)
 │   └── tools/                              # Planned module-specific validation suites (future work)
 │       ├── test_email_validation.py        # Planned email tool validation tests
 │       ├── test_file_validation.py         # Planned file tool validation tests
@@ -236,7 +271,6 @@ m365-mcp/
 │       ├── test_email_rules_validation.py  # Planned email rules validation tests
 │       ├── test_search_validation.py       # Planned search tool validation tests
 │       ├── test_folder_validation.py       # Planned folder validation tests
-│       ├── test_email_folders_validation.py # **PLANNED** Email folders validation tests
 │       └── test_account_validation.py      # **PLANNED** Account tool validation tests
 ├── docs/                                   # **NEW** User documentation
 │   ├── cache_user_guide.md                 # **NEW** Cache user guide (389 lines)
@@ -280,8 +314,8 @@ m365-mcp/
   - `account.py` - Account management (3 tools)
   - `calendar.py` - Calendar operations (6 tools)
   - `contact.py` - Contact management (5 tools)
-  - `email.py` - Email operations (9 tools)
-  - `email_folders.py` - Email folder navigation (3 tools)
+  - `email.py` - Email operations (10 tools)
+  - `email_folders.py` - Email folder management (9 tools)
   - `email_rules.py` - Email rule management (9 tools)
   - `file.py` - OneDrive file operations (5 tools)
   - `folder.py` - OneDrive folder navigation (3 tools)
@@ -339,13 +373,13 @@ m365-mcp/
 
 ## Tool Naming Convention
 
-All 56 MCP tools follow the `category_verb_entity` naming pattern for better organization:
+All 62 MCP tools follow the `category_verb_entity` naming pattern for better organization:
 
 **Categories:**
 
 - `account_` - Account authentication and management (3 tools)
 - `email_` - Email operations (10 tools)
-- `emailfolders_` - Email folder navigation (3 tools)
+- `emailfolders_` - Email folder management (9 tools)
 - `emailrules_` - Email rule/filter management (9 tools)
 - `calendar_` - Calendar and event operations (7 tools)
 - `contact_` - Contact management (5 tools)
@@ -358,15 +392,16 @@ All 56 MCP tools follow the `category_verb_entity` naming pattern for better org
 **Safety Levels:**
 
 - 📖 **Safe (29 tools)** - Read-only operations, safe for unsupervised use (includes 5 cache tools)
-- ✏️ **Moderate (19 tools)** - Write/modify operations, requires user confirmation recommended
+- ✏️ **Moderate (24 tools)** - Write/modify operations, requires user confirmation recommended (includes email_archive and folder management tools)
 - 📧 **Dangerous (3 tools)** - Send operations (email), always require user confirmation
-- 🔴 **Critical (5 tools)** - Delete operations, always require user confirmation with `confirm=True` parameter
+- 🔴 **Critical (7 tools)** - Delete operations, always require user confirmation with `confirm=True` parameter (includes folder operations)
 
 **Confirmation Required:**
-Tools with `confirm=True` parameter (8 tools):
+Tools with `confirm=True` parameter (10 tools):
 
 - Send: `email_send`, `email_reply`, `email_reply_all`
 - Delete: `email_delete`, `emailrules_delete`, `calendar_delete_event`, `contact_delete`, `file_delete`
+- Folder Operations: `emailfolders_delete`, `emailfolders_empty`
 
 **Cache Management Tools (5 new safe tools):**
 
@@ -544,13 +579,45 @@ Tools with `confirm=True` parameter (8 tools):
 **Total Statistics:**
 
 - Starting tools: 35
-- Email folder tools: +3 (38 total)
+- Email folder tools: +3 (38 total) → +6 more (44 total) - **UPDATED**
 - OneDrive folder tools: +3 (41 total)
 - Message rule tools: +9 (50 total)
 - Server tools: +1 (51 total)
-- Cache management tools: +5 (56 total) - **NEW**
+- Cache management tools: +5 (56 total)
+- Email folder management tools: +6 (62 total) - **NEW**
 - Enhanced tools: 5 (`list_emails`, `list_files`, `folder_get_tree` with caching)
 - Helper functions: 2 (`_list_mail_folders_impl`, `_list_folders_impl`)
+
+### 2025-10-14 - Email Folder Management Tools
+
+**Modified:**
+
+- `src/m365_mcp/tools/email_folders.py` - **ENHANCED** Added 6 new tools for comprehensive folder management (9 tools total)
+
+**New Tools:**
+
+- `emailfolders_create(display_name, account_id, parent_folder_id?)` - Create folders at root or as children (✏️ moderate)
+- `emailfolders_rename(folder_id, new_display_name, account_id)` - Rename existing folders (✏️ moderate)
+- `emailfolders_move(folder_id, destination_folder_id, account_id)` - Move folders to different parents (✏️ moderate)
+- `emailfolders_delete(folder_id, account_id, confirm=True)` - Permanently delete folders and contents (🔴 critical)
+- `emailfolders_mark_all_as_read(folder_id, account_id)` - Mark all messages in folder as read (✏️ moderate)
+- `emailfolders_empty(folder_id, account_id, confirm=True)` - Permanently delete all messages in folder (🔴 critical)
+
+**Features:**
+
+- **Comprehensive folder management**: Full CRUD operations on email folders
+- **Safety first**: Critical operations require explicit `confirm=True` parameter
+- **Input validation**: Microsoft Graph ID validation and sanitization
+- **Error handling**: Graceful error handling with descriptive messages
+- **Bulk operations**: Mark all as read and empty folder for large-scale management
+
+**Safety Annotations:**
+
+- 4 moderate safety tools (✏️) for create, rename, move, mark as read
+- 2 critical safety tools (🔴) for delete and empty operations
+- All critical tools require `confirm=True` to prevent accidents
+
+**Tool Count:** 56 → 62 (email folder management tools added)
 
 ### 2025-10-05 - Transport Modes and Security
 

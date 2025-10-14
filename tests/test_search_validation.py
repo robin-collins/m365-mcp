@@ -93,10 +93,10 @@ def test_search_events_filters_by_range(
     outside_start = (now - dt.timedelta(days=10)).isoformat()
     outside_end = (now - dt.timedelta(days=9, hours=20)).isoformat()
 
-    def fake_search_query(
-        query: str,
-        entity_types: list[str],
+    def fake_search_events(
         account_id: str,
+        account_type: str,
+        query: str,
         limit: int,
     ) -> list[dict[str, Any]]:
         assert limit == 50
@@ -106,7 +106,10 @@ def test_search_events_filters_by_range(
             {"start": {}, "end": {}},
         ]
 
-    monkeypatch.setattr(search_tools.graph, "search_query", fake_search_query)
+    # Import search_router to mock it
+    from src.m365_mcp import search_router
+
+    monkeypatch.setattr(search_router, "search_events", fake_search_events)
 
     results = search_tools.search_events.fn(
         query="meeting",
@@ -114,6 +117,7 @@ def test_search_events_filters_by_range(
         days_back=1,
         days_ahead=1,
         limit=50,
+        use_cache=False,  # Disable caching for test
     )
 
     assert len(results) == 1
@@ -144,27 +148,30 @@ def test_search_files_trims_query(
 ) -> None:
     captured: dict[str, Any] = {}
 
-    def fake_search_query(
-        query: str,
-        entity_types: list[str],
+    def fake_search_files(
         account_id: str,
+        account_type: str,
+        query: str,
         limit: int,
     ) -> list[dict[str, Any]]:
         captured["query"] = query
-        captured["entity_types"] = entity_types
         captured["account_id"] = account_id
+        captured["account_type"] = account_type
         captured["limit"] = limit
         return []
 
-    monkeypatch.setattr(search_tools.graph, "search_query", fake_search_query)
+    # Import search_router to mock it
+    from src.m365_mcp import search_router
+
+    monkeypatch.setattr(search_router, "search_files", fake_search_files)
 
     search_tools.search_files.fn(
         query="  quarterly report ",
         account_id=mock_account_id,
         limit=25,
+        use_cache=False,  # Disable caching for test
     )
 
     assert captured["query"] == "quarterly report"
-    assert captured["entity_types"] == ["driveItem"]
     assert captured["account_id"] == mock_account_id
     assert captured["limit"] == 25

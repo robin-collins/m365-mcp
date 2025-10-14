@@ -12,7 +12,6 @@ import httpx
 
 from .. import graph
 from ..mcp_instance import mcp
-from ..cache_config import CacheState, generate_cache_key
 from .cache_tools import get_cache_manager
 from ..validators import (
     ValidationError,
@@ -100,7 +99,9 @@ def file_list(
     if use_cache and not force_refresh:
         try:
             cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(account_id, "file_list", cache_params)
+            cached_result = cache_manager.get_cached(
+                account_id, "file_list", cache_params
+            )
 
             if cached_result:
                 data, state = cached_result
@@ -393,7 +394,9 @@ def file_create(
         # Get parent folder ID if available
         if "parentReference" in result and "id" in result["parentReference"]:
             parent_id = result["parentReference"]["id"]
-            cache_manager.invalidate_pattern(account, f"file_list:*folder_id={parent_id}*")
+            cache_manager.invalidate_pattern(
+                account, f"file_list:*folder_id={parent_id}*"
+            )
         # Always invalidate folder tree
         cache_manager.invalidate_pattern(account, "folder_get_tree:*")
     except Exception:
@@ -447,7 +450,9 @@ def file_update(file_id: str, local_file_path: str, account_id: str) -> dict[str
         # Get parent folder ID if available
         if "parentReference" in result and "id" in result["parentReference"]:
             parent_id = result["parentReference"]["id"]
-            cache_manager.invalidate_pattern(account, f"file_list:*folder_id={parent_id}*")
+            cache_manager.invalidate_pattern(
+                account, f"file_list:*folder_id={parent_id}*"
+            )
     except Exception:
         # Don't fail the operation if cache invalidation fails
         pass

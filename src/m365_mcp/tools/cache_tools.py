@@ -1,5 +1,6 @@
 """Cache management tools for M365 MCP Server."""
 
+from datetime import datetime
 from typing import Any, Optional
 from ..mcp_instance import mcp
 from ..cache import CacheManager
@@ -92,9 +93,7 @@ def cache_task_get_status(task_id: str) -> dict[str, Any]:
     meta={"category": "cache", "safety_level": "safe"},
 )
 def cache_task_list(
-    account_id: Optional[str] = None,
-    status: Optional[str] = None,
-    limit: int = 50
+    account_id: Optional[str] = None, status: Optional[str] = None, limit: int = 50
 ) -> list[dict[str, Any]]:
     """📖 List background cache tasks (read-only, safe for unsupervised use)
 
@@ -128,11 +127,7 @@ def cache_task_list(
         queued = cache_task_list(status="queued", limit=10)
     """
     cache_mgr = get_cache_manager()
-    tasks = cache_mgr.list_tasks(
-        account_id=account_id,
-        status=status,
-        limit=limit
-    )
+    tasks = cache_mgr.list_tasks(account_id=account_id, status=status, limit=limit)
 
     return tasks
 
@@ -214,9 +209,7 @@ def cache_get_stats() -> dict[str, Any]:
     meta={"category": "cache", "safety_level": "moderate"},
 )
 def cache_invalidate(
-    pattern: str,
-    account_id: Optional[str] = None,
-    reason: str = "manual_invalidation"
+    pattern: str, account_id: Optional[str] = None, reason: str = "manual_invalidation"
 ) -> dict[str, Any]:
     """✏️ Invalidate cache entries matching a pattern (requires user confirmation recommended)
 
@@ -270,7 +263,7 @@ def cache_invalidate(
         "pattern": pattern,
         "account_id": account_id,
         "reason": reason,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
     }
 
 
@@ -322,14 +315,10 @@ def cache_warming_status() -> dict[str, Any]:
             "total_operations": 0,
             "completed_operations": 0,
             "failed_operations": 0,
-            "progress_percentage": 0.0
+            "progress_percentage": 0.0,
         }
 
     # Get warming status from background worker
     status = _background_worker.get_warming_status()
 
     return status
-
-
-# Import datetime for cache_invalidate
-from datetime import datetime

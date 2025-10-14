@@ -307,8 +307,6 @@ class TestCrossPlatformCompatibility:
         # Verify the env var name is used consistently
         test_key = EncryptionKeyManager.generate_key()
 
-        with patch.dict(
-            os.environ, {"M365_MCP_CACHE_KEY": test_key}, clear=True
-        ):
+        with patch.dict(os.environ, {"M365_MCP_CACHE_KEY": test_key}, clear=True):
             result = EncryptionKeyManager._get_key_from_env()
             assert result == test_key

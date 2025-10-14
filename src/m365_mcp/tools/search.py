@@ -2,7 +2,7 @@ import datetime as dt
 from datetime import datetime, timezone
 from typing import Any, Sequence
 from ..mcp_instance import mcp
-from .. import graph
+from .. import graph, auth, search_router
 from .cache_tools import get_cache_manager
 from ..validators import (
     ValidationError,
@@ -17,6 +17,38 @@ from .email import EMAIL_FOLDER_NAMES, FOLDERS
 
 MAX_SEARCH_QUERY_LENGTH = 512
 ALLOWED_SEARCH_ENTITY_TYPES: Sequence[str] = ("message", "event", "driveItem")
+
+
+def _get_account_type(account_id: str) -> str:
+    """Get account type for the given account_id.
+
+    If account type is "unknown", triggers detection by getting a fresh token.
+
+    Args:
+        account_id: Microsoft account identifier.
+
+    Returns:
+        Account type: "personal", "work_school", or "unknown"
+    """
+    accounts = auth.list_accounts()
+    for account in accounts:
+        if account.account_id == account_id:
+            account_type = account.account_type
+            # If unknown, trigger detection by getting token
+            if account_type == "unknown":
+                try:
+                    # Getting token triggers account type detection
+                    auth.get_token(account_id)
+                    # Re-fetch accounts to get updated type
+                    accounts = auth.list_accounts()
+                    for account in accounts:
+                        if account.account_id == account_id:
+                            return account.account_type
+                except Exception:
+                    # If detection fails, return unknown
+                    pass
+            return account_type
+    return "unknown"
 
 
 def _validate_search_query(query: str, param_name: str = "query") -> str:
@@ -108,6 +140,9 @@ def search_files(
     """📖 Search for files in OneDrive (read-only, safe for unsupervised use)
 
     Searches file names and content across all accessible OneDrive folders.
+    Automatically routes to the appropriate API based on account type:
+    - Personal accounts: Uses OneDrive-specific search
+    - Work/school accounts: Uses unified search API
 
     Args:
         query: Search query string (1-512 characters)
@@ -132,7 +167,9 @@ def search_files(
     if use_cache and not force_refresh:
         try:
             cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(account_id, "search_files", cache_params)
+            cached_result = cache_manager.get_cached(
+                account_id, "search_files", cache_params
+            )
             if cached_result:
                 data, state = cached_result
                 # Add cache status to each file
@@ -143,8 +180,9 @@ def search_files(
             # If cache fails, continue to API call
             pass
 
-    # Fetch from API
-    items = list(graph.search_query(search_query, ["driveItem"], account_id, limit))
+    # Get account type and route to appropriate search API
+    account_type = _get_account_type(account_id)
+    items = search_router.search_files(account_id, account_type, search_query, limit)
 
     results = [
         {
@@ -199,6 +237,9 @@ def search_emails(
     """📖 Search emails across mailbox (read-only, safe for unsupervised use)
 
     Searches email subject, body, and sender across all or specific folders.
+    Automatically routes to the appropriate API based on account type:
+    - Personal accounts: Uses OData $search parameter
+    - Work/school accounts: Uses unified search API
 
     Args:
         query: Search query string (1-512 characters)
@@ -225,7 +266,9 @@ def search_emails(
     if use_cache and not force_refresh:
         try:
             cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(account_id, "search_emails", cache_params)
+            cached_result = cache_manager.get_cached(
+                account_id, "search_emails", cache_params
+            )
             if cached_result:
                 data, state = cached_result
                 # Add cache status to each email
@@ -253,7 +296,11 @@ def search_emails(
             graph.request_paginated(endpoint, account_id, params=params, limit=limit)
         )
     else:
-        results = list(graph.search_query(search_query, ["message"], account_id, limit))
+        # Get account type and route to appropriate search API
+        account_type = _get_account_type(account_id)
+        results = search_router.search_emails(
+            account_id, account_type, search_query, limit
+        )
 
     # Add cache metadata to each email
     cached_at = datetime.now(timezone.utc).isoformat()
@@ -297,6 +344,9 @@ def search_events(
     """📖 Search calendar events (read-only, safe for unsupervised use)
 
     Searches event titles, locations, and descriptions within date range.
+    Automatically routes to the appropriate API based on account type:
+    - Personal accounts: Uses OData $search parameter
+    - Work/school accounts: Uses unified search API
 
     Args:
         query: Search query string (1-512 characters)
@@ -327,7 +377,9 @@ def search_events(
     if use_cache and not force_refresh:
         try:
             cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(account_id, "search_events", cache_params)
+            cached_result = cache_manager.get_cached(
+                account_id, "search_events", cache_params
+            )
             if cached_result:
                 data, state = cached_result
                 # Add cache status to each event
@@ -338,7 +390,9 @@ def search_events(
             # If cache fails, continue to API call
             pass
 
-    events = list(graph.search_query(search_query, ["event"], account_id, limit))
+    # Get account type and route to appropriate search API
+    account_type = _get_account_type(account_id)
+    events = search_router.search_events(account_id, account_type, search_query, limit)
 
     # Filter by date range if needed
     if days_ahead != 365 or days_back != 365:
@@ -409,9 +463,14 @@ def search_contacts(
     """📖 Search contacts (read-only, safe for unsupervised use)
 
     Searches contact names, email addresses, and phone numbers.
+    Uses $filter with prefix matching (startswith) for all account types
+    due to Graph API limitations.
+
+    Note: Contact search is limited to prefix matching and may not find
+    matches in the middle of names.
 
     Args:
-        query: Search query string (1-512 characters)
+        query: Search query string (1-512 characters, used as prefix)
         account_id: Microsoft account ID
         limit: Maximum results to return (1-500, default: 50)
         use_cache: Whether to use cache (default: True)
@@ -433,7 +492,9 @@ def search_contacts(
     if use_cache and not force_refresh:
         try:
             cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(account_id, "search_contacts", cache_params)
+            cached_result = cache_manager.get_cached(
+                account_id, "search_contacts", cache_params
+            )
             if cached_result:
                 data, state = cached_result
                 # Add cache status to each contact
@@ -444,13 +505,10 @@ def search_contacts(
             # If cache fails, continue to API call
             pass
 
-    params = {
-        "$search": f'"{search_query}"',
-        "$top": limit,
-    }
-
-    contacts = list(
-        graph.request_paginated("/me/contacts", account_id, params=params, limit=limit)
+    # Get account type and route to appropriate search API
+    account_type = _get_account_type(account_id)
+    contacts = search_router.search_contacts(
+        account_id, account_type, search_query, limit
     )
 
     # Add cache metadata to each contact
@@ -463,7 +521,9 @@ def search_contacts(
     if use_cache:
         try:
             cache_manager = get_cache_manager()
-            cache_manager.set_cached(account_id, "search_contacts", cache_params, contacts)
+            cache_manager.set_cached(
+                account_id, "search_contacts", cache_params, contacts
+            )
         except Exception:
             # If cache storage fails, still return the result
             pass
@@ -494,6 +554,9 @@ def search_unified(
     """📖 Search across multiple Microsoft 365 resources (read-only, safe for unsupervised use)
 
     Searches emails, events, and files simultaneously.
+    Automatically routes to the appropriate API based on account type:
+    - Personal accounts: Performs sequential searches for each entity type
+    - Work/school accounts: Uses unified search API for parallel search
 
     Args:
         query: Search query string (1-512 characters)
@@ -521,7 +584,9 @@ def search_unified(
     if use_cache and not force_refresh:
         try:
             cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(account_id, "search_unified", cache_params)
+            cached_result = cache_manager.get_cached(
+                account_id, "search_unified", cache_params
+            )
             if cached_result:
                 data, state = cached_result
                 # Add cache status to items in each category
@@ -533,25 +598,11 @@ def search_unified(
             # If cache fails, continue to API call
             pass
 
-    results = {entity_type: [] for entity_type in validated_entity_types}
-
-    items = list(
-        graph.search_query(search_query, validated_entity_types, account_id, limit)
+    # Get account type and route to appropriate search API
+    account_type = _get_account_type(account_id)
+    filtered_results = search_router.unified_search(
+        account_id, account_type, search_query, validated_entity_types, limit
     )
-
-    for item in items:
-        resource_type = item.get("@odata.type", "").split(".")[-1]
-
-        if resource_type == "message":
-            results.setdefault("message", []).append(item)
-        elif resource_type == "event":
-            results.setdefault("event", []).append(item)
-        elif resource_type in ["driveItem", "file", "folder"]:
-            results.setdefault("driveItem", []).append(item)
-        else:
-            results.setdefault("other", []).append(item)
-
-    filtered_results = {k: v for k, v in results.items() if v}
 
     # Add cache metadata to each item
     cached_at = datetime.now(timezone.utc).isoformat()
@@ -564,7 +615,9 @@ def search_unified(
     if use_cache:
         try:
             cache_manager = get_cache_manager()
-            cache_manager.set_cached(account_id, "search_unified", cache_params, filtered_results)
+            cache_manager.set_cached(
+                account_id, "search_unified", cache_params, filtered_results
+            )
         except Exception:
             # If cache storage fails, still return the result
             pass

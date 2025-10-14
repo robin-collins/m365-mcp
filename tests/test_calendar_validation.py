@@ -178,7 +178,7 @@ def test_calendar_check_availability_deduplicates_schedules(
         account_id: str | None = None,
         **kwargs: Any,
     ) -> Any:
-        if method == "GET" and path == "/me":
+        if method == "GET" and path.startswith("/me"):
             return {"mail": "primary@example.com"}
         captured["method"] = method
         captured["path"] = path

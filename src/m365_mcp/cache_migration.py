@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 def migrate_to_encrypted_cache(
     old_db_path: Optional[Path] = None,
     new_db_path: Optional[Path] = None,
-    backup: bool = True
+    backup: bool = True,
 ) -> bool:
     """
     Migrate from unencrypted cache to encrypted cache.
@@ -90,15 +90,16 @@ def migrate_to_encrypted_cache(
 
             if rows:
                 new_conn.executemany(
-                    f"INSERT INTO {table} ({column_list}) VALUES ({placeholders})",
-                    rows
+                    f"INSERT INTO {table} ({column_list}) VALUES ({placeholders})", rows
                 )
 
         new_conn.commit()
         old_conn.close()
         new_conn.close()
 
-        logger.info(f"Successfully migrated cache to encrypted database at {new_db_path}")
+        logger.info(
+            f"Successfully migrated cache to encrypted database at {new_db_path}"
+        )
         return True
 
     except Exception as e:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from collections import deque
@@ -7,8 +8,16 @@ from pathlib import Path
 from typing import Any, Callable
 
 import pytest
+from dotenv import load_dotenv
 
 from src.m365_mcp import graph
+
+# Load environment variables from .env file for all tests
+test_env_file = os.getenv("TEST_ENV_FILE", ".env")
+if Path(test_env_file).exists():
+    load_dotenv(dotenv_path=test_env_file)
+else:
+    load_dotenv()
 
 
 @pytest.fixture

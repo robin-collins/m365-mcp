@@ -2,7 +2,7 @@
 
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock
 
 from src.m365_mcp.cache import CacheManager
 
@@ -19,7 +19,7 @@ def cache_manager(temp_cache_db: Path) -> CacheManager:
     """Create a cache manager instance for testing."""
     cache_mgr = CacheManager(
         db_path=str(temp_cache_db),
-        encryption_enabled=False  # Disable encryption for faster tests
+        encryption_enabled=False,  # Disable encryption for faster tests
     )
     return cache_mgr
 
@@ -58,7 +58,7 @@ def test_cache_task_enqueue_and_get_status(cache_manager):
         account_id="test@example.com",
         operation="folder_get_tree",
         parameters={"folder_id": "root"},
-        priority=1
+        priority=1,
     )
 
     # Verify task_id is returned
@@ -87,7 +87,7 @@ def test_cache_task_list(cache_manager):
             account_id=f"user{i}@example.com",
             operation="email_list",
             parameters={"folder_id": "inbox"},
-            priority=i + 1
+            priority=i + 1,
         )
         task_ids.append(task_id)
 
@@ -123,7 +123,7 @@ def test_cache_get_stats(cache_manager):
             account_id=f"test{i}@example.com",
             resource_type="email_list",
             params={"folder_id": "inbox"},
-            data={"messages": [{"id": f"msg{i}", "subject": f"Test {i}"}]}
+            data={"messages": [{"id": f"msg{i}", "subject": f"Test {i}"}]},
         )
 
     # Get stats again
@@ -140,19 +140,19 @@ def test_cache_invalidate(cache_manager):
         account_id="test@example.com",
         resource_type="email_list",
         params={"folder_id": "inbox"},
-        data={"messages": []}
+        data={"messages": []},
     )
     cache_manager.set_cached(
         account_id="test@example.com",
         resource_type="email_list",
         params={"folder_id": "sent"},
-        data={"messages": []}
+        data={"messages": []},
     )
     cache_manager.set_cached(
         account_id="test@example.com",
         resource_type="folder_get_tree",
         params={"folder_id": "root"},
-        data={"folders": []}
+        data={"folders": []},
     )
 
     # Verify we have 3 entries
@@ -182,18 +182,15 @@ def test_cache_task_status_not_found(cache_manager):
 def test_cache_task_list_by_status(cache_manager):
     """Test listing tasks filtered by specific status."""
     # Create tasks
-    task_id1 = cache_manager.enqueue_task(
-        account_id="test@example.com",
-        operation="email_list",
-        parameters={},
-        priority=1
+    cache_manager.enqueue_task(
+        account_id="test@example.com", operation="email_list", parameters={}, priority=1
     )
 
-    task_id2 = cache_manager.enqueue_task(
+    cache_manager.enqueue_task(
         account_id="test@example.com",
         operation="folder_get_tree",
         parameters={},
-        priority=2
+        priority=2,
     )
 
     # All should be queued
@@ -214,14 +211,14 @@ def test_cache_stats_hit_rate(cache_manager):
         account_id="test@example.com",
         resource_type="email_list",
         params={"folder_id": "inbox"},
-        data={"messages": [{"id": "1"}]}
+        data={"messages": [{"id": "1"}]},
     )
 
     # Access it (should be a hit) - get_cached returns a tuple (data, state)
     result = cache_manager.get_cached(
         account_id="test@example.com",
         resource_type="email_list",
-        params={"folder_id": "inbox"}
+        params={"folder_id": "inbox"},
     )
     assert result is not None
 
@@ -229,7 +226,7 @@ def test_cache_stats_hit_rate(cache_manager):
     result = cache_manager.get_cached(
         account_id="test@example.com",
         resource_type="email_list",
-        params={"folder_id": "sent"}
+        params={"folder_id": "sent"},
     )
     assert result is None
 
@@ -260,13 +257,13 @@ def test_cache_invalidate_with_account(cache_manager):
         account_id="user1@example.com",
         resource_type="email_list",
         params={"folder_id": "inbox"},
-        data={"messages": []}
+        data={"messages": []},
     )
     cache_manager.set_cached(
         account_id="user2@example.com",
         resource_type="email_list",
         params={"folder_id": "inbox"},
-        data={"messages": []}
+        data={"messages": []},
     )
 
     # Total should be 2
@@ -291,13 +288,12 @@ def test_cache_invalidate_with_reason(cache_manager):
         account_id="test@example.com",
         resource_type="folder_get_tree",
         params={"folder_id": "root"},
-        data={"folders": []}
+        data={"folders": []},
     )
 
     # Invalidate with custom reason
     deleted = cache_manager.invalidate_pattern(
-        "folder_get_tree:*",
-        reason="folder_created"
+        "folder_get_tree:*", reason="folder_created"
     )
 
     assert deleted == 1
@@ -317,7 +313,6 @@ def test_cache_warming_status_not_initialized():
 
     # Call the actual function (need to import and use the real implementation)
     # Since it's decorated, we need to access it differently
-    from src.m365_mcp.tools.cache_tools import cache_warming_status
 
     # The tool is a FastMCP FunctionTool, we can't call it directly in tests
     # Instead, test the logic through the module function
@@ -331,7 +326,7 @@ def test_cache_warming_status_not_initialized():
             "total_operations": 0,
             "completed_operations": 0,
             "failed_operations": 0,
-            "progress_percentage": 0.0
+            "progress_percentage": 0.0,
         }
 
     assert result["is_warming"] is False
@@ -345,14 +340,16 @@ def test_cache_warming_status_with_worker(cache_manager):
 
     # Create a mock background worker
     mock_worker = MagicMock()
-    mock_worker.get_warming_status = MagicMock(return_value={
-        "is_warming": True,
-        "total_operations": 10,
-        "completed_operations": 5,
-        "failed_operations": 1,
-        "progress_percentage": 50.0,
-        "status": "Warming in progress"
-    })
+    mock_worker.get_warming_status = MagicMock(
+        return_value={
+            "is_warming": True,
+            "total_operations": 10,
+            "completed_operations": 5,
+            "failed_operations": 1,
+            "progress_percentage": 50.0,
+            "status": "Warming in progress",
+        }
+    )
 
     # Set the mock worker
     cache_tools._background_worker = mock_worker
@@ -380,7 +377,7 @@ def test_cache_entry_states(cache_manager):
         account_id="test@example.com",
         resource_type="email_list",
         params={"folder_id": "inbox"},
-        data={"messages": [{"id": "1"}]}
+        data={"messages": [{"id": "1"}]},
     )
 
     # Immediately after setting, should get a fresh result
@@ -388,7 +385,7 @@ def test_cache_entry_states(cache_manager):
     result = cache_manager.get_cached(
         account_id="test@example.com",
         resource_type="email_list",
-        params={"folder_id": "inbox"}
+        params={"folder_id": "inbox"},
     )
 
     assert result is not None
@@ -413,7 +410,7 @@ def test_cache_compression_large_entries(cache_manager):
                 "id": f"msg{i}",
                 "subject": f"Test Message {i}",
                 "body": "x" * 1000,  # 1KB per message
-                "from": f"user{i}@example.com"
+                "from": f"user{i}@example.com",
             }
             for i in range(60)  # 60KB of data
         ]
@@ -424,14 +421,14 @@ def test_cache_compression_large_entries(cache_manager):
         account_id="test@example.com",
         resource_type="email_list",
         params={"folder_id": "inbox"},
-        data=large_data
+        data=large_data,
     )
 
     # Retrieve it back - get_cached returns tuple (data, state)
     result = cache_manager.get_cached(
         account_id="test@example.com",
         resource_type="email_list",
-        params={"folder_id": "inbox"}
+        params={"folder_id": "inbox"},
     )
 
     assert result is not None

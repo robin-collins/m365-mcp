@@ -5,7 +5,6 @@ Tests for encrypted cache manager.
 import pytest
 import tempfile
 from pathlib import Path
-import json
 import time
 
 from src.m365_mcp.cache import CacheManager, CacheState
@@ -72,9 +71,7 @@ class TestCacheBasics:
     def test_cache_miss(self, cache_manager):
         """Test cache miss returns None."""
         result = cache_manager.get_cached(
-            "nonexistent-account",
-            "email_list",
-            {"folder_id": "inbox"}
+            "nonexistent-account", "email_list", {"folder_id": "inbox"}
         )
         assert result is None
 
@@ -105,7 +102,7 @@ class TestCacheCompression:
         with cache_manager._db() as conn:
             cursor = conn.execute(
                 "SELECT is_compressed FROM cache_entries WHERE cache_key = ?",
-                (cache_key,)
+                (cache_key,),
             )
             row = cursor.fetchone()
             assert row["is_compressed"] == 0
@@ -126,7 +123,7 @@ class TestCacheCompression:
         with cache_manager._db() as conn:
             cursor = conn.execute(
                 "SELECT is_compressed FROM cache_entries WHERE cache_key = ?",
-                (cache_key,)
+                (cache_key,),
             )
             row = cursor.fetchone()
             assert row["is_compressed"] == 1
@@ -173,7 +170,7 @@ class TestCacheTTL:
         with cache_manager._db() as conn:
             conn.execute(
                 "UPDATE cache_entries SET created_at = ? WHERE cache_key = ?",
-                (old_time, cache_key)
+                (old_time, cache_key),
             )
 
         # Retrieve (should be STALE)
@@ -199,7 +196,7 @@ class TestCacheTTL:
         with cache_manager._db() as conn:
             conn.execute(
                 "UPDATE cache_entries SET created_at = ? WHERE cache_key = ?",
-                (old_time, cache_key)
+                (old_time, cache_key),
             )
 
         # Retrieve (should be None - expired)
@@ -217,14 +214,13 @@ class TestCacheInvalidation:
         # Set multiple cache entries
         for i in range(3):
             cache_manager.set_cached(
-                account_id,
-                "email_list",
-                {"folder_id": f"folder-{i}"},
-                {"emails": []}
+                account_id, "email_list", {"folder_id": f"folder-{i}"}, {"emails": []}
             )
 
         # Invalidate specific entry
-        pattern = generate_cache_key(account_id, "email_list", {"folder_id": "folder-1"})
+        pattern = generate_cache_key(
+            account_id, "email_list", {"folder_id": "folder-1"}
+        )
         count = cache_manager.invalidate_pattern(pattern)
 
         assert count == 1
@@ -234,12 +230,16 @@ class TestCacheInvalidation:
         account_id = "test-account"
 
         # Set entries for different resource types
-        cache_manager.set_cached(account_id, "email_list", {"folder": "inbox"}, {"emails": []})
-        cache_manager.set_cached(account_id, "email_get", {"id": "123"}, {"subject": "Test"})
+        cache_manager.set_cached(
+            account_id, "email_list", {"folder": "inbox"}, {"emails": []}
+        )
+        cache_manager.set_cached(
+            account_id, "email_get", {"id": "123"}, {"subject": "Test"}
+        )
         cache_manager.set_cached(account_id, "folder_list", {}, {"folders": []})
 
         # Invalidate all email_* entries
-        count = cache_manager.invalidate_pattern(f"email_*")
+        count = cache_manager.invalidate_pattern("email_*")
 
         assert count >= 2  # Should invalidate email_list and email_get
 
@@ -265,7 +265,9 @@ class TestCacheCleanup:
         resource_type = "email_list"
 
         # Add entry
-        cache_manager.set_cached(account_id, resource_type, {"folder": "inbox"}, {"emails": []})
+        cache_manager.set_cached(
+            account_id, resource_type, {"folder": "inbox"}, {"emails": []}
+        )
 
         # Make it expired
         cache_key = generate_cache_key(account_id, resource_type, {"folder": "inbox"})
@@ -274,7 +276,7 @@ class TestCacheCleanup:
         with cache_manager._db() as conn:
             conn.execute(
                 "UPDATE cache_entries SET created_at = ?, expires_at = ? WHERE cache_key = ?",
-                (old_time, old_time, cache_key)
+                (old_time, old_time, cache_key),
             )
 
         # Cleanup
@@ -283,7 +285,9 @@ class TestCacheCleanup:
         assert count == 1
 
         # Verify entry is gone
-        result = cache_manager.get_cached(account_id, resource_type, {"folder": "inbox"})
+        result = cache_manager.get_cached(
+            account_id, resource_type, {"folder": "inbox"}
+        )
         assert result is None
 
 
@@ -329,8 +333,7 @@ class TestCacheStats:
         cache_key = generate_cache_key(account_id, resource_type, params)
         with cache_manager._db() as conn:
             cursor = conn.execute(
-                "SELECT hit_count FROM cache_entries WHERE cache_key = ?",
-                (cache_key,)
+                "SELECT hit_count FROM cache_entries WHERE cache_key = ?", (cache_key,)
             )
             row = cursor.fetchone()
             assert row["hit_count"] == 5

@@ -631,9 +631,10 @@ wheels = [
 
 [[package]]
 name = "m365-mcp"
-version = "0.1.6"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
+    { name = "coverage" },
     { name = "fastapi" },
     { name = "fastmcp" },
     { name = "httpx" },
@@ -657,6 +658,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "coverage", specifier = ">=7.10.7" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "fastmcp", specifier = ">=2.8.0" },
     { name = "httpx", specifier = ">=0.28.1" },

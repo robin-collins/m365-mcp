@@ -36,17 +36,17 @@ def migrate_to_encrypted_cache(
     Returns:
         True if migration successful, False otherwise.
     """
-    old_db_path = old_db_path or CACHE_DB_PATH
-    new_db_path = new_db_path or CACHE_DB_PATH.with_suffix(".encrypted.db")
+    old_db: Path = old_db_path or Path(CACHE_DB_PATH)
+    new_db: Path = new_db_path or Path(CACHE_DB_PATH).with_suffix(".encrypted.db")
 
-    if not old_db_path.exists():
+    if not old_db.exists():
         logger.info("No existing cache database to migrate")
         return False
 
     # Create backup if requested
     if backup:
-        backup_path = old_db_path.with_suffix(".backup.db")
-        shutil.copy2(old_db_path, backup_path)
+        backup_path = old_db.with_suffix(".backup.db")
+        shutil.copy2(old_db, backup_path)
         logger.info(f"Created backup at {backup_path}")
 
     # Get encryption key
@@ -55,10 +55,10 @@ def migrate_to_encrypted_cache(
 
     try:
         # Connect to old unencrypted database
-        old_conn = sqlite3.connect(str(old_db_path))
+        old_conn = sqlite3.connect(str(old_db))  # type: ignore[attr-defined]
 
         # Create new encrypted database
-        new_conn = sqlite3.connect(str(new_db_path))
+        new_conn = sqlite3.connect(str(new_db))  # type: ignore[attr-defined]
         new_conn.execute(f"PRAGMA key = '{encryption_key}'")
         new_conn.execute("PRAGMA cipher_compatibility = 4")
 
@@ -97,9 +97,7 @@ def migrate_to_encrypted_cache(
         old_conn.close()
         new_conn.close()
 
-        logger.info(
-            f"Successfully migrated cache to encrypted database at {new_db_path}"
-        )
+        logger.info(f"Successfully migrated cache to encrypted database at {new_db}")
         return True
 
     except Exception as e:
@@ -114,7 +112,8 @@ def detect_and_migrate() -> bool:
     Returns:
         True if migration was performed, False otherwise.
     """
-    if not CACHE_DB_PATH.exists():
+    cache_db_path = Path(CACHE_DB_PATH)
+    if not cache_db_path.exists():
         return False
 
     # Try to open with encryption
@@ -122,7 +121,7 @@ def detect_and_migrate() -> bool:
         key_manager = EncryptionKeyManager()
         encryption_key = key_manager.get_or_create_key()
 
-        conn = sqlite3.connect(str(CACHE_DB_PATH))
+        conn = sqlite3.connect(str(cache_db_path))  # type: ignore[attr-defined]
         conn.execute(f"PRAGMA key = '{encryption_key}'")
         conn.execute("SELECT COUNT(*) FROM sqlite_master")
         conn.close()
@@ -135,13 +134,13 @@ def detect_and_migrate() -> bool:
         logger.info("Detected unencrypted cache database, migrating...")
 
         # Create temporary encrypted database
-        temp_path = CACHE_DB_PATH.with_suffix(".migrating.db")
+        temp_path = cache_db_path.with_suffix(".migrating.db")
 
-        if migrate_to_encrypted_cache(CACHE_DB_PATH, temp_path):
+        if migrate_to_encrypted_cache(cache_db_path, temp_path):
             # Replace old database with new
-            old_backup = CACHE_DB_PATH.with_suffix(".old.db")
-            CACHE_DB_PATH.rename(old_backup)
-            temp_path.rename(CACHE_DB_PATH)
+            old_backup = cache_db_path.with_suffix(".old.db")
+            cache_db_path.rename(old_backup)
+            temp_path.rename(cache_db_path)
 
             logger.info("Migration complete, old database backed up")
             return True

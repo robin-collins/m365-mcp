@@ -3,12 +3,13 @@ import sys
 import signal
 import atexit
 import argparse
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
 from importlib.metadata import version, PackageNotFoundError
 
 # Logger will be initialized after argument parsing
-logger = None
+logger: logging.Logger | None = None
 
 
 def _parse_arguments() -> argparse.Namespace:
@@ -30,6 +31,7 @@ def _setup_signal_handlers() -> None:
 
     def signal_handler(signum, frame):
         sig_name = signal.Signals(signum).name
+        assert logger is not None
         logger.warning(
             f"Received signal {sig_name} ({signum}), shutting down gracefully"
         )
@@ -41,6 +43,7 @@ def _setup_signal_handlers() -> None:
 
 def _log_startup_info() -> None:
     """Log server startup information."""
+    assert logger is not None
     # Get version dynamically
     try:
         pkg_version = version("m365-mcp")
@@ -90,6 +93,7 @@ def main() -> None:
     # Initialize logger after loading environment
     global logger
     logger = get_logger(__name__)
+    assert logger is not None  # Ensure logger is properly initialized
 
     # Setup logging
     log_level = os.getenv("MCP_LOG_LEVEL", "INFO")
@@ -100,7 +104,11 @@ def main() -> None:
     _setup_signal_handlers()
 
     # Register cleanup handler
-    atexit.register(lambda: logger.info("Server shutting down"))
+    def _cleanup():
+        assert logger is not None
+        logger.info("Server shutting down")
+
+    atexit.register(_cleanup)
 
     # Log startup information
     _log_startup_info()
@@ -201,6 +209,7 @@ def main() -> None:
 
 def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
     """Run Streamable HTTP server with bearer token authentication"""
+    assert logger is not None
     from fastapi import FastAPI, Request
     import uvicorn
 
@@ -234,6 +243,7 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
         """Validate bearer token on all requests"""
+        assert logger is not None
         from fastapi.responses import JSONResponse
         import time
 

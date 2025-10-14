@@ -38,7 +38,7 @@ class TestDatabaseCreation:
 
         try:
             # Connect with encryption
-            conn = sqlcipher.connect(db_path)
+            conn = sqlcipher.connect(db_path)  # type: ignore[attr-defined]
             conn.execute(f"PRAGMA key = '{encryption_key}'")
             conn.execute("PRAGMA cipher_page_size = 4096")
 
@@ -55,8 +55,8 @@ class TestDatabaseCreation:
             conn.close()
 
             # Verify database is encrypted (cannot open without key)
-            with pytest.raises(sqlcipher.DatabaseError):
-                bad_conn = sqlcipher.connect(db_path)
+            with pytest.raises(sqlcipher.DatabaseError):  # type: ignore[attr-defined]
+                bad_conn = sqlcipher.connect(db_path)  # type: ignore[attr-defined]
                 bad_conn.execute("SELECT * FROM test_table")
                 bad_conn.close()
 
@@ -76,7 +76,7 @@ class TestDatabaseCreation:
 
         try:
             # Connect with encryption
-            conn = sqlcipher.connect(db_path)
+            conn = sqlcipher.connect(db_path)  # type: ignore[attr-defined]
             conn.execute(f"PRAGMA key = '{encryption_key}'")
             conn.execute("PRAGMA cipher_page_size = 4096")
 
@@ -159,7 +159,7 @@ class TestDatabaseCreation:
             db_path = tmp.name
 
         try:
-            conn = sqlcipher.connect(db_path)
+            conn = sqlcipher.connect(db_path)  # type: ignore[attr-defined]
             conn.execute(f"PRAGMA key = '{encryption_key}'")
 
             # Execute migration

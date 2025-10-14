@@ -129,15 +129,15 @@ def _decode_token_unverified(token: str) -> str | None:
         raise
 
 
-def _check_upn_domain(upn: str) -> str | None:
+def _check_upn_domain(upn: str | None) -> str | None:
     """Check userPrincipalName domain to detect personal accounts.
 
     Args:
-        upn: User Principal Name (email-like identifier).
+        upn: User Principal Name (email-like identifier), or None.
 
     Returns:
         "personal" if UPN matches personal account domain, "work_school"
-        for other domains, or None if domain cannot be extracted.
+        for other domains, or None if domain cannot be extracted or upn is None.
 
     Example:
         >>> _check_upn_domain("user@outlook.com")

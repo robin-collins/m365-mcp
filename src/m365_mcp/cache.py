@@ -74,14 +74,14 @@ class CacheManager:
         self._init_database()
         logger.info(f"Cache manager initialized at {self.db_path}")
 
-    def _create_connection(self) -> sqlite3.Connection:
+    def _create_connection(self) -> sqlite3.Connection:  # type: ignore[name-defined]
         """
         Create a new database connection with encryption.
 
         Returns:
             SQLite connection with encryption configured.
         """
-        conn = sqlite3.connect(str(self.db_path))
+        conn = sqlite3.connect(str(self.db_path))  # type: ignore[attr-defined]
 
         if self.encryption_enabled and self.encryption_key:
             # Set encryption key for SQLCipher
@@ -94,7 +94,7 @@ class CacheManager:
         conn.execute("PRAGMA cache_size = -64000")  # 64MB cache
         conn.execute("PRAGMA temp_store = MEMORY")
 
-        conn.row_factory = sqlite3.Row
+        conn.row_factory = sqlite3.Row  # type: ignore[attr-defined]
         return conn
 
     @contextmanager

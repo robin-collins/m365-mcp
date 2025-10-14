@@ -228,16 +228,18 @@ class CacheWarmer:
 
         if self.warming_completed_at:
             status["completed_at"] = self.warming_completed_at.isoformat()
-            duration = (
-                self.warming_completed_at - self.warming_started_at
-            ).total_seconds()
-            status["duration_seconds"] = round(duration, 2)
+            if self.warming_started_at:
+                duration = (
+                    self.warming_completed_at - self.warming_started_at
+                ).total_seconds()
+                status["duration_seconds"] = round(duration, 2)
         elif self.is_warming:
             # Calculate current duration if still warming
-            duration = (
-                datetime.now(timezone.utc) - self.warming_started_at
-            ).total_seconds()
-            status["duration_seconds"] = round(duration, 2)
+            if self.warming_started_at:
+                duration = (
+                    datetime.now(timezone.utc) - self.warming_started_at
+                ).total_seconds()
+                status["duration_seconds"] = round(duration, 2)
 
         # Calculate progress percentage
         if self.operations_total > 0:

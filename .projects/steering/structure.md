@@ -13,10 +13,22 @@ m365-mcp/
 │   ├── auth.py                # Authentication & token management
 │   ├── graph.py               # Microsoft Graph API client
 │   ├── server.py              # MCP server configuration & HTTP transport
-│   └── tools.py               # MCP tool definitions (40+ tools)
+│   ├── tools.py               # MCP tool definitions (51+ tools)
+│   ├── cache.py               # Encrypted SQLite cache manager (AES-256)
+│   ├── cache_config.py        # Cache configuration, TTL policies, key generation
+│   ├── cache_warming.py       # Automatic background cache warming
+│   ├── cache_migration.py     # Database migration utilities
+│   ├── background_worker.py   # Async task queue for cache operations
+│   └── encryption.py          # Encryption key management (keyring integration)
 ├── tests/                     # Test suite
 │   ├── __init__.py
-│   └── test_integration.py    # Integration tests
+│   ├── test_integration.py    # Integration tests
+│   ├── test_cache.py          # Cache operation tests (18 tests)
+│   ├── test_encryption.py     # Encryption & key management tests (26 tests)
+│   ├── test_cache_schema.py   # Database schema tests (8 tests)
+│   ├── test_cache_warming.py  # Cache warming tests (20+ tests)
+│   ├── test_background_worker.py # Background task tests (9 tests)
+│   └── test_tool_caching.py   # Tool caching integration tests (7 tests)
 ├── .projects/steering/        # AI assistant guidance
 │   ├── product.md             # Product overview
 │   ├── tech.md                # Technology stack & commands
@@ -51,6 +63,21 @@ m365-mcp/
 - **Security configuration** - Authentication middleware for HTTP
 - **Health checks** - Monitoring and diagnostics endpoints
 - **Environment management** - Configuration loading and validation
+
+### Cache Layer (`cache.py`, `cache_config.py`, `encryption.py`)
+- **Encrypted storage** - AES-256 encryption via SQLCipher for data at rest
+- **TTL management** - Three-state cache lifecycle (Fresh/Stale/Expired)
+- **Compression** - Automatic gzip compression for entries ≥50KB
+- **Invalidation** - Pattern-based cache invalidation on write operations
+- **Connection pooling** - Pool of 5 connections for concurrent access
+- **Key management** - Secure keyring integration with environment fallback
+- **Size management** - Automatic cleanup at 80% of 2GB limit
+
+### Background Processing (`background_worker.py`, `cache_warming.py`)
+- **Async task queue** - Priority-based task scheduling and execution
+- **Cache warming** - Non-blocking pre-population on server startup
+- **Retry logic** - Automatic retry with exponential backoff for failed tasks
+- **Status tracking** - Real-time task status and completion monitoring
 
 ## Key Design Patterns
 

@@ -259,6 +259,7 @@ def main() -> int:
                     max_failures=args.max_failures,
                 )
             )
+            return 0
         else:
             # Single health check
             result = check_health(

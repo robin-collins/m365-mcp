@@ -11,6 +11,7 @@ import sys
 import shutil
 from pathlib import Path
 from datetime import datetime, timezone
+from typing import Any
 import json
 
 
@@ -72,7 +73,7 @@ class HumanReadableFormatter(logging.Formatter):
         return formatted
 
 
-def archive_existing_logs(log_dir: Path) -> dict[str, any]:
+def archive_existing_logs(log_dir: Path) -> dict[str, Any]:
     """
     Archive existing log files to a timestamped folder.
 

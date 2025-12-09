@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "calendar_delete_event",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID for the calendar."
+    },
+    "event_id": {
+      "type": "string",
+      "description": "Identifier of the event to delete."
+    },
+    "send_cancellation": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether to send cancellation notices to attendees."
+    },
+    "confirm": {
+      "const": true,
+      "type": "boolean",
+      "default": true,
+      "description": "Must be true to allow deletion (safety confirmation)."
+    }
+  },
+  "required": ["account_id", "event_id", "confirm"]
+}

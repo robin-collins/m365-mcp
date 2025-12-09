@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "calendar_forward_event",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID for the calendar."
+    },
+    "event_id": {
+      "type": "string",
+      "description": "Identifier of the event to forward."
+    },
+    "to": {
+      "oneOf": [
+        {"type": "string"},
+        {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Primary recipients for the forwarded invitation."
+        }
+      ],
+      "description": "Recipient email or list; combined with CC must not exceed 500 unique addresses."
+    },
+    "cc": {
+      "oneOf": [
+        {"type": "string"},
+        {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Optional CC recipients."
+        }
+      ],
+      "description": "Optional CC email or list; combined recipients limited to 500 unique addresses."
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional plain text comment to include with the forward."
+    },
+    "confirm": {
+      "const": true,
+      "type": "boolean",
+      "default": true,
+      "description": "Must be true to allow forwarding (safety confirmation)."
+    }
+  },
+  "required": ["account_id", "event_id", "to", "confirm"]
+}

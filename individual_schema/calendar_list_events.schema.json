@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "calendar_list_events",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID used for the calendar query."
+    },
+    "days_ahead": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 365,
+      "default": 7,
+      "description": "Number of days ahead to fetch events (1-365)."
+    },
+    "include_details": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to include full event details such as attendees and body content."
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 200,
+      "default": 50,
+      "description": "Maximum number of events to return (1-200)."
+    },
+    "use_cache": {
+      "type": "boolean",
+      "default": true,
+      "description": "Allow returning cached results when available."
+    },
+    "force_refresh": {
+      "type": "boolean",
+      "default": false,
+      "description": "Bypass cache and fetch fresh results when true."
+    }
+  },
+  "required": ["account_id"]
+}

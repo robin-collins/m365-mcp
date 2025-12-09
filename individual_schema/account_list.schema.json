@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "account_list",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "List all signed-in Microsoft accounts (read-only).",
+  "properties": {}
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "account_complete_auth",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "Complete device-flow authentication using the cached flow payload returned by account_authenticate.",
+  "properties": {
+    "flow_cache": {
+      "type": "string",
+      "description": "Stringified device-flow payload returned as _flow_cache from account_authenticate.",
+      "minLength": 1
+    }
+  },
+  "required": ["flow_cache"]
+}

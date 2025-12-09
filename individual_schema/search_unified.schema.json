@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "search_unified",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "Search emails, events, and files simultaneously with optional cache controls.",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Search phrase trimmed of surrounding whitespace.",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account identifier used to scope the search."
+    },
+    "entity_types": {
+      "description": "Optional subset of entity types to search; defaults to all when omitted.",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": ["message", "event", "driveItem"],
+          "description": "Single entity type."
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["message", "event", "driveItem"]
+          },
+          "description": "Array of entity types; order is preserved but internally normalized."
+        }
+      ]
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 500,
+      "default": 50,
+      "description": "Maximum number of results returned per entity type."
+    },
+    "use_cache": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether cached results may be used if available."
+    },
+    "force_refresh": {
+      "type": "boolean",
+      "default": false,
+      "description": "Bypass cache and force a fresh search when true."
+    }
+  },
+  "required": ["query", "account_id"]
+}

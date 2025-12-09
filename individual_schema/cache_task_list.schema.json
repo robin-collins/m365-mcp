@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cache_task_list",
+  "type": "object",
+  "description": "List background cache tasks with optional filtering and pagination controls.",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Optional account identifier used to filter tasks belonging to a specific user."
+    },
+    "status": {
+      "type": "string",
+      "description": "Optional status filter limiting results to tasks in a particular lifecycle state.",
+      "enum": ["queued", "running", "completed", "failed"]
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Maximum number of tasks to return, ordered by most recent creation time.",
+      "minimum": 1,
+      "default": 50
+    }
+  }
+}

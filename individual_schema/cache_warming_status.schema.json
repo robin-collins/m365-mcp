@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cache_warming_status",
+  "type": "object",
+  "description": "Report whether background cache warming is active and summarize progress.",
+  "additionalProperties": false,
+  "properties": {}
+}

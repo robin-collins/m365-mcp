@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cache_invalidate",
+  "type": "object",
+  "description": "Invalidate cache entries matching a wildcard pattern with optional account scoping.",
+  "additionalProperties": false,
+  "properties": {
+    "pattern": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Cache key pattern supporting '*' wildcards (e.g., 'email_list:*', 'folder_get_tree:user@example.com:*')."
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Optional account identifier to scope invalidation; when provided, the pattern is updated to include this account if missing."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Reason recorded for the invalidation audit log.",
+      "default": "manual_invalidation"
+    }
+  },
+  "required": ["pattern"]
+}

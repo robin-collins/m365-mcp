@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cache_get_stats",
+  "type": "object",
+  "description": "Retrieve aggregate cache statistics including hit/miss counts and size metrics.",
+  "additionalProperties": false,
+  "properties": {}
+}

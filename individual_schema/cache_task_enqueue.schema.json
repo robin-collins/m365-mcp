@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cache_task_enqueue",
+  "type": "object",
+  "description": "Enqueue a background cache task with operation parameters and priority.",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Account identifier for which the background task should run."
+    },
+    "operation": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Operation name to execute (e.g., 'folder_get_tree', 'email_list')."
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Operation-specific parameters serialized into the task payload.",
+      "default": {},
+      "additionalProperties": true
+    },
+    "priority": {
+      "type": "integer",
+      "description": "Task priority where 1 is highest urgency and 10 is lowest.",
+      "minimum": 1,
+      "maximum": 10,
+      "default": 5
+    }
+  },
+  "required": ["account_id", "operation"]
+}

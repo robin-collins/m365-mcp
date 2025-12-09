@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_mark_read",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "email_id": {
+      "type": "string",
+      "description": "Identifier of the email to mark read or unread."
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID performing the update."
+    },
+    "is_read": {
+      "type": "boolean",
+      "default": true,
+      "description": "True to mark as read, false to mark as unread."
+    }
+  },
+  "required": ["email_id", "account_id"]
+}

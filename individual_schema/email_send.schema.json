@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_send",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID used to send the message."
+    },
+    "to": {
+      "description": "Recipient email address or list of addresses (max 500 unique across To/CC).",
+      "anyOf": [
+        {"type": "string", "format": "email"},
+        {
+          "type": "array",
+          "items": {"type": "string", "format": "email"},
+          "minItems": 1,
+          "maxItems": 500
+        }
+      ]
+    },
+    "subject": {
+      "type": "string",
+      "description": "Email subject line."
+    },
+    "body": {
+      "type": "string",
+      "description": "Plain-text email body to send."
+    },
+    "cc": {
+      "description": "Optional CC recipient(s) counted toward the 500 unique-recipient limit.",
+      "anyOf": [
+        {"type": "string", "format": "email"},
+        {
+          "type": "array",
+          "items": {"type": "string", "format": "email"},
+          "minItems": 1,
+          "maxItems": 500
+        }
+      ]
+    },
+    "attachments": {
+      "description": "Optional local file path or list of file paths to attach.",
+      "anyOf": [
+        {"type": "string"},
+        {
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 1
+        }
+      ]
+    },
+    "confirm": {
+      "type": "boolean",
+      "const": true,
+      "description": "Must be true to allow sending; protects against accidental dispatch."
+    }
+  },
+  "required": ["account_id", "to", "subject", "body", "confirm"]
+}

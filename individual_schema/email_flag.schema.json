@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_flag",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "email_id": {
+      "type": "string",
+      "description": "Identifier of the email to flag or unflag."
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID performing the flag update."
+    },
+    "flag_status": {
+      "type": "string",
+      "enum": ["notFlagged", "flagged", "complete"],
+      "default": "flagged",
+      "description": "Flag state to apply (default flagged)."
+    }
+  },
+  "required": ["email_id", "account_id"]
+}

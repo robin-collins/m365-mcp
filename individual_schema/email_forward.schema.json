@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_forward",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID performing the forward."
+    },
+    "email_id": {
+      "type": "string",
+      "description": "Identifier of the email to forward."
+    },
+    "to": {
+      "description": "Recipient email address or list of addresses (max 500 unique across To/CC).",
+      "anyOf": [
+        {"type": "string", "format": "email"},
+        {
+          "type": "array",
+          "items": {"type": "string", "format": "email"},
+          "minItems": 1,
+          "maxItems": 500
+        }
+      ]
+    },
+    "cc": {
+      "description": "Optional CC recipient(s) counted toward the 500 unique-recipient limit.",
+      "anyOf": [
+        {"type": "string", "format": "email"},
+        {
+          "type": "array",
+          "items": {"type": "string", "format": "email"},
+          "minItems": 1,
+          "maxItems": 500
+        }
+      ]
+    },
+    "body": {
+      "type": "string",
+      "description": "Optional plain-text comment to include with the forward (trimmed)."
+    },
+    "confirm": {
+      "type": "boolean",
+      "const": true,
+      "description": "Must be true to authorize forwarding the email."
+    }
+  },
+  "required": ["account_id", "email_id", "to", "confirm"]
+}

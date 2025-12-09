@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_move",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "email_id": {
+      "type": "string",
+      "description": "Identifier of the email to move."
+    },
+    "destination_folder": {
+      "type": "string",
+      "enum": ["inbox", "sent", "drafts", "deleted", "junk", "archive"],
+      "description": "Well-known destination folder name."
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID performing the move."
+    }
+  },
+  "required": ["email_id", "destination_folder", "account_id"]
+}

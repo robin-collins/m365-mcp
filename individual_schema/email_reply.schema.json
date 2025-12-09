@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_reply",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID sending the reply."
+    },
+    "email_id": {
+      "type": "string",
+      "description": "Identifier of the email being replied to."
+    },
+    "body": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "description": "Plain-text reply body; must contain non-whitespace characters after trimming."
+    },
+    "confirm": {
+      "type": "boolean",
+      "const": true,
+      "description": "Must be true to authorize sending the reply."
+    }
+  },
+  "required": ["account_id", "email_id", "body", "confirm"]
+}

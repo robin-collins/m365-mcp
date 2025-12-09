@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "calendar_delete_calendar",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID for the calendar owner."
+    },
+    "calendar_id": {
+      "type": "string",
+      "description": "Identifier of the calendar to delete."
+    },
+    "confirm": {
+      "const": true,
+      "type": "boolean",
+      "default": true,
+      "description": "Must be true to permit permanent calendar deletion."
+    }
+  },
+  "required": ["account_id", "calendar_id", "confirm"]
+}

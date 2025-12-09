@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "calendar_respond_event",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID for the calendar."
+    },
+    "event_id": {
+      "type": "string",
+      "description": "Identifier of the event invitation to respond to."
+    },
+    "response": {
+      "type": "string",
+      "enum": ["accept", "decline", "tentativelyAccept", "tentative"],
+      "default": "accept",
+      "description": "Response action to send to the organizer."
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional message for the organizer; must be non-empty when provided."
+    }
+  },
+  "required": ["account_id", "event_id"]
+}

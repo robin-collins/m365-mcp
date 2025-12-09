@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "calendar_update_event",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "Identifier of the event to update."
+    },
+    "updates": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "subject": {
+          "type": "string",
+          "description": "New subject for the event."
+        },
+        "start": {
+          "type": "string",
+          "format": "date-time",
+          "description": "New start time in ISO-8601 format."
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time",
+          "description": "New end time in ISO-8601 format."
+        },
+        "timezone": {
+          "type": "string",
+          "description": "Timezone to apply when start or end is provided."
+        },
+        "location": {
+          "type": "string",
+          "description": "Updated location display name."
+        },
+        "body": {
+          "type": "string",
+          "description": "Updated plain text body content."
+        },
+        "attendees": {
+          "oneOf": [
+            {"type": "string"},
+            {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Updated attendee list; empty array clears attendees."
+            }
+          ],
+          "description": "New attendee email address or list; limited to 500 unique entries."
+        }
+      },
+      "description": "Dictionary of fields to update. Allowed keys: subject, start, end, timezone, location, body, attendees."
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID associated with the calendar."
+    }
+  },
+  "required": ["event_id", "updates", "account_id"]
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "calendar_create_event",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID where the event will be created."
+    },
+    "subject": {
+      "type": "string",
+      "description": "Event subject or title."
+    },
+    "start": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Start time in ISO-8601 format."
+    },
+    "end": {
+      "type": "string",
+      "format": "date-time",
+      "description": "End time in ISO-8601 format; must be after start."
+    },
+    "location": {
+      "type": "string",
+      "description": "Optional location display name for the event."
+    },
+    "body": {
+      "type": "string",
+      "description": "Optional plain text body or description."
+    },
+    "attendees": {
+      "oneOf": [
+        {"type": "string"},
+        {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "List of attendee email addresses (duplicates removed automatically)."
+        }
+      ],
+      "description": "Attendee email address or array of addresses; limited to 500 unique entries."
+    },
+    "timezone": {
+      "type": "string",
+      "default": "UTC",
+      "description": "IANA timezone identifier applied to start/end values (default UTC)."
+    }
+  },
+  "required": ["account_id", "subject", "start", "end"]
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "calendar_propose_new_time",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID for the attendee proposing a new time."
+    },
+    "event_id": {
+      "type": "string",
+      "description": "Identifier of the meeting event."
+    },
+    "proposed_start": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Proposed start time in ISO-8601 format."
+    },
+    "proposed_end": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Proposed end time in ISO-8601 format; must occur after the start."
+    },
+    "message": {
+      "type": "string",
+      "description": "Optional message to include with the proposal."
+    }
+  },
+  "required": ["account_id", "event_id", "proposed_start", "proposed_end"]
+}

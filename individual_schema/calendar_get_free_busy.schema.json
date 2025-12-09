@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "calendar_get_free_busy",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID used for the free/busy request."
+    },
+    "attendees": {
+      "oneOf": [
+        {"type": "string"},
+        {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "List of attendee email addresses to evaluate."
+        }
+      ],
+      "description": "Required attendee email or list; limited to 500 unique addresses."
+    },
+    "start": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Start of the free/busy window in ISO-8601 format."
+    },
+    "end": {
+      "type": "string",
+      "format": "date-time",
+      "description": "End of the free/busy window in ISO-8601 format."
+    },
+    "time_interval": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 1440,
+      "default": 30,
+      "description": "Availability view interval in minutes (5-1440)."
+    }
+  },
+  "required": ["account_id", "attendees", "start", "end"]
+}

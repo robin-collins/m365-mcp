@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "contact_get",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "contact_id": {
+      "type": "string",
+      "description": "Identifier of the contact to retrieve."
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID used to fetch the contact."
+    },
+    "use_cache": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether cached contact data may be used if present."
+    },
+    "force_refresh": {
+      "type": "boolean",
+      "default": false,
+      "description": "Bypass cache and retrieve fresh contact data when true."
+    }
+  },
+  "required": ["contact_id", "account_id"]
+}

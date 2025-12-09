@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "contact_create",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID used to create the contact."
+    },
+    "given_name": {
+      "type": "string",
+      "description": "Contact's given (first) name."
+    },
+    "surname": {
+      "type": "string",
+      "description": "Contact's surname (last name)."
+    },
+    "email_addresses": {
+      "description": "Single address string or list of addresses for the contact.",
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "email"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "email"
+          }
+        }
+      ]
+    },
+    "phone_numbers": {
+      "type": "object",
+      "description": "Optional phone numbers keyed by usage (business, home, mobile).",
+      "additionalProperties": false,
+      "properties": {
+        "business": {
+          "type": "string",
+          "description": "Business phone number."
+        },
+        "home": {
+          "type": "string",
+          "description": "Home phone number."
+        },
+        "mobile": {
+          "type": "string",
+          "description": "Mobile phone number."
+        }
+      }
+    }
+  },
+  "required": ["account_id", "given_name"]
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "contact_list",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID used to list contacts."
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 500,
+      "default": 50,
+      "description": "Maximum contacts to return (1-500)."
+    },
+    "use_cache": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether cached contact data may be reused if available."
+    },
+    "force_refresh": {
+      "type": "boolean",
+      "default": false,
+      "description": "Bypass cache and fetch fresh contact data when true."
+    }
+  },
+  "required": ["account_id"]
+}

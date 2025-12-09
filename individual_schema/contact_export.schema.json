@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "contact_export",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID used to export the contact."
+    },
+    "contact_id": {
+      "type": "string",
+      "description": "Identifier of the contact to export."
+    },
+    "format": {
+      "type": "string",
+      "enum": ["vcard"],
+      "default": "vcard",
+      "description": "Export format; only 'vcard' is supported."
+    }
+  },
+  "required": ["account_id", "contact_id"]
+}

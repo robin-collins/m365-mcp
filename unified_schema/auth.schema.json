@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "auth",
+  "description": "Unified authentication and account management entry point.",
+  "oneOf": [
+    {
+      "title": "list accounts",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "list"},
+        "parameters": {"$ref": "../individual_schema/account_list.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "authenticate account",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "authenticate"},
+        "parameters": {"$ref": "../individual_schema/account_authenticate.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "complete authentication",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "complete"},
+        "parameters": {"$ref": "../individual_schema/account_complete_auth.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    }
+  ],
+  "discriminator": {
+    "propertyName": "resource"
+  }
+}

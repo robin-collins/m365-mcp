@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "update",
+  "description": "Unified update entry point for mutable resources.",
+  "oneOf": [
+    {
+      "title": "update email",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "email"},
+        "parameters": {"$ref": "../individual_schema/email_update.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "update event",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "event"},
+        "parameters": {"$ref": "../individual_schema/calendar_update_event.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "update contact",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "contact"},
+        "parameters": {"$ref": "../individual_schema/contact_update.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "update file",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "file"},
+        "parameters": {"$ref": "../individual_schema/file_update.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    }
+  ],
+  "discriminator": {
+    "propertyName": "resource"
+  }
+}

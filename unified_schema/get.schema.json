@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "get",
+  "description": "Unified retrieval for individual resources and availability windows.",
+  "oneOf": [
+    {
+      "title": "get email",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "email"},
+        "parameters": {"$ref": "../individual_schema/email_get.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "get email attachment",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "attachment"},
+        "parameters": {"$ref": "../individual_schema/email_get_attachment.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "get event",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "event"},
+        "parameters": {"$ref": "../individual_schema/calendar_get_event.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "get availability",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "availability"},
+        "parameters": {"$ref": "../individual_schema/calendar_check_availability.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "get contact",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "contact"},
+        "parameters": {"$ref": "../individual_schema/contact_get.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "get file",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "file"},
+        "parameters": {"$ref": "../individual_schema/file_get.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    }
+  ],
+  "discriminator": {
+    "propertyName": "resource"
+  }
+}

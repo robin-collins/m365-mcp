@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "create",
+  "description": "Unified creation for drafts, events, contacts, and OneDrive files.",
+  "oneOf": [
+    {
+      "title": "create email draft",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "email_draft"},
+        "parameters": {"$ref": "../individual_schema/email_create_draft.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "create event",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "event"},
+        "parameters": {"$ref": "../individual_schema/calendar_create_event.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "create contact",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "contact"},
+        "parameters": {"$ref": "../individual_schema/contact_create.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "create file",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "file"},
+        "parameters": {"$ref": "../individual_schema/file_create.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    }
+  ],
+  "discriminator": {
+    "propertyName": "resource"
+  }
+}

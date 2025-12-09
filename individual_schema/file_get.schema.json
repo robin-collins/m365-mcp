@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "file_get",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "file_id": {
+      "type": "string",
+      "pattern": "[A-Za-z0-9\-._!+=/$]{1,512}",
+      "description": "Microsoft Graph driveItem identifier for the file to download."
+    },
+    "account_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Microsoft account ID associated with the file."
+    },
+    "download_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Absolute local path to save the downloaded file; must reside within allowed directories and cannot overwrite existing files."
+    }
+  },
+  "required": ["file_id", "account_id", "download_path"]
+}

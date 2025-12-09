@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "file_create",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "onedrive_path": {
+      "type": "string",
+      "pattern": "^/.*$",
+      "description": "Destination OneDrive path beginning with '/'; '..' segments and reserved characters are rejected."
+    },
+    "local_file_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Absolute path to an existing local file to upload; must reside within allowed directories."
+    },
+    "account_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Microsoft account ID used for the upload."
+    }
+  },
+  "required": ["onedrive_path", "local_file_path", "account_id"]
+}

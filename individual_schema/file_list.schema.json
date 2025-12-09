@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "file_list",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Microsoft account identifier owning the OneDrive content."
+    },
+    "path": {
+      "type": "string",
+      "default": "/",
+      "pattern": "^/.*$",
+      "description": "OneDrive path to list (must start with '/'; parent directory segments and reserved characters are rejected)."
+    },
+    "folder_id": {
+      "type": "string",
+      "pattern": "[A-Za-z0-9\-._!+=/$]{1,512}",
+      "description": "Optional Microsoft Graph driveItem identifier; overrides path when provided."
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 500,
+      "default": 50,
+      "description": "Maximum number of items to return (1-500)."
+    },
+    "type_filter": {
+      "type": "string",
+      "enum": ["all", "files", "folders"],
+      "default": "all",
+      "description": "Filter results by item type."
+    },
+    "use_cache": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether cached results may be used if available."
+    },
+    "force_refresh": {
+      "type": "boolean",
+      "default": false,
+      "description": "Bypass cache and fetch fresh data when true."
+    }
+  },
+  "required": ["account_id"]
+}

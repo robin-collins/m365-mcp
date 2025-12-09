@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "account_authenticate",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "Initiate device-flow authentication for adding a new Microsoft account.",
+  "properties": {}
+}

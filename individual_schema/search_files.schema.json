@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "search_files",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "query": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "description": "Search text used to find matching OneDrive items; leading and trailing whitespace is trimmed."
+    },
+    "account_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Microsoft account ID to scope the search."
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 500,
+      "default": 50,
+      "description": "Maximum number of search results to return (1-500)."
+    },
+    "use_cache": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether cached search results may be returned."
+    },
+    "force_refresh": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, bypass cache and query Microsoft Graph directly."
+    }
+  },
+  "required": ["query", "account_id"]
+}

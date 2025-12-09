@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "file_delete",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "file_id": {
+      "type": "string",
+      "pattern": "[A-Za-z0-9\-._!+=/$]{1,512}",
+      "description": "Microsoft Graph driveItem identifier for the file or folder to delete permanently."
+    },
+    "account_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Microsoft account ID associated with the item."
+    },
+    "confirm": {
+      "type": "boolean",
+      "const": true,
+      "description": "Must be true to authorize irreversible deletion."
+    }
+  },
+  "required": ["file_id", "account_id", "confirm"]
+}

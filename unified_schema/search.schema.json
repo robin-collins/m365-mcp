@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "search",
+  "description": "Unified search entry point.",
+  "oneOf": [
+    {
+      "title": "search emails",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "emails"},
+        "parameters": {
+          "allOf": [
+            {"$ref": "../individual_schema/search_unified.schema.json"},
+            {
+              "properties": {"entity_types": {"const": "message"}},
+              "required": ["entity_types"]
+            }
+          ]
+        }
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "search events",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "events"},
+        "parameters": {
+          "allOf": [
+            {"$ref": "../individual_schema/search_unified.schema.json"},
+            {
+              "properties": {"entity_types": {"const": "event"}},
+              "required": ["entity_types"]
+            }
+          ]
+        }
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "search files",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "files"},
+        "parameters": {"$ref": "../individual_schema/search_files.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "search multiple entity types",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "unified"},
+        "parameters": {"$ref": "../individual_schema/search_unified.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    }
+  ],
+  "discriminator": {
+    "propertyName": "resource"
+  }
+}

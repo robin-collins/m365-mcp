@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "move",
+  "description": "Unified move operation (currently mail messages).",
+  "oneOf": [
+    {
+      "title": "move email",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "email"},
+        "parameters": {"$ref": "../individual_schema/email_move.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    }
+  ],
+  "discriminator": {
+    "propertyName": "resource"
+  }
+}

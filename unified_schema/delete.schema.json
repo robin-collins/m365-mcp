@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "delete",
+  "description": "Unified delete entry point for destructive operations.",
+  "oneOf": [
+    {
+      "title": "delete email",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "email"},
+        "parameters": {"$ref": "../individual_schema/email_delete.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "delete event",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "event"},
+        "parameters": {"$ref": "../individual_schema/calendar_delete_event.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "delete contact",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "contact"},
+        "parameters": {"$ref": "../individual_schema/contact_delete.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "delete file",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "file"},
+        "parameters": {"$ref": "../individual_schema/file_delete.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "delete calendar",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "calendar"},
+        "parameters": {"$ref": "../individual_schema/calendar_delete_calendar.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    }
+  ],
+  "discriminator": {
+    "propertyName": "resource"
+  }
+}

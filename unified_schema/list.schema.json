@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "list",
+  "description": "Unified list entry point for emails, events, contacts, or files.",
+  "oneOf": [
+    {
+      "title": "list emails",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {
+          "const": "emails",
+          "description": "List messages from a mailbox folder."
+        },
+        "parameters": {
+          "$ref": "../individual_schema/email_list.schema.json"
+        }
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "list events",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {
+          "const": "events",
+          "description": "List calendar events within a time window."
+        },
+        "parameters": {
+          "$ref": "../individual_schema/calendar_list_events.schema.json"
+        }
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "list contacts",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {
+          "const": "contacts",
+          "description": "List contacts for an account."
+        },
+        "parameters": {
+          "$ref": "../individual_schema/contact_list.schema.json"
+        }
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "list files",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {
+          "const": "files",
+          "description": "List OneDrive items by path or folder id."
+        },
+        "parameters": {
+          "$ref": "../individual_schema/file_list.schema.json"
+        }
+      },
+      "required": ["resource", "parameters"]
+    }
+  ],
+  "discriminator": {
+    "propertyName": "resource"
+  }
+}

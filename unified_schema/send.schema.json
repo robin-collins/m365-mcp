@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "send",
+  "description": "Unified send entry point for outbound email.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "resource": {
+      "const": "email",
+      "description": "Send a new email or existing draft."
+    },
+    "parameters": {
+      "$ref": "../individual_schema/email_send.schema.json"
+    }
+  },
+  "required": ["resource", "parameters"]
+}

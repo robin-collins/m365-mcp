@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cache",
+  "description": "Unified cache management entry point.",
+  "oneOf": [
+    {
+      "title": "cache stats",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "get_stats"},
+        "parameters": {"$ref": "../individual_schema/cache_get_stats.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "invalidate cache",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "invalidate"},
+        "parameters": {"$ref": "../individual_schema/cache_invalidate.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "enqueue cache task",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "task_enqueue"},
+        "parameters": {"$ref": "../individual_schema/cache_task_enqueue.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "cache task status",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "task_status"},
+        "parameters": {"$ref": "../individual_schema/cache_task_get_status.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "list cache tasks",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "task_list"},
+        "parameters": {"$ref": "../individual_schema/cache_task_list.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "cache warming status",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "warming_status"},
+        "parameters": {"$ref": "../individual_schema/cache_warming_status.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    }
+  ],
+  "discriminator": {
+    "propertyName": "resource"
+  }
+}

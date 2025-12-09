@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "reply",
+  "description": "Unified reply entry point for emails and calendar invites.",
+  "oneOf": [
+    {
+      "title": "reply to email",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "email"},
+        "parameters": {"$ref": "../individual_schema/email_reply.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "reply all to email",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "email_all"},
+        "parameters": {"$ref": "../individual_schema/email_reply_all.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    },
+    {
+      "title": "respond to event",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource": {"const": "event"},
+        "parameters": {"$ref": "../individual_schema/calendar_respond_event.schema.json"}
+      },
+      "required": ["resource", "parameters"]
+    }
+  ],
+  "discriminator": {
+    "propertyName": "resource"
+  }
+}

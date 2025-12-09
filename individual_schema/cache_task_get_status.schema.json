@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cache_task_get_status",
+  "type": "object",
+  "description": "Fetch the current status and metadata for a background cache task.",
+  "additionalProperties": false,
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier returned when the cache task was enqueued."
+    }
+  },
+  "required": ["task_id"]
+}

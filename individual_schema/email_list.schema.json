@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_list",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID used for the mailbox query."
+    },
+    "folder": {
+      "type": "string",
+      "description": "Well-known mail folder name; defaults to inbox when omitted.",
+      "enum": ["inbox", "sent", "drafts", "deleted", "junk", "archive"]
+    },
+    "folder_id": {
+      "type": "string",
+      "description": "Explicit folder identifier; takes precedence over folder name when provided."
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 200,
+      "default": 10,
+      "description": "Maximum number of messages to return (1-200)."
+    },
+    "include_body": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether to include message body content in results."
+    },
+    "use_cache": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether cached results may be used if available."
+    },
+    "force_refresh": {
+      "type": "boolean",
+      "default": false,
+      "description": "Bypass cache and always fetch fresh results when true."
+    }
+  },
+  "required": ["account_id"]
+}

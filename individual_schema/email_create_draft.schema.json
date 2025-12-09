@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_create_draft",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID used to create the draft."
+    },
+    "to": {
+      "description": "Recipient email address or list of addresses.",
+      "anyOf": [
+        {"type": "string", "format": "email"},
+        {
+          "type": "array",
+          "items": {"type": "string", "format": "email"},
+          "minItems": 1
+        }
+      ]
+    },
+    "subject": {
+      "type": "string",
+      "description": "Email subject line."
+    },
+    "body": {
+      "type": "string",
+      "description": "Plain-text body content for the draft."
+    },
+    "cc": {
+      "description": "Optional CC recipient(s).",
+      "anyOf": [
+        {"type": "string", "format": "email"},
+        {
+          "type": "array",
+          "items": {"type": "string", "format": "email"},
+          "minItems": 1
+        }
+      ]
+    },
+    "attachments": {
+      "description": "Optional local file path or list of file paths to attach.",
+      "anyOf": [
+        {"type": "string"},
+        {
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 1
+        }
+      ]
+    }
+  },
+  "required": ["account_id", "to", "subject", "body"]
+}

@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_update",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "email_id": {
+      "type": "string",
+      "description": "Identifier of the email to update."
+    },
+    "updates": {
+      "type": "object",
+      "description": "Dictionary of properties to modify (isRead, categories, importance, flag, inferenceClassification).",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "isRead": {
+          "type": "boolean",
+          "description": "Mark the message as read (true) or unread (false)."
+        },
+        "categories": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "minItems": 1,
+          "description": "List of category names to apply; each must be a non-empty string."
+        },
+        "importance": {
+          "type": "string",
+          "enum": ["low", "normal", "high"],
+          "description": "Importance level for the message."
+        },
+        "flag": {
+          "type": "object",
+          "description": "Message flag details; must include at least one flag field.",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "flagStatus": {
+              "type": "string",
+              "enum": ["notFlagged", "flagged", "complete"],
+              "description": "Flag state."
+            },
+            "startDateTime": {
+              "type": "object",
+              "description": "Start timestamp with timezone for the flag.",
+              "additionalProperties": false,
+              "required": ["dateTime", "timeZone"],
+              "properties": {
+                "dateTime": {"type": "string", "format": "date-time"},
+                "timeZone": {"type": "string", "minLength": 1}
+              }
+            },
+            "dueDateTime": {
+              "type": "object",
+              "description": "Due timestamp with timezone; must be on or after startDateTime when both are provided.",
+              "additionalProperties": false,
+              "required": ["dateTime", "timeZone"],
+              "properties": {
+                "dateTime": {"type": "string", "format": "date-time"},
+                "timeZone": {"type": "string", "minLength": 1}
+              }
+            },
+            "completedDateTime": {
+              "type": "object",
+              "description": "Completion timestamp with timezone for the flag.",
+              "additionalProperties": false,
+              "required": ["dateTime", "timeZone"],
+              "properties": {
+                "dateTime": {"type": "string", "format": "date-time"},
+                "timeZone": {"type": "string", "minLength": 1}
+              }
+            }
+          }
+        },
+        "inferenceClassification": {
+          "type": "string",
+          "enum": ["focused", "other"],
+          "description": "Focused Inbox classification."
+        }
+      }
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID executing the update."
+    }
+  },
+  "required": ["email_id", "updates", "account_id"]
+}

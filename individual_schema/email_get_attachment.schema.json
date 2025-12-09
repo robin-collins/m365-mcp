@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_get_attachment",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "email_id": {
+      "type": "string",
+      "description": "Microsoft Graph message identifier containing the attachment."
+    },
+    "attachment_id": {
+      "type": "string",
+      "description": "Identifier of the attachment within the message."
+    },
+    "save_path": {
+      "type": "string",
+      "description": "Destination file path for the downloaded attachment; validated to avoid unsafe or overwriting writes."
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID used for the download."
+    }
+  },
+  "required": ["email_id", "attachment_id", "save_path", "account_id"]
+}

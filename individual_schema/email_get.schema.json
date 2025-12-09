@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_get",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "email_id": {
+      "type": "string",
+      "description": "Identifier of the target email message."
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID owning the email."
+    },
+    "include_body": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include body content in the response when true."
+    },
+    "body_max_length": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 500000,
+      "default": 50000,
+      "description": "Maximum number of body characters to return before truncation."
+    },
+    "include_attachments": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether to expand attachment metadata."
+    },
+    "use_cache": {
+      "type": "boolean",
+      "default": true,
+      "description": "Allow cached data to satisfy the request when available."
+    },
+    "force_refresh": {
+      "type": "boolean",
+      "default": false,
+      "description": "Bypass cache and fetch from Graph even if cached data exists."
+    }
+  },
+  "required": ["email_id", "account_id"]
+}

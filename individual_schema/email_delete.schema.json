@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_delete",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "email_id": {
+      "type": "string",
+      "description": "Identifier of the email to delete permanently."
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID owning the message."
+    },
+    "confirm": {
+      "type": "boolean",
+      "const": true,
+      "description": "Must be true to authorize permanent deletion."
+    }
+  },
+  "required": ["email_id", "account_id", "confirm"]
+}

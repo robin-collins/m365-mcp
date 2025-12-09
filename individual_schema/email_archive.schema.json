@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_archive",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "email_id": {
+      "type": "string",
+      "description": "Identifier of the email to archive."
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID performing the archive action."
+    }
+  },
+  "required": ["email_id", "account_id"]
+}

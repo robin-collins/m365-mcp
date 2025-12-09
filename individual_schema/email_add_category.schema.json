@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "email_add_category",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "email_id": {
+      "type": "string",
+      "description": "Identifier of the email to categorize."
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID performing the update."
+    },
+    "categories": {
+      "description": "Category name or list of category names; all entries must be non-empty strings.",
+      "anyOf": [
+        {"type": "string", "minLength": 1},
+        {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "minItems": 1
+        }
+      ]
+    }
+  },
+  "required": ["email_id", "account_id", "categories"]
+}

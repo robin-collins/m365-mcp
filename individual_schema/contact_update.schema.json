@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "contact_update",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "contact_id": {
+      "type": "string",
+      "description": "Identifier of the contact to modify."
+    },
+    "updates": {
+      "type": "object",
+      "description": "Fields to update on the contact record (at least one required).",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "givenName": {
+          "type": "string",
+          "description": "Updated given (first) name."
+        },
+        "surname": {
+          "type": "string",
+          "description": "Updated surname (last name)."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Updated display name."
+        },
+        "emailAddresses": {
+          "type": "array",
+          "description": "List of email entries; each item may be a string address or an object with address and optional name.",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "address": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Email address."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Display name associated with the email."
+                  }
+                },
+                "required": ["address"]
+              }
+            ]
+          }
+        },
+        "businessPhones": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "List of business phone numbers (non-empty strings)."
+        },
+        "homePhones": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "List of home phone numbers (non-empty strings)."
+        },
+        "mobilePhone": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "description": "Mobile phone number."
+            },
+            {
+              "type": "null",
+              "description": "Explicitly clear the stored mobile phone number."
+            }
+          ]
+        },
+        "jobTitle": {
+          "type": "string",
+          "description": "Updated job title."
+        },
+        "companyName": {
+          "type": "string",
+          "description": "Updated company name."
+        },
+        "department": {
+          "type": "string",
+          "description": "Updated department."
+        }
+      }
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID used to apply the updates."
+    }
+  },
+  "required": ["contact_id", "updates", "account_id"]
+}

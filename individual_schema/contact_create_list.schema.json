@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "contact_create_list",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Microsoft account ID used to create the contact list."
+    },
+    "list_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Display name for the new contact list/folder."
+    }
+  },
+  "required": ["account_id", "list_name"]
+}

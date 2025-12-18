@@ -12,6 +12,11 @@ from typing import NamedTuple, Any
 # Store token cache in user's home directory for proper permissions and portability
 CACHE_FILE = pl.Path.home() / ".m365_mcp_token_cache.json"
 METADATA_FILE = pl.Path.home() / ".m365_mcp_account_metadata.json"
+
+# Reserved scopes such as offline_access are needed for refresh tokens but can be
+# rejected by some tenants (notably certain personal accounts). We attempt to
+# include them first and retry against the consumers authority so personal
+# accounts still receive refresh tokens for silent renewal.
 SCOPES = [
     "offline_access",  # Required for refresh tokens and silent renewal
     "Calendars.Read",
@@ -26,8 +31,10 @@ SCOPES = [
     "Mail.Send",
     "MailboxSettings.ReadWrite",
     "People.Read",
-    "User.Read"
+    "User.Read",
 ]
+RESERVED_SCOPES = ["offline_access"]
+DEVICE_FLOW_SCOPES = SCOPES + RESERVED_SCOPES
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +78,38 @@ def _write_cache(content: str) -> None:
     CACHE_FILE.write_text(content)
 
 
+def _build_app(
+    tenant_id: str, cache: msal.SerializableTokenCache | None = None
+) -> msal.PublicClientApplication:
+    """Construct an MSAL PublicClientApplication with the shared cache.
+
+    Args:
+        tenant_id: Tenant segment for the authority (for example, "common",
+            "consumers", or a specific directory ID).
+        cache: Reusable token cache. If omitted, the cache will be hydrated
+            from disk.
+
+    Returns:
+        Initialized PublicClientApplication.
+    """
+
+    client_id = os.getenv("M365_MCP_CLIENT_ID")
+    if not client_id:
+        raise ValueError("M365_MCP_CLIENT_ID environment variable is required")
+
+    cache_instance = cache or msal.SerializableTokenCache()
+    if cache is None:
+        cache_content = _read_cache()
+        if cache_content:
+            cache_instance.deserialize(cache_content)
+
+    authority = f"https://login.microsoftonline.com/{tenant_id}"
+
+    return msal.PublicClientApplication(
+        client_id, authority=authority, token_cache=cache_instance
+    )
+
+
 def _read_metadata() -> dict[str, dict]:
     """Read account metadata cache containing account types and other metadata.
 
@@ -92,6 +131,49 @@ def _write_metadata(metadata: dict[str, dict]) -> None:
     """
     METADATA_FILE.parent.mkdir(parents=True, exist_ok=True)
     METADATA_FILE.write_text(json.dumps(metadata, indent=2))
+
+
+def _initiate_device_flow(
+    app: msal.PublicClientApplication, tenant_id: str
+) -> tuple[msal.PublicClientApplication, dict[str, Any]]:
+    """Start a device code flow, retrying with a consumer authority if needed.
+
+    Certain personal Microsoft accounts can reject the ``offline_access`` scope
+    when using the ``common`` authority, which prevents refresh tokens from
+    being issued. To preserve silent renewal, retry with the ``consumers``
+    authority while reusing the same token cache.
+    """
+
+    def _start(current_app: msal.PublicClientApplication) -> dict[str, Any]:
+        flow = current_app.initiate_device_flow(scopes=DEVICE_FLOW_SCOPES)
+        if "user_code" in flow:
+            return flow
+
+        error_message = flow.get("error_description", flow.get("error", "Unknown error"))
+        raise Exception(error_message)
+
+    try:
+        return app, _start(app)
+    except Exception as exc:
+        message = str(exc).lower()
+        if "reserved" not in message and "offline_access" not in message:
+            raise
+
+        if tenant_id == "consumers":
+            raise
+
+        logger.warning(
+            "Device flow rejected reserved scope offline_access; "
+            "retrying with the consumers authority",
+        )
+
+        cache = (
+            app.token_cache
+            if isinstance(app.token_cache, msal.SerializableTokenCache)
+            else None
+        )
+        consumer_app = _build_app("consumers", cache=cache)
+        return consumer_app, _start(consumer_app)
 
 
 def _get_account_type(account_id: str, username: str) -> str:
@@ -139,28 +221,14 @@ def _get_account_type(account_id: str, username: str) -> str:
         return "unknown"
 
 
-def get_app() -> msal.PublicClientApplication:
-    client_id = os.getenv("M365_MCP_CLIENT_ID")
-    if not client_id:
-        raise ValueError("M365_MCP_CLIENT_ID environment variable is required")
-
+def get_app() -> tuple[msal.PublicClientApplication, str]:
     tenant_id = os.getenv("M365_MCP_TENANT_ID", "common")
-    authority = f"https://login.microsoftonline.com/{tenant_id}"
-
-    cache = msal.SerializableTokenCache()
-    cache_content = _read_cache()
-    if cache_content:
-        cache.deserialize(cache_content)
-
-    app = msal.PublicClientApplication(
-        client_id, authority=authority, token_cache=cache
-    )
-
-    return app
+    app = _build_app(tenant_id)
+    return app, tenant_id
 
 
 def get_token(account_id: str | None = None) -> str:
-    app = get_app()
+    app, tenant_id = get_app()
 
     accounts = app.get_accounts()
     account = None
@@ -183,11 +251,7 @@ def get_token(account_id: str | None = None) -> str:
         result = None
 
     if not result:
-        flow = app.initiate_device_flow(scopes=SCOPES)
-        if "user_code" not in flow:
-            raise Exception(
-                f"Failed to get device code: {flow.get('error_description', 'Unknown error')}"
-            )
+        app, flow = _initiate_device_flow(app, tenant_id)
         verification_uri = flow.get(
             "verification_uri",
             flow.get("verification_url", "https://microsoft.com/devicelogin"),
@@ -225,7 +289,7 @@ def list_accounts() -> list[Account]:
         List of Account objects with username, account_id, and account_type.
         Account type will be "unknown" if not yet detected.
     """
-    app = get_app()
+    app, _ = get_app()
     metadata = _read_metadata()
 
     accounts = []
@@ -251,19 +315,16 @@ def authenticate_new_account() -> Account | None:
         Account object with username, account_id, and detected account_type,
         or None if authentication failed.
     """
-    app = get_app()
+    app, tenant_id = get_app()
 
-    flow = app.initiate_device_flow(scopes=SCOPES)
-    if "user_code" not in flow:
-        raise Exception(
-            f"Failed to get device code: {flow.get('error_description', 'Unknown error')}"
-        )
+    app, flow = _initiate_device_flow(app, tenant_id)
 
     print("\nTo authenticate:", file=sys.stderr)
-    print(
-        f"1. Visit: {flow.get('verification_uri', flow.get('verification_url', 'https://microsoft.com/devicelogin'))}",
-        file=sys.stderr,
+    verification_url = flow.get(
+        "verification_uri",
+        flow.get("verification_url", "https://microsoft.com/devicelogin"),
     )
+    print(f"1. Visit: {verification_url}", file=sys.stderr)
     print(f"2. Enter code: {flow['user_code']}", file=sys.stderr)
     print("3. Sign in with your Microsoft account", file=sys.stderr)
     print("\nWaiting for authentication...", file=sys.stderr)

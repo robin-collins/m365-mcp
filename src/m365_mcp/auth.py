@@ -13,6 +13,7 @@ from typing import NamedTuple, Any
 CACHE_FILE = pl.Path.home() / ".m365_mcp_token_cache.json"
 METADATA_FILE = pl.Path.home() / ".m365_mcp_account_metadata.json"
 SCOPES = [
+    "offline_access",  # Required for refresh tokens and silent renewal
     "Calendars.Read",
     "Calendars.ReadBasic",
     "Calendars.ReadWrite",

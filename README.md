@@ -196,6 +196,7 @@ cache_invalidate("email_*", account_id="account-123")
 3. Supported account types: Personal + Work/School
 4. Authentication → Allow public client flows: Yes
 5. API permissions → Add these delegated permissions:
+   - offline_access
    - Mail.ReadWrite
    - Calendars.ReadWrite
    - Files.ReadWrite

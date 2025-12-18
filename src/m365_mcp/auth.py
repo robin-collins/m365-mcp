@@ -18,6 +18,7 @@ METADATA_FILE = pl.Path.home() / ".m365_mcp_account_metadata.json"
 # include them first and retry against the consumers authority so personal
 # accounts still receive refresh tokens for silent renewal.
 SCOPES = [
+    "offline_access",  # Required for refresh tokens and silent renewal
     "Calendars.Read",
     "Calendars.ReadBasic",
     "Calendars.ReadWrite",

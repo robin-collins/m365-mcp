@@ -196,12 +196,13 @@ cache_invalidate("email_*", account_id="account-123")
 3. Supported account types: Personal + Work/School
 4. Authentication → Allow public client flows: Yes
 5. API permissions → Add these delegated permissions:
-   - Mail.ReadWrite
-   - Calendars.ReadWrite
-   - Files.ReadWrite
-   - Contacts.Read
-   - People.Read
-   - User.Read
+  - offline_access (required for refresh tokens; the CLI retries against the consumers authority if a personal account flags it as reserved)
+  - Mail.ReadWrite
+  - Calendars.ReadWrite
+  - Files.ReadWrite
+  - Contacts.Read
+  - People.Read
+  - User.Read
 6. Copy Application ID
 
 ### 2. Installation

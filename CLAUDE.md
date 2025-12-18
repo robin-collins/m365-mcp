@@ -145,6 +145,7 @@ uvx ruff check --fix --unsafe-fixes .
 ## Azure App Requirements
 
 Required delegated permissions:
+- offline_access
 - Mail.ReadWrite
 - Calendars.ReadWrite
 - Files.ReadWrite

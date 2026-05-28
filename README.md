@@ -251,9 +251,9 @@ Or for local development:
 ```json
 {
   "mcpServers": {
-    "microsoft": {
+    "m365-mcp": {
       "command": "uv",
-      "args": ["--directory", "/path/to/m365-mcp", "run", "m365-mcp"],
+      "args": ["--directory", "c:\\projects\\m365-mcp", "run", "m365-mcp"],
       "env": {
         "M365_MCP_CLIENT_ID": "your-app-id-here"
       }

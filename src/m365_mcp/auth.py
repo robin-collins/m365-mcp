@@ -17,24 +17,9 @@ METADATA_FILE = pl.Path.home() / ".m365_mcp_account_metadata.json"
 # rejected by some tenants (notably certain personal accounts). We attempt to
 # include them first and retry against the consumers authority so personal
 # accounts still receive refresh tokens for silent renewal.
-SCOPES = [
-    "offline_access",  # Required for refresh tokens and silent renewal
-    "Calendars.Read",
-    "Calendars.ReadBasic",
-    "Calendars.ReadWrite",
-    "Contacts.Read",
-    "Contacts.ReadWrite",
-    "Files.Read.All",
-    "Files.ReadWrite",
-    "Files.ReadWrite.All",
-    "Mail.ReadWrite",
-    "Mail.Send",
-    "MailboxSettings.ReadWrite",
-    "People.Read",
-    "User.Read",
-]
+SCOPES = ["https://graph.microsoft.com/.default"]
 RESERVED_SCOPES = ["offline_access"]
-DEVICE_FLOW_SCOPES = SCOPES + RESERVED_SCOPES
+DEVICE_FLOW_SCOPES = SCOPES 
 
 logger = logging.getLogger(__name__)
 

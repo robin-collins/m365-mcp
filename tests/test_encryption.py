@@ -270,7 +270,83 @@ class TestGetOrCreateKey:
         assert call_args[0][1] == EncryptionKeyManager.KEYRING_USERNAME
         assert call_args[0][2] == key
 
-    def test_get_or_create_key_handles_storage_failure_gracefully(self):
+    def test_get_or_create_key_handles_storage_failure_gracefully(self, caplog):
+        """Test that get_or_create_key continues if keyring storage fails."""
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.return_value = None
+        mock_keyring.set_password.side_effect = Exception("Storage failed")
+
+        with caplog.at_level("WARNING", logger="src.m365_mcp.encryption"):
+            with patch.dict("sys.modules", {"keyring": mock_keyring}):
+                with patch.dict(os.environ, {}, clear=True):
+                    result = EncryptionKeyManager.get_or_create_key()
+
+        # Should still return a valid key
+        assert result is not None
+        assert EncryptionKeyManager._validate_key(result) is True
+        assert "ephemeral cache encryption key" in caplog.text
+        assert EncryptionKeyManager.ENV_VAR in caplog.text
+
+    def test_get_or_create_key_warns_when_keyring_module_missing(self, caplog):
+        """Generated keys should warn when no durable key source is available."""
+        with caplog.at_level("WARNING", logger="src.m365_mcp.encryption"):
+            with patch.dict("sys.modules", {"keyring": None}):
+                with patch.dict(os.environ, {}, clear=True):
+                    result = EncryptionKeyManager.get_or_create_key()
+
+        # Should still return a valid key
+        assert result is not None
+        assert EncryptionKeyManager._validate_key(result) is True
+        assert "ephemeral cache encryption key" in caplog.text
+        assert EncryptionKeyManager.ENV_VAR in caplog.text
+
+    def test_get_or_create_key_no_ephemeral_warning_when_keyring_stores(
+        self,
+        caplog,
+    ):
+        """Persisted generated keys should not emit the ephemeral-key warning."""
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.return_value = None
+
+        with caplog.at_level("WARNING", logger="src.m365_mcp.encryption"):
+            with patch.dict("sys.modules", {"keyring": mock_keyring}):
+                with patch.dict(os.environ, {}, clear=True):
+                    result = EncryptionKeyManager.get_or_create_key()
+
+        # Should still return a valid key
+        assert result is not None
+        assert EncryptionKeyManager._validate_key(result) is True
+        assert "ephemeral cache encryption key" not in caplog.text
+
+    def test_get_or_create_key_no_ephemeral_warning_for_env_key(self, caplog):
+        """Environment-provided keys are durable and should not warn."""
+        test_key = EncryptionKeyManager.generate_key()
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.return_value = None
+
+        with caplog.at_level("WARNING", logger="src.m365_mcp.encryption"):
+            with patch.dict("sys.modules", {"keyring": mock_keyring}):
+                with patch.dict(os.environ, {EncryptionKeyManager.ENV_VAR: test_key}):
+                    result = EncryptionKeyManager.get_or_create_key()
+
+        assert result == test_key
+        assert "ephemeral cache encryption key" not in caplog.text
+
+    def test_get_or_create_key_no_ephemeral_warning_for_keyring_key(self, caplog):
+        """Keyring-provided keys are durable and should not warn."""
+        test_key = EncryptionKeyManager.generate_key()
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.return_value = test_key
+
+        with caplog.at_level("WARNING", logger="src.m365_mcp.encryption"):
+            with patch.dict("sys.modules", {"keyring": mock_keyring}):
+                with patch.dict(os.environ, {}, clear=True):
+                    result = EncryptionKeyManager.get_or_create_key()
+
+        assert result == test_key
+        assert "ephemeral cache encryption key" not in caplog.text
+
+    def test_get_or_create_key_returns_valid_key_on_storage_failure(self):
         """Test that get_or_create_key continues if keyring storage fails."""
         mock_keyring = MagicMock()
         mock_keyring.get_password.return_value = None

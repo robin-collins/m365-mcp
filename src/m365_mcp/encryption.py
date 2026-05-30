@@ -119,9 +119,12 @@ class EncryptionKeyManager:
             logger.info("New encryption key generated and stored in system keyring")
         else:
             logger.warning(
-                f"New encryption key generated but could not be stored in keyring. "
-                f"To persist the key across sessions, set the {EncryptionKeyManager.ENV_VAR} "
-                f"environment variable."
+                "Using an ephemeral cache encryption key because neither the "
+                "system keyring nor %s provided durable key storage. Existing "
+                "encrypted cache files may be unreadable after restart; set %s "
+                "to persist the key across sessions.",
+                EncryptionKeyManager.ENV_VAR,
+                EncryptionKeyManager.ENV_VAR,
             )
 
         return key

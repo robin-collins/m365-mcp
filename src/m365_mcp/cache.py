@@ -132,14 +132,20 @@ class CacheManager:
         if conn is None:
             conn = self._create_connection()
 
+        should_repool = True
         try:
             yield conn
             conn.commit()
         except Exception as e:
+            should_repool = False
             conn.rollback()
             logger.error(f"Database error: {e}")
             raise
         finally:
+            if not should_repool:
+                conn.close()
+                return
+
             # Return to pool if under limit
             with self._pool_lock:
                 if len(self._connection_pool) < self.max_connections:

@@ -121,6 +121,25 @@ class TestCacheBasics:
 
         assert results == [{"value": index} for index in range(24)]
 
+    def test_erroring_connection_is_not_returned_to_pool(self, tmp_path):
+        """Connections that error should be discarded instead of reused."""
+        manager = CacheManager(
+            db_path=str(tmp_path / "poisoned.db"),
+            encryption_enabled=False,
+            max_connections=1,
+        )
+
+        with manager._db():
+            pass
+
+        assert len(manager._connection_pool) == 1
+
+        with pytest.raises(RuntimeError, match="boom"):
+            with manager._db():
+                raise RuntimeError("boom")
+
+        assert manager._connection_pool == []
+
 
 class TestCacheCompression:
     """Test compression functionality."""

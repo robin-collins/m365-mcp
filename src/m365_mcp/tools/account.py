@@ -74,13 +74,8 @@ def account_authenticate() -> dict[str, str]:
     3. Sign in with their Microsoft account
     4. Use account_complete_auth to finish the process
     """
-<<<<<<< HEAD
-    app, _ = auth.get_app()
-    flow = app.initiate_device_flow(scopes=auth.SCOPES)
-=======
     app, tenant_id = auth.get_app()
     app, flow = auth._initiate_device_flow(app, tenant_id)
->>>>>>> 79fb2e76353245923732a64cd4c63732d7c8155e
 
     if "user_code" not in flow:
         error_msg = flow.get("error_description", "Unknown error")
@@ -137,11 +132,7 @@ def account_complete_auth(flow_cache: str) -> dict[str, str]:
     except (ValueError, SyntaxError):
         raise ValueError("Invalid flow cache data")
 
-<<<<<<< HEAD
-    app, _ = auth.get_app()
-=======
     app, _tenant_id = auth.get_app()
->>>>>>> 79fb2e76353245923732a64cd4c63732d7c8155e
     result = app.acquire_token_by_device_flow(flow)
 
     if "error" in result:

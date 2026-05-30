@@ -55,22 +55,14 @@ class TestDatabaseCreation:
             conn.close()
 
             # Verify database is encrypted (cannot open without key)
-<<<<<<< HEAD
             bad_conn = None
-            try:
-                with pytest.raises(sqlcipher.DatabaseError):  # type: ignore[attr-defined]
+            with pytest.raises(sqlcipher.DatabaseError):  # type: ignore[attr-defined]
+                try:
                     bad_conn = sqlcipher.connect(db_path)  # type: ignore[attr-defined]
                     bad_conn.execute("SELECT * FROM test_table")
-            finally:
-                if bad_conn:
-=======
-            with pytest.raises(sqlcipher.DatabaseError):  # type: ignore[attr-defined]
-                bad_conn = sqlcipher.connect(db_path)  # type: ignore[attr-defined]
-                try:
-                    bad_conn.execute("SELECT * FROM test_table")
                 finally:
->>>>>>> 79fb2e76353245923732a64cd4c63732d7c8155e
-                    bad_conn.close()
+                    if bad_conn:
+                        bad_conn.close()
 
         finally:
             # Cleanup

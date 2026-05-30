@@ -35,6 +35,14 @@ from .cache_config import (
 
 logger = logging.getLogger(__name__)
 
+_RECOVERABLE_DATABASE_ERROR_FRAGMENTS = (
+    "file is not a database",
+    "file is encrypted",
+    "database disk image is malformed",
+    "malformed database schema",
+    "hmac check failed",
+)
+
 
 class CacheManager:
     """
@@ -98,22 +106,26 @@ class CacheManager:
             check_same_thread=False,
         )
 
-        if self.encryption_enabled and self.encryption_key:
-            # Set encryption key for SQLCipher
-            conn.execute(f"PRAGMA key = '{self.encryption_key}'")
-            for setting, value in SQLCIPHER_SETTINGS.items():
-                pragma_value = int(value) if isinstance(value, bool) else value
-                conn.execute(f"PRAGMA {setting} = {pragma_value}")
-            conn.execute("PRAGMA cipher_compatibility = 4")
+        try:
+            if self.encryption_enabled and self.encryption_key:
+                # Set encryption key for SQLCipher
+                conn.execute(f"PRAGMA key = '{self.encryption_key}'")
+                for setting, value in SQLCIPHER_SETTINGS.items():
+                    pragma_value = int(value) if isinstance(value, bool) else value
+                    conn.execute(f"PRAGMA {setting} = {pragma_value}")
+                conn.execute("PRAGMA cipher_compatibility = 4")
 
-        # Performance optimizations
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.execute("PRAGMA synchronous = NORMAL")
-        conn.execute("PRAGMA cache_size = -64000")  # 64MB cache
-        conn.execute("PRAGMA temp_store = MEMORY")
+            # Performance optimizations
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous = NORMAL")
+            conn.execute("PRAGMA cache_size = -64000")  # 64MB cache
+            conn.execute("PRAGMA temp_store = MEMORY")
 
-        conn.row_factory = sqlite3.Row  # type: ignore[attr-defined]
-        return conn
+            conn.row_factory = sqlite3.Row  # type: ignore[attr-defined]
+            return conn
+        except Exception:
+            conn.close()
+            raise
 
     @contextmanager
     def _db(self):
@@ -159,7 +171,26 @@ class CacheManager:
                 conn = self._connection_pool.pop()
                 conn.close()
 
-    def _init_database(self) -> None:
+    @staticmethod
+    def _is_recoverable_database_error(error: Exception) -> bool:
+        """Return True for cache files that can be safely recreated."""
+        message = str(error).lower()
+        return any(
+            fragment in message
+            for fragment in _RECOVERABLE_DATABASE_ERROR_FRAGMENTS
+        )
+
+    def _reset_database_file(self) -> None:
+        """Remove the cache database and sidecar files after recovery-worthy errors."""
+        self.close()
+        for path in (
+            self.db_path,
+            self.db_path.with_name(f"{self.db_path.name}-wal"),
+            self.db_path.with_name(f"{self.db_path.name}-shm"),
+        ):
+            path.unlink(missing_ok=True)
+
+    def _init_database(self, allow_recovery: bool = True) -> None:
         """
         Initialize database schema using migration script.
         """
@@ -175,8 +206,20 @@ class CacheManager:
         with open(migration_path) as f:
             migration_sql = f.read()
 
-        with self._db() as conn:
-            conn.executescript(migration_sql)
+        try:
+            with self._db() as conn:
+                conn.executescript(migration_sql)
+        except sqlite3.DatabaseError as e:  # type: ignore[attr-defined]
+            if not allow_recovery or not self._is_recoverable_database_error(e):
+                raise
+
+            logger.warning(
+                "Cache database could not be opened and will be recreated: %s",
+                self.db_path,
+            )
+            self._reset_database_file()
+            self._init_database(allow_recovery=False)
+            return
 
         logger.info("Database schema initialized")
 

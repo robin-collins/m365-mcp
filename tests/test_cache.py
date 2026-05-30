@@ -17,6 +17,7 @@ from src.m365_mcp.cache_config import (
     SQLCIPHER_SETTINGS,
     generate_cache_key,
 )
+from src.m365_mcp.encryption import EncryptionKeyManager
 
 
 @pytest.fixture
@@ -146,6 +147,60 @@ class TestCacheBasics:
 
         assert manager._connection_pool == []
         manager.close()
+
+    def test_cache_initialization_recovers_corrupt_database(self, tmp_path):
+        """Recoverable startup corruption should recreate an empty cache DB."""
+        db_path = tmp_path / "corrupt.db"
+        db_path.write_bytes(b"not a sqlite database")
+
+        manager = CacheManager(db_path=str(db_path), encryption_enabled=False)
+
+        try:
+            assert manager.get_stats()["entry_count"] == 0
+            manager.set_cached("account-1", "email_list", {}, {"emails": []})
+            assert manager.get_cached("account-1", "email_list", {}) is not None
+        finally:
+            manager.close()
+
+    @pytest.mark.skipif(
+        not cache_module.USING_SQLCIPHER,
+        reason="SQLCipher is required to exercise encrypted key mismatch recovery.",
+    )
+    def test_cache_initialization_recovers_encrypted_key_mismatch(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """A stale encrypted cache with the wrong key should be recreated."""
+        db_path = tmp_path / "key_mismatch.db"
+        first_key = EncryptionKeyManager.generate_key()
+        second_key = EncryptionKeyManager.generate_key()
+
+        monkeypatch.setattr(
+            EncryptionKeyManager,
+            "get_or_create_key",
+            staticmethod(lambda: first_key),
+        )
+        first_manager = CacheManager(db_path=str(db_path), encryption_enabled=True)
+        first_manager.set_cached("account-1", "email_list", {}, {"emails": [1]})
+        first_manager.close()
+
+        monkeypatch.setattr(
+            EncryptionKeyManager,
+            "get_or_create_key",
+            staticmethod(lambda: second_key),
+        )
+        recovered_manager = CacheManager(db_path=str(db_path), encryption_enabled=True)
+
+        try:
+            assert recovered_manager.get_cached("account-1", "email_list", {}) is None
+            recovered_manager.set_cached("account-1", "email_list", {}, {"emails": [2]})
+            assert (
+                recovered_manager.get_cached("account-1", "email_list", {})[0]
+                == {"emails": [2]}
+            )
+        finally:
+            recovered_manager.close()
 
 
 class TestCacheCompression:

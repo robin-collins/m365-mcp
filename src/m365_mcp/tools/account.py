@@ -74,8 +74,8 @@ def account_authenticate() -> dict[str, str]:
     3. Sign in with their Microsoft account
     4. Use account_complete_auth to finish the process
     """
-    app = auth.get_app()
-    flow = app.initiate_device_flow(scopes=auth.SCOPES)
+    app, tenant_id = auth.get_app()
+    app, flow = auth._initiate_device_flow(app, tenant_id)
 
     if "user_code" not in flow:
         error_msg = flow.get("error_description", "Unknown error")

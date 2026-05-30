@@ -55,7 +55,7 @@ def test_account_authenticate_returns_flow_details(
             return flow
 
     fake_app = FakeApp()
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: fake_app)
+    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (fake_app, "common"))
 
     result = account_tools.account_authenticate.fn()
 
@@ -63,6 +63,7 @@ def test_account_authenticate_returns_flow_details(
     assert result["device_code"] == flow["user_code"]
     assert result["verification_url"] == flow["verification_uri"]
     assert result["_flow_cache"] == str(flow)
+    assert fake_app.scopes == account_tools.auth.DEVICE_FLOW_SCOPES
 
 
 def test_account_authenticate_raises_when_flow_missing_user_code(
@@ -71,10 +72,24 @@ def test_account_authenticate_raises_when_flow_missing_user_code(
     """Guard against malformed device flow payloads."""
 
     class FakeApp:
-        def initiate_device_flow(self, scopes: Iterable[str]) -> dict[str, Any]:
-            return {"error_description": "User code unavailable"}
+        pass
 
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: FakeApp())
+    fake_app = FakeApp()
+
+    def fake_initiate_device_flow(
+        app: FakeApp,
+        tenant_id: str,
+    ) -> tuple[FakeApp, dict[str, str]]:
+        assert app is fake_app
+        assert tenant_id == "common"
+        return app, {"error_description": "User code unavailable"}
+
+    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (fake_app, "common"))
+    monkeypatch.setattr(
+        account_tools.auth,
+        "_initiate_device_flow",
+        fake_initiate_device_flow,
+    )
 
     with pytest.raises(Exception, match="Failed to get device code"):
         account_tools.account_authenticate.fn()

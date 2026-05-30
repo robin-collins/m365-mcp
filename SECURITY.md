@@ -6,14 +6,18 @@ M365 MCP uses Microsoft Authentication Library (MSAL) public-client device-code
 authentication for Microsoft Graph.
 
 - Run `uv run authenticate.py` to perform interactive device-code login.
+- Run `uv run authenticate.py --re-auth <account-id-or-email>` to verify that a
+  cached refresh token can mint a new access token.
+- Run `uv run authenticate.py --remove <account-id-or-email>` to remove one
+  account's MSAL tokens, account metadata, and account-scoped database cache.
 - Normal MCP requests use cached tokens silently.
 - If no cached token is available, normal requests fail immediately with an
   actionable message instead of starting an interactive prompt.
 - `M365_MCP_INTERACTIVE_AUTH=true` is reserved for explicit interactive flows.
 
 Tokens are cached locally in `~/.m365_mcp_token_cache.json`. Protect this file
-with normal user-profile filesystem permissions and delete it when removing an
-account from a machine.
+with normal user-profile filesystem permissions and use `authenticate.py
+--remove` when removing an account from a machine.
 
 ## Transport Security
 

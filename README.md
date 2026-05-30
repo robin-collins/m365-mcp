@@ -272,6 +272,12 @@ export M365_MCP_CLIENT_ID="your-app-id-here"
 # Run authentication script
 uv run authenticate.py
 
+# Force-refresh a cached token to verify silent renewal
+uv run authenticate.py --re-auth <account-id-or-email>
+
+# Remove an account, its tokens, and its local data cache
+uv run authenticate.py --remove <account-id-or-email>
+
 # Follow the prompts to authenticate your Microsoft accounts
 ```
 

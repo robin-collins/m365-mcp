@@ -44,6 +44,11 @@ uv run authenticate.py
 The script enables the interactive device-code flow, stores MSAL tokens in
 `~/.m365_mcp_token_cache.json`, and can be rerun when adding accounts.
 
+Use `uv run authenticate.py --re-auth <account-id-or-email>` to force-refresh a
+cached token with the stored refresh token. Use
+`uv run authenticate.py --remove <account-id-or-email>` to remove an account,
+its token cache entries, and its account-scoped database cache rows.
+
 Normal MCP requests do not start an interactive device flow. If no cached token
 is available, the server fails fast with an actionable error asking you to run
 `authenticate.py`. This prevents a tool request from blocking on terminal input.

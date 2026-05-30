@@ -2,13 +2,23 @@
 
 import atexit
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 from ..mcp_instance import mcp
 from ..cache import CacheManager
+from ..cache_warming import get_inactive_warming_status
+
+
+class WarmingStatusProvider(Protocol):
+    """Object capable of reporting cache warming status."""
+
+    def get_warming_status(self) -> dict[str, Any]:
+        """Return the current cache warming status."""
+        ...
+
 
 # Global cache manager instance (lazy-initialized)
 _cache_manager: Optional[CacheManager] = None
-_background_worker = None  # Will be set by background worker when initialized
+_warming_status_provider: Optional[WarmingStatusProvider] = None
 _cache_manager_atexit_registered = False
 
 
@@ -35,15 +45,25 @@ def get_cache_manager() -> CacheManager:
     return _cache_manager
 
 
-def set_background_worker(worker) -> None:
+def set_warming_status_provider(provider: Optional[WarmingStatusProvider]) -> None:
+    """Set the object that owns cache warming status."""
+    global _warming_status_provider
+    _warming_status_provider = provider
+
+
+def set_cache_warmer(warmer: Optional[WarmingStatusProvider]) -> None:
+    """Set the cache warmer used by `cache_warming_status`."""
+    set_warming_status_provider(warmer)
+
+
+def set_background_worker(worker: Optional[WarmingStatusProvider]) -> None:
     """
-    Set the background worker instance for cache warming status.
+    Set a background worker that proxies cache warming status.
 
     Args:
-        worker: The BackgroundWorker instance.
+        worker: BackgroundWorker instance with get_warming_status().
     """
-    global _background_worker
-    _background_worker = worker
+    set_warming_status_provider(worker)
 
 
 # cache_task_get_status
@@ -297,10 +317,10 @@ def cache_warming_status() -> dict[str, Any]:
         - is_warming: Whether cache warming is currently active
         - started_at: When warming started (if active)
         - completed_at: When warming completed (if finished)
-        - total_operations: Total number of warming operations
-        - completed_operations: Number of completed operations
-        - failed_operations: Number of failed operations
-        - progress_percentage: Progress percentage (0-100)
+        - operations_total: Total number of warming operations
+        - operations_completed: Number of completed operations
+        - operations_failed: Number of failed operations
+        - progress_percent: Progress percentage (0-100)
         - estimated_completion: Estimated completion time
         - accounts_warmed: Number of accounts warmed
         - operations_by_type: Breakdown of operations by type
@@ -309,27 +329,16 @@ def cache_warming_status() -> dict[str, Any]:
     Example:
         status = cache_warming_status()
         if status['is_warming']:
-            print(f"Warming in progress: {status['progress_percentage']:.1f}%")
+            print(f"Warming in progress: {status['progress_percent']:.1f}%")
         else:
             print("Cache warming complete or not started")
     """
-    global _background_worker
+    if _warming_status_provider is None:
+        return get_inactive_warming_status(
+            "Cache warming disabled: warming status provider not initialized."
+        )
 
-    if _background_worker is None:
-        return {
-            "is_warming": False,
-            "status": (
-                "Cache warming disabled: startup worker not initialized. "
-                "Automatic warming will remain off until worker lifecycle "
-                "hardening is complete."
-            ),
-            "total_operations": 0,
-            "completed_operations": 0,
-            "failed_operations": 0,
-            "progress_percentage": 0.0,
-        }
-
-    # Get warming status from background worker
-    status = _background_worker.get_warming_status()
+    # Get warming status from the configured owner.
+    status = _warming_status_provider.get_warming_status()
 
     return status

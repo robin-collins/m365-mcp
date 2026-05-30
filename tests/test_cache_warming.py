@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from src.m365_mcp.cache import CacheManager
-from src.m365_mcp.cache_warming import CacheWarmer
+from src.m365_mcp.cache_warming import CacheWarmer, get_inactive_warming_status
 from src.m365_mcp.cache_config import CacheState
 
 
@@ -95,6 +95,20 @@ def mock_tool_executor():
 
 class TestCacheWarmerInit:
     """Tests for CacheWarmer initialization."""
+
+    def test_inactive_status_uses_canonical_shape(self):
+        """Inactive status should match CacheWarmer status field names."""
+        status = get_inactive_warming_status("not initialized")
+
+        assert status == {
+            "is_warming": False,
+            "operations_total": 0,
+            "operations_completed": 0,
+            "operations_skipped": 0,
+            "operations_failed": 0,
+            "progress_percent": 0.0,
+            "status": "not initialized",
+        }
 
     def test_init_with_valid_parameters(
         self, cache_manager, mock_accounts, mock_tool_executor

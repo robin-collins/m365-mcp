@@ -15,6 +15,19 @@ from .cache_config import CACHE_WARMING_OPERATIONS, CacheState
 logger = logging.getLogger(__name__)
 
 
+def get_inactive_warming_status(status: str) -> dict[str, Any]:
+    """Return the canonical inactive warming status payload."""
+    return {
+        "is_warming": False,
+        "operations_total": 0,
+        "operations_completed": 0,
+        "operations_skipped": 0,
+        "operations_failed": 0,
+        "progress_percent": 0.0,
+        "status": status,
+    }
+
+
 class CacheWarmer:
     """Manages background cache warming operations.
 

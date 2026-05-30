@@ -13,6 +13,7 @@ import traceback
 from typing import Any, Optional
 
 from .cache import CacheManager
+from .cache_warming import get_inactive_warming_status
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +56,25 @@ class BackgroundWorker:
         self.worker_task: Optional[asyncio.Task] = None
         self.max_retries = max_retries
         self.initial_backoff = initial_backoff
+        self.cache_warmer: Any | None = None
 
         logger.info(
             "BackgroundWorker initialized",
             extra={"max_retries": max_retries, "initial_backoff": initial_backoff},
         )
+
+    def set_cache_warmer(self, cache_warmer: Any | None) -> None:
+        """Attach the cache warmer used for warming status reporting."""
+        self.cache_warmer = cache_warmer
+
+    def get_warming_status(self) -> dict[str, Any]:
+        """Return cache warming status when a warmer is attached."""
+        if self.cache_warmer is None:
+            return get_inactive_warming_status(
+                "Cache warming disabled: no cache warmer attached to worker."
+            )
+
+        return self.cache_warmer.get_warming_status()
 
     async def start(self) -> None:
         """

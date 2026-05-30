@@ -142,6 +142,39 @@ class TestBackgroundWorker:
         assert worker.is_running is False
         assert worker.max_retries == 3
 
+    def test_worker_reports_inactive_warming_without_warmer(
+        self,
+        cache_manager,
+        mock_tool_executor,
+    ):
+        """A worker without a warmer should expose inactive warming status."""
+        worker = BackgroundWorker(cache_manager, mock_tool_executor)
+
+        status = worker.get_warming_status()
+
+        assert status["is_warming"] is False
+        assert status["operations_total"] == 0
+        assert status["progress_percent"] == 0.0
+
+    def test_worker_proxies_attached_cache_warmer_status(
+        self,
+        cache_manager,
+        mock_tool_executor,
+    ):
+        """A worker can proxy status from its attached CacheWarmer."""
+        worker = BackgroundWorker(cache_manager, mock_tool_executor)
+
+        class FakeWarmer:
+            def get_warming_status(self):
+                return {"is_warming": True, "operations_total": 3}
+
+        worker.set_cache_warmer(FakeWarmer())
+
+        assert worker.get_warming_status() == {
+            "is_warming": True,
+            "operations_total": 3,
+        }
+
     @pytest.mark.asyncio
     async def test_worker_start_stop(self, cache_manager, mock_tool_executor):
         """Test starting and stopping worker."""

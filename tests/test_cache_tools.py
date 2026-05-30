@@ -337,47 +337,70 @@ def test_cache_warming_status_not_initialized():
     """Test cache warming status when background worker is not set."""
     from src.m365_mcp.tools import cache_tools
 
-    # Reset background worker
-    cache_tools._background_worker = None
+    # Reset warming status provider
+    cache_tools._warming_status_provider = None
 
     result = cache_tools.cache_warming_status.fn()
 
     assert result["is_warming"] is False
     assert result["status"].startswith("Cache warming disabled")
+    assert result["operations_total"] == 0
+    assert result["progress_percent"] == 0.0
 
 
-# Test 13: Test cache_warming_status with mock worker
-def test_cache_warming_status_with_worker(cache_manager):
-    """Test cache warming status with a mocked background worker."""
+# Test 13: Test cache_warming_status with mock warmer
+def test_cache_warming_status_with_cache_warmer(cache_manager):
+    """Test cache warming status with a mocked cache warmer."""
     from src.m365_mcp.tools import cache_tools
 
-    # Create a mock background worker
-    mock_worker = MagicMock()
-    mock_worker.get_warming_status = MagicMock(
+    # Create a mock cache warmer
+    mock_warmer = MagicMock()
+    mock_warmer.get_warming_status = MagicMock(
         return_value={
             "is_warming": True,
-            "total_operations": 10,
-            "completed_operations": 5,
-            "failed_operations": 1,
-            "progress_percentage": 50.0,
+            "operations_total": 10,
+            "operations_completed": 5,
+            "operations_failed": 1,
+            "progress_percent": 50.0,
             "status": "Warming in progress",
         }
     )
 
-    # Set the mock worker
-    cache_tools._background_worker = mock_worker
+    # Set the mock warmer
+    cache_tools.set_cache_warmer(mock_warmer)
 
-    # Since we can't call the decorated function directly,
-    # verify the mock worker has the expected method
-    status = mock_worker.get_warming_status()
+    status = cache_tools.cache_warming_status.fn()
 
     assert status["is_warming"] is True
-    assert status["total_operations"] == 10
-    assert status["completed_operations"] == 5
-    assert status["progress_percentage"] == 50.0
+    assert status["operations_total"] == 10
+    assert status["operations_completed"] == 5
+    assert status["progress_percent"] == 50.0
+    mock_warmer.get_warming_status.assert_called_once()
 
     # Cleanup
-    cache_tools._background_worker = None
+    cache_tools.set_cache_warmer(None)
+
+
+def test_cache_warming_status_accepts_background_worker_provider(cache_manager):
+    """The compatibility setter should accept any status provider."""
+    from src.m365_mcp.tools import cache_tools
+
+    mock_worker = MagicMock()
+    mock_worker.get_warming_status.return_value = {
+        "is_warming": False,
+        "operations_total": 0,
+        "operations_completed": 0,
+        "operations_failed": 0,
+        "progress_percent": 0.0,
+    }
+
+    cache_tools.set_background_worker(mock_worker)
+
+    status = cache_tools.cache_warming_status.fn()
+
+    assert status["is_warming"] is False
+    mock_worker.get_warming_status.assert_called_once()
+    cache_tools.set_background_worker(None)
 
 
 # Test 14: Test cache entry state detection (Fresh/Stale/Expired)

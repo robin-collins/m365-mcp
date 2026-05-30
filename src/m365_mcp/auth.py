@@ -243,6 +243,18 @@ def get_app() -> tuple[msal.PublicClientApplication, str]:
     return app, tenant_id
 
 
+def _account_matches_identifier(
+    account: dict[str, str],
+    account_identifier: str,
+) -> bool:
+    """Check whether an MSAL account matches an ID or username."""
+    selector = account_identifier.lower()
+    return (
+        account.get("home_account_id", "").lower() == selector
+        or account.get("username", "").lower() == selector
+    )
+
+
 def _find_cached_account(
     app: msal.PublicClientApplication, account_identifier: str | None = None
 ) -> dict[str, str]:
@@ -268,12 +280,10 @@ def _find_cached_account(
         )
 
     if account_identifier:
-        selector = account_identifier.lower()
         matches = [
             account
             for account in accounts
-            if account.get("home_account_id", "").lower() == selector
-            or account.get("username", "").lower() == selector
+            if _account_matches_identifier(account, account_identifier)
         ]
         if not matches:
             raise ValueError(
@@ -329,7 +339,8 @@ def get_token(account_id: str | None = None, force_refresh: bool = False) -> str
 
     if account_id:
         account = next(
-            (a for a in accounts if a["home_account_id"] == account_id), None
+            (a for a in accounts if _account_matches_identifier(a, account_id)),
+            None,
         )
     elif accounts:
         account = accounts[0]

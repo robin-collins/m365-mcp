@@ -76,6 +76,52 @@ def test_device_flow_scopes_request_offline_access() -> None:
     assert "offline_access" in account_tools.auth.DEVICE_FLOW_SCOPES
 
 
+def test_get_token_accepts_username_identifier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Allow tool calls to select cached accounts by username/email."""
+
+    class FakeApp:
+        def __init__(self) -> None:
+            self.token_cache = object()
+
+        def get_accounts(self) -> list[dict[str, str]]:
+            return [
+                {
+                    "username": "Robin.F.Collins@outlook.com",
+                    "home_account_id": "acc-1",
+                }
+            ]
+
+        def acquire_token_silent(
+            self,
+            scopes: list[str],
+            account: dict[str, str] | None = None,
+        ) -> dict[str, str]:
+            captured["scopes"] = scopes
+            captured["account"] = account
+            return {"access_token": "cached-token"}
+
+    captured: dict[str, Any] = {}
+    fake_app = FakeApp()
+
+    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (fake_app, "common"))
+    monkeypatch.setattr(
+        account_tools.auth,
+        "_get_account_type",
+        lambda account_id, username: "personal",
+    )
+
+    token = account_tools.auth.get_token("robin.f.collins@outlook.com")
+
+    assert token == "cached-token"
+    assert captured["scopes"] == account_tools.auth.SCOPES
+    assert captured["account"] == {
+        "username": "Robin.F.Collins@outlook.com",
+        "home_account_id": "acc-1",
+    }
+
+
 def test_account_authenticate_raises_when_flow_missing_user_code(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

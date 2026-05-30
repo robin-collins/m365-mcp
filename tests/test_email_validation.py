@@ -221,6 +221,75 @@ def test_email_send_rejects_too_many_attachments(
         )
 
 
+def test_email_create_draft_rejects_invalid_recipient(
+    mock_account_id: str,
+) -> None:
+    with pytest.raises(ValidationError, match="Invalid to"):
+        email_tools.email_create_draft.fn(
+            account_id=mock_account_id,
+            to="not-an-email",
+            subject="Invalid",
+            body="Hello",
+        )
+
+
+def test_email_create_draft_deduplicates_recipients(
+    monkeypatch: pytest.MonkeyPatch,
+    mock_account_id: str,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_request(
+        method: str,
+        path: str,
+        account_id: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, str]:
+        captured["method"] = method
+        captured["path"] = path
+        captured["account_id"] = account_id
+        captured["json"] = kwargs.get("json")
+        return {"id": "draft-1"}
+
+    monkeypatch.setattr(email_tools.graph, "request", fake_request)
+
+    result = email_tools.email_create_draft.fn(
+        account_id=mock_account_id,
+        to=["User@example.com", "other@example.com"],
+        cc=["user@example.com", "cc@example.com"],
+        subject="Draft",
+        body="Hello",
+    )
+
+    assert result == {"id": "draft-1"}
+    to_addresses = [
+        entry["emailAddress"]["address"]
+        for entry in captured["json"]["toRecipients"]
+    ]
+    cc_addresses = [
+        entry["emailAddress"]["address"]
+        for entry in captured["json"]["ccRecipients"]
+    ]
+    assert to_addresses == ["user@example.com", "other@example.com"]
+    assert cc_addresses == ["cc@example.com"]
+
+
+def test_email_create_draft_enforces_recipient_limit(
+    mock_account_id: str,
+) -> None:
+    recipients = [
+        f"user{i}@example.com" for i in range(email_tools.MAX_EMAIL_RECIPIENTS + 1)
+    ]
+
+    with pytest.raises(ValidationError, match="Invalid recipients"):
+        email_tools.email_create_draft.fn(
+            account_id=mock_account_id,
+            to=recipients,
+            subject="Overflow",
+            body="Hello",
+        )
+
+
 def test_email_reply_rejects_empty_body_before_confirm(
     mock_account_id: str,
 ) -> None:

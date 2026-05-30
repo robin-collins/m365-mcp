@@ -90,6 +90,47 @@ def _prepare_outbound_attachments(
     return prepared
 
 
+def _prepare_message_recipients(
+    to: str | list[str],
+    cc: str | list[str] | None,
+) -> tuple[list[str], list[str]]:
+    """Validate, deduplicate, and limit message recipients."""
+    to_normalized = normalize_recipients(to, "to")
+    cc_normalized = normalize_recipients(cc, "cc") if cc else []
+
+    seen: set[str] = set()
+    to_unique: list[str] = []
+    cc_unique: list[str] = []
+
+    for address in to_normalized:
+        key = address.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        to_unique.append(address)
+
+    for address in cc_normalized:
+        key = address.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        cc_unique.append(address)
+
+    total_unique = len(to_unique) + len(cc_unique)
+    if total_unique > MAX_EMAIL_RECIPIENTS:
+        reason = f"must not exceed {MAX_EMAIL_RECIPIENTS} unique recipients"
+        raise ValidationError(
+            format_validation_error(
+                "recipients",
+                total_unique,
+                reason,
+                f"<= {MAX_EMAIL_RECIPIENTS}",
+            )
+        )
+
+    return to_unique, cc_unique
+
+
 def _validate_flag_datetime_section(
     payload: Any,
     section_name: str,
@@ -472,18 +513,17 @@ def email_create_draft(
     Returns:
         Created draft message with ID
     """
-    to_list = [to] if isinstance(to, str) else to
+    to_unique, cc_unique = _prepare_message_recipients(to, cc)
 
     message = {
         "subject": subject,
         "body": {"contentType": "Text", "content": body},
-        "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_list],
+        "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_unique],
     }
 
-    if cc:
-        cc_list = [cc] if isinstance(cc, str) else cc
+    if cc_unique:
         message["ccRecipients"] = [
-            {"emailAddress": {"address": addr}} for addr in cc_list
+            {"emailAddress": {"address": addr}} for addr in cc_unique
         ]
 
     small_attachments = []
@@ -575,39 +615,7 @@ def email_send(
         ValidationError: If recipients are invalid, exceed limits,
             or confirm is False.
     """
-    to_normalized = normalize_recipients(to, "to")
-    cc_normalized = normalize_recipients(cc, "cc") if cc else []
-
-    seen: set[str] = set()
-    to_unique: list[str] = []
-    cc_unique: list[str] = []
-
-    for address in to_normalized:
-        key = address.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        to_unique.append(address)
-
-    for address in cc_normalized:
-        key = address.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        cc_unique.append(address)
-
-    total_unique = len(to_unique) + len(cc_unique)
-    if total_unique > MAX_EMAIL_RECIPIENTS:
-        reason = f"must not exceed {MAX_EMAIL_RECIPIENTS} unique recipients"
-        raise ValidationError(
-            format_validation_error(
-                "recipients",
-                total_unique,
-                reason,
-                f"≤ {MAX_EMAIL_RECIPIENTS}",
-            )
-        )
-
+    to_unique, cc_unique = _prepare_message_recipients(to, cc)
     require_confirm(confirm, "send email")
 
     def build_message() -> dict[str, Any]:

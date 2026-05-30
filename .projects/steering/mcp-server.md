@@ -3,7 +3,7 @@
 ## MCP Protocol Compliance
 
 ### Core Primitives Definition
-- **Tools**: Executable functions exposed as MCP tools (e.g., list_emails, send_email)
+- **Tools**: Executable functions exposed as MCP tools (e.g., email_list, email_send)
 - **Resources**: Data sources providing contextual information (e.g., folder trees, email metadata)
 - **Prompts**: Reusable templates for structuring AI interactions (future enhancement)
 
@@ -19,11 +19,17 @@ Each MCP tool must have exactly one responsibility:
 ```python
 # ✅ GOOD: Single responsibility
 @mcp.tool
-def list_emails(account_id: str, folder_id: str) -> list[dict[str, Any]]:
+def email_list(account_id: str, folder_id: str) -> list[dict[str, Any]]:
     """List emails in a specific folder."""
 
 @mcp.tool
-def send_email(account_id: str, to: str, subject: str, body: str) -> dict[str, str]:
+def email_send(
+    account_id: str,
+    to: str,
+    subject: str,
+    body: str,
+    confirm: bool = False,
+) -> dict[str, str]:
     """Send a single email."""
 
 # ❌ BAD: Multiple responsibilities

@@ -17,7 +17,7 @@ m365-mcp/
 │   ├── tools/                 # Modular MCP tool package
 │   ├── cache.py               # Encrypted SQLite cache manager (AES-256)
 │   ├── cache_config.py        # Cache configuration, TTL policies, key generation
-│   ├── cache_warming.py       # Cache warming implementation (startup wiring deferred)
+│   ├── cache_warming.py       # Optional startup warming and status owner
 │   ├── background_worker.py   # Async task queue for cache operations
 │   └── encryption.py          # Encryption key management (keyring integration)
 ├── tests/                     # Test suite
@@ -77,8 +77,8 @@ m365-mcp/
 
 ### Background Processing (`background_worker.py`, `cache_warming.py`)
 - **Async task queue** - Priority-based task scheduling and execution
-- **Cache warming** - Implementation exists, but automatic startup warming is
-  currently disabled until worker lifecycle hardening is complete
+- **Cache warming** - Startup warming and stale-cache refresh are wired behind
+  `M365_MCP_CACHE_WARMING=true` and are disabled by default
 - **Retry logic** - Automatic retry with exponential backoff for failed tasks
 - **Status tracking** - Real-time task status and completion monitoring
 
@@ -86,7 +86,8 @@ m365-mcp/
 
 ### MCP Tool Pattern
 All Microsoft 365 operations are exposed as stateless MCP tools with:
-- **Consistent signatures** - account_id as first parameter
+- **Compatible signatures** - account-scoped tools include `account_id`; existing
+  public tools preserve their historical parameter order
 - **Comprehensive error handling** - Proper exception management
 - **Type safety** - Full type annotations
 - **Documentation** - Detailed docstrings with examples
@@ -135,8 +136,9 @@ uv.lock                        # Dependency lock file
 2. **Pattern** - Import `mcp` from `mcp_instance` or local module patterns and
    use the `@mcp.tool` decorator
 3. **Registration** - Import/export the new tool from `tools/__init__.py`
-4. **Signature** - Include `account_id: str` as first parameter where the tool
-   is account-scoped
+4. **Signature** - Include `account_id: str` where the tool is account-scoped.
+   Preserve existing public parameter order; for new tools, follow the local
+   module's established ordering.
 5. **Documentation** - Comprehensive docstring with examples
 6. **Error Handling** - Proper exception raising and handling
 

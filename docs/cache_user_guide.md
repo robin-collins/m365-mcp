@@ -1,7 +1,7 @@
 # M365 MCP Cache User Guide
 
 **Version**: 1.0
-**Last Updated**: 2025-10-14
+**Last Updated**: 2026-05-30
 
 ## Table of Contents
 
@@ -57,13 +57,16 @@ result = folder_get_tree(account_id, path="/Documents")
 On first server startup:
 
 1. Cache is empty (no cached data)
-2. Automatic startup warming is currently disabled
+2. Startup warming is disabled by default
 3. First requests may be slower (cache miss)
 4. Subsequent requests are fast (cache hit)
 
+Set `M365_MCP_CACHE_WARMING=true` before starting the server to enable the
+background worker, startup warming, and stale-cache refresh queue.
+
 **Expected Timeline**:
 - Server startup: Instant
-- Cache warming: Disabled until worker lifecycle hardening is complete
+- Cache warming: Inactive by default, active when `M365_MCP_CACHE_WARMING=true`
 - First request: Normal API speed
 - Second+ request: 40-300x faster
 
@@ -210,20 +213,28 @@ The cache automatically invalidates on write operations:
 
 ### What is Cache Warming?
 
-Cache warming is designed to pre-populate the cache in the background. The
-implementation exists, but automatic startup warming is currently disabled until
-worker lifecycle and concurrency hardening is complete.
+Cache warming pre-populates the cache in the background. It is wired into the
+server lifecycle but remains opt-in.
 
-Current behavior:
+Default behavior:
 
 1. Server starts without a warming worker
 2. The cache fills on demand as tools are called
-3. Subsequent reads use cached data until TTL expiry or invalidation
+3. Stale entries are served until TTL expiry or invalidation, without queuing a
+   background refresh task
+
+Enabled behavior (`M365_MCP_CACHE_WARMING=true`):
+
+1. Server starts the background worker and `CacheWarmer`
+2. Startup warming queues configured operations for authenticated accounts
+3. Stale cache reads enqueue one background refresh task per stale key
+4. Server shutdown stops the worker and closes cache handles
 
 ### Monitor Cache Warming
 
-`cache_warming_status` reports that automatic warming is disabled when no worker
-has been initialized.
+`cache_warming_status` reports inactive status when no worker has been
+initialized. When warming is enabled, the tool reports real progress from the
+background worker and cache warmer.
 
 ### Priority Order
 
@@ -285,11 +296,15 @@ print(f"Cache size: {stats['total_size_mb']} MB")
 cache_invalidate("email_*")  # Typically largest
 ```
 
-### Problem: Encryption Key Error
+### Problem: Encryption Or SQLCipher Error
 
-**Symptoms**: "Invalid encryption key" or "Cannot decrypt cache"
+**Symptoms**: "Invalid encryption key", "Cannot decrypt cache", or SQLCipher import failure
 
-**Cause**: Encryption key changed or lost
+**Cause**: Encryption key changed or lost, SQLCipher is unavailable, or the
+cache database is corrupt. If the database cannot be opened due to a key
+mismatch or recoverable corruption, M365 MCP recreates the cache file and
+rebuilds entries on demand. If SQLCipher is unavailable while encryption is
+enabled, startup fails instead of falling back to plaintext.
 
 **Solution**:
 ```bash
@@ -321,7 +336,7 @@ folder_get_tree(account_id, path="/Documents", use_cache=False)
 ✅ **DO**: Refresh cache after modifications
 ```python
 # Upload file
-create_file(account_id, local_path="/tmp/file.pdf", parent="root")
+file_create(onedrive_path="/Uploads/file.pdf", local_file_path="/tmp/file.pdf", account_id=account_id)
 
 # Force refresh to see new file
 file_list(account_id, folder_id="root", force_refresh=True)
@@ -377,7 +392,7 @@ export M365_MCP_CACHE_KEY=$(openssl rand -base64 32)
 
 - **Cache is automatic** - Works out-of-the-box
 - **300x faster** - Massive performance improvements
-- **Encrypted & secure** - AES-256, GDPR/HIPAA compliant
+- **Encrypted & secure** - AES-256 SQLCipher by default, with controls for GDPR/HIPAA-aligned deployments
 - **Intelligent** - Three-state TTL ensures freshness
 - **Low maintenance** - Automatic cleanup and management
 
@@ -388,5 +403,5 @@ export M365_MCP_CACHE_KEY=$(openssl rand -base64 32)
 ---
 
 **Document Version**: 1.0
-**Last Updated**: 2025-10-14
+**Last Updated**: 2026-05-30
 **Next Review**: After user feedback or major changes

@@ -1,8 +1,8 @@
 # M365 MCP Cache Security Guide
 
-**Version**: 1.0
-**Last Updated**: 2025-10-14
-**Security Rating**: A- (Excellent)
+**Version**: 1.1
+**Last Updated**: 2026-05-30
+**Security Posture**: Encrypted by default with fail-fast SQLCipher checks
 
 ## Table of Contents
 
@@ -18,22 +18,23 @@
 
 ## Overview
 
-The M365 MCP cache implements enterprise-grade security:
+The M365 MCP cache implements encrypted local storage by default:
 
-- **AES-256 Encryption**: All data encrypted at rest via SQLCipher
+- **AES-256 Encryption**: Cached data is encrypted at rest via SQLCipher by default
 - **Secure Key Storage**: System keyring integration (macOS Keychain, Windows Credential Manager, Linux Secret Service)
-- **GDPR Compliant**: Meets Article 32 requirements
-- **HIPAA Compliant**: Meets §164.312 requirements
-- **Zero Trust**: No plaintext data ever written to disk
+- **Fail-Fast Runtime**: Encryption-enabled startup fails if SQLCipher is unavailable
+- **Regulated Deployment Support**: Encryption, TTL, and account isolation controls for GDPR/HIPAA-aligned deployments
+- **Explicit Plaintext Mode**: Plaintext cache files are written only when encryption is explicitly disabled by code
 
 ### Security Guarantees
 
-✅ Cache data encrypted at rest (AES-256)
-✅ Encryption keys stored securely in system keyring
-✅ No keys logged or exposed in errors
-✅ Account isolation (multi-tenant safe)
-✅ Automatic key generation
-✅ Environment variable fallback for headless servers
+- Cache data encrypted at rest by default (AES-256 via SQLCipher)
+- Encryption keys loaded from system keyring when available
+- No keys logged or exposed in errors
+- Account isolation for cache entries and invalidation
+- Automatic key generation
+- Environment variable fallback for headless servers
+- Warning when generated keys cannot be persisted and are therefore ephemeral
 
 ---
 
@@ -92,6 +93,8 @@ On first use, M365 MCP automatically:
 
 3. **Generation** (last resort):
    - Auto-generate if no key found
+   - Store in keyring if possible
+   - Log a warning if the generated key is ephemeral because neither keyring nor `M365_MCP_CACHE_KEY` provides durable storage
 
 ### System Keyring Integration
 
@@ -99,30 +102,30 @@ On first use, M365 MCP automatically:
 
 ```bash
 # View stored key (requires password)
-security find-generic-password -s "m365_mcp_cache" -w
+security find-generic-password -s "m365-mcp-cache" -a "encryption-key" -w
 
 # Delete key
-security delete-generic-password -s "m365_mcp_cache"
+security delete-generic-password -s "m365-mcp-cache" -a "encryption-key"
 ```
 
 #### Windows Credential Manager
 
 ```powershell
 # View stored credentials
-cmdkey /list | findstr m365_mcp
+cmdkey /list | findstr m365-mcp-cache
 
 # Delete key
-cmdkey /delete:m365_mcp_cache
+cmdkey /delete:m365-mcp-cache
 ```
 
 #### Linux Secret Service
 
 ```bash
 # View keys (using secret-tool)
-secret-tool search service m365_mcp_cache
+secret-tool search service m365-mcp-cache username encryption-key
 
 # Delete key
-secret-tool clear service m365_mcp_cache
+secret-tool clear service m365-mcp-cache username encryption-key
 ```
 
 ### Headless Server Setup
@@ -159,6 +162,13 @@ unset M365_MCP_CACHE_KEY  # Force regeneration
 uv run m365-mcp
 ```
 
+### SQLCipher Availability
+
+`sqlcipher3-wheels` is a runtime dependency. When cache encryption is enabled,
+M365 MCP raises an import error instead of silently opening a plaintext SQLite
+database if SQLCipher cannot be imported. Plaintext cache mode is reserved for
+explicit test or diagnostic construction with encryption disabled.
+
 ---
 
 ## Compliance
@@ -176,7 +186,7 @@ uv run m365-mcp
 - Audit logging for cache operations
 - Account isolation (multi-tenant)
 
-✅ **Compliant**
+✅ **Supports compliant deployments when combined with appropriate operational controls**
 
 #### Article 5: Data Minimization
 
@@ -189,7 +199,7 @@ uv run m365-mcp
 - Maximum cache size: 2GB
 - Automatic cleanup at 80% threshold
 
-✅ **Compliant**
+✅ **Supports compliant deployments when combined with appropriate operational controls**
 
 #### Article 17: Right to Erasure
 
@@ -204,7 +214,7 @@ cache_invalidate("*", account_id="account-123")
 rm ~/.m365_mcp_cache.db
 ```
 
-✅ **Compliant**
+✅ **Supports compliant deployments when combined with appropriate operational controls**
 
 ### HIPAA (Health Insurance Portability and Accountability Act)
 
@@ -213,11 +223,11 @@ rm ~/.m365_mcp_cache.db
 ✅ **Requirement**: "Implement a mechanism to encrypt electronic protected health information"
 
 **Implementation**:
-- AES-256 encryption for all cached PHI
-- SQLCipher with FIPS-compliant algorithms
+- AES-256 encryption for cached data
+- SQLCipher with modern encryption primitives
 - Secure key storage (system keyring)
 
-✅ **Compliant**
+✅ **Supports compliant deployments when combined with appropriate operational controls**
 
 #### §164.312(a)(1): Access Control
 
@@ -228,7 +238,7 @@ rm ~/.m365_mcp_cache.db
 - System-level access controls (file permissions)
 - Encryption key access control
 
-✅ **Compliant**
+✅ **Supports compliant deployments when combined with appropriate operational controls**
 
 #### §164.312(b): Audit Controls
 
@@ -239,7 +249,7 @@ rm ~/.m365_mcp_cache.db
 - Cache operation tracking
 - Invalidation audit trail
 
-✅ **Compliant**
+✅ **Supports compliant deployments when combined with appropriate operational controls**
 
 #### §164.312(c)(1): Integrity
 
@@ -250,7 +260,7 @@ rm ~/.m365_mcp_cache.db
 - Atomic database operations
 - TTL-based expiration (controlled deletion)
 
-✅ **Compliant**
+✅ **Supports compliant deployments when combined with appropriate operational controls**
 
 ### SOC 2 Type II
 
@@ -310,7 +320,7 @@ chmod 600 ~/.m365_mcp_cache.db
 ✅ **DO**: Back up encryption key securely
 ```bash
 # Export key from keyring
-security find-generic-password -s "m365_mcp_cache" -w > key.backup
+security find-generic-password -s "m365-mcp-cache" -a "encryption-key" -w > key.backup
 
 # Store securely (password manager, vault, etc.)
 # chmod 400 key.backup
@@ -408,7 +418,7 @@ The security model assumes:
 
 ```bash
 # macOS: Export from Keychain
-security find-generic-password -s "m365_mcp_cache" -w > key.backup
+security find-generic-password -s "m365-mcp-cache" -a "encryption-key" -w > key.backup
 
 # Store securely (password manager, encrypted vault, etc.)
 chmod 400 key.backup
@@ -449,7 +459,7 @@ uv run m365-mcp
 **Steps**:
 ```bash
 # Old system: Export key
-security find-generic-password -s "m365_mcp_cache" -w > key.backup
+security find-generic-password -s "m365-mcp-cache" -a "encryption-key" -w > key.backup
 
 # Old system: Copy cache database
 cp ~/.m365_mcp_cache.db /backup/
@@ -470,8 +480,8 @@ uv run m365-mcp
 
 - **Enterprise-Grade Encryption**: AES-256 via SQLCipher
 - **Secure Key Management**: System keyring integration
-- **GDPR & HIPAA Compliant**: Meets regulatory requirements
-- **Zero Plaintext**: No sensitive data written unencrypted
+- **GDPR/HIPAA Alignment**: Provides encryption, TTL, and isolation controls that support regulated deployments
+- **Encrypted By Default**: Plaintext cache files require explicit encryption disablement
 - **Automatic Security**: Works out-of-the-box
 - **Recovery Options**: Clear backup and recovery procedures
 
@@ -479,7 +489,7 @@ uv run m365-mcp
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: 2025-10-14
-**Security Audit**: See `cache_update_v2/SECURITY_AUDIT_REPORT.md`
+**Document Version**: 1.1
+**Last Updated**: 2026-05-30
+**Security Audit**: See `docs/analysis_results.md`
 **Next Review**: Quarterly or after security incidents

@@ -14,13 +14,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Finding 2: ensure_safe_path currently treats the Windows drive root "
-        "as an alternate data stream segment."
-    ),
-    strict=True,
-)
 def test_windows_absolute_path_under_allowed_root_is_accepted(
     tmp_path: Path,
 ) -> None:

@@ -652,7 +652,7 @@ def email_send(
         try:
             cache_manager = get_cache_manager()
             cache_manager.invalidate_pattern(
-                "email_list:*folder*sent*", account_id=account_id
+                "email_list:*", account_id=account_id
             )
         except Exception:
             pass
@@ -698,7 +698,7 @@ def email_send(
         try:
             cache_manager = get_cache_manager()
             cache_manager.invalidate_pattern(
-                "email_list:*folder*sent*", account_id=account_id
+                "email_list:*", account_id=account_id
             )
         except Exception:
             pass
@@ -713,7 +713,7 @@ def email_send(
         try:
             cache_manager = get_cache_manager()
             cache_manager.invalidate_pattern(
-                "email_list:*folder*sent*", account_id=account_id
+                "email_list:*", account_id=account_id
             )
         except Exception:
             pass
@@ -848,10 +848,7 @@ def email_update(
     # Invalidate cache for the specific email
     try:
         cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern(
-            f"email_get:*email_id={email_id}*",
-            account_id=account_id,
-        )
+        cache_manager.invalidate_pattern("email_get:*", account_id=account_id)
     except Exception:
         # Don't fail the operation if cache invalidation fails
         pass
@@ -901,10 +898,7 @@ def email_delete(
         # Invalidate all email lists
         cache_manager.invalidate_pattern("email_list:*", account_id=account_id)
         # Invalidate the specific email
-        cache_manager.invalidate_pattern(
-            f"email_get:*email_id={email_id}*",
-            account_id=account_id,
-        )
+        cache_manager.invalidate_pattern("email_get:*", account_id=account_id)
     except Exception:
         # Don't fail the operation if cache invalidation fails
         pass
@@ -1365,10 +1359,7 @@ def email_mark_read(
     # Invalidate cache for the specific email and email lists
     try:
         cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern(
-            f"email_get:*email_id={message_id}*",
-            account_id=account,
-        )
+        cache_manager.invalidate_pattern("email_get:*", account_id=account)
         cache_manager.invalidate_pattern("email_list:*", account_id=account)
     except Exception:
         # Don't fail the operation if cache invalidation fails
@@ -1433,10 +1424,7 @@ def email_flag(
     # Invalidate cache for the specific email
     try:
         cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern(
-            f"email_get:*email_id={message_id}*",
-            account_id=account,
-        )
+        cache_manager.invalidate_pattern("email_get:*", account_id=account)
     except Exception:
         # Don't fail the operation if cache invalidation fails
         pass
@@ -1540,10 +1528,7 @@ def email_add_category(
     # Invalidate cache for the specific email
     try:
         cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern(
-            f"email_get:*email_id={message_id}*",
-            account_id=account,
-        )
+        cache_manager.invalidate_pattern("email_get:*", account_id=account)
     except Exception:
         # Don't fail the operation if cache invalidation fails
         pass

@@ -70,10 +70,12 @@ def test_account_authenticate_returns_flow_details(
     assert fake_app.scopes == account_tools.auth.DEVICE_FLOW_SCOPES
 
 
-def test_device_flow_scopes_request_offline_access() -> None:
-    """Device flow must request refresh tokens for silent renewal."""
+def test_device_flow_scopes_exclude_msal_reserved_scopes() -> None:
+    """MSAL adds OIDC scopes internally and rejects them as input."""
 
-    assert "offline_access" in account_tools.auth.DEVICE_FLOW_SCOPES
+    assert "offline_access" not in account_tools.auth.DEVICE_FLOW_SCOPES
+    assert "openid" not in account_tools.auth.DEVICE_FLOW_SCOPES
+    assert "profile" not in account_tools.auth.DEVICE_FLOW_SCOPES
 
 
 def test_get_token_accepts_username_identifier(

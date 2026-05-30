@@ -14,13 +14,10 @@ import msal
 CACHE_FILE = pl.Path.home() / ".m365_mcp_token_cache.json"
 METADATA_FILE = pl.Path.home() / ".m365_mcp_account_metadata.json"
 
-# Reserved scopes such as offline_access are needed for refresh tokens but can be
-# rejected by some tenants (notably certain personal accounts). We attempt to
-# include them first and retry against the consumers authority so personal
-# accounts still receive refresh tokens for silent renewal.
+# MSAL treats OIDC scopes such as offline_access as reserved and adds them
+# internally, so callers must only provide Graph scopes.
 SCOPES = ["https://graph.microsoft.com/.default"]
-RESERVED_SCOPES = ["offline_access"]
-DEVICE_FLOW_SCOPES = SCOPES + RESERVED_SCOPES
+DEVICE_FLOW_SCOPES = SCOPES
 INTERACTIVE_AUTH_ENV_VAR = "M365_MCP_INTERACTIVE_AUTH"
 
 logger = logging.getLogger(__name__)
@@ -152,10 +149,9 @@ def _initiate_device_flow(
 ) -> tuple[msal.PublicClientApplication, dict[str, Any]]:
     """Start a device code flow, retrying with a consumer authority if needed.
 
-    Certain personal Microsoft accounts can reject the ``offline_access`` scope
-    when using the ``common`` authority, which prevents refresh tokens from
-    being issued. To preserve silent renewal, retry with the ``consumers``
-    authority while reusing the same token cache.
+    If the configured authority rejects the flow in a way associated with
+    personal-account scope handling, retry with the ``consumers`` authority
+    while reusing the same token cache.
     """
 
     def _start(current_app: msal.PublicClientApplication) -> dict[str, Any]:
@@ -179,7 +175,7 @@ def _initiate_device_flow(
             raise
 
         logger.warning(
-            "Device flow rejected reserved scope offline_access; "
+            "Device flow rejected personal-account scope handling; "
             "retrying with the consumers authority",
         )
 

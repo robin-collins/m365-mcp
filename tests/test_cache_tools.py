@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.m365_mcp.cache import CacheManager
+from src.m365_mcp.cache_config import generate_cache_key
 
 
 @pytest.fixture
@@ -332,6 +333,60 @@ def test_cache_invalidate_with_reason(cache_manager):
     # Verify entry was deleted
     stats = cache_manager.get_stats()
     assert stats["entry_count"] == 0
+
+
+def test_cache_invalidate_tool_scopes_wildcard_by_account(
+    monkeypatch,
+    cache_manager,
+):
+    """Tool-level account filtering should not rewrite wildcard patterns."""
+    from src.m365_mcp.tools import cache_tools
+
+    target_account = "target@example.com"
+    other_account = "other@example.com"
+    params = {"folder_id": "inbox"}
+    cache_manager.set_cached(target_account, "email_list", params, {"messages": []})
+    cache_manager.set_cached(other_account, "email_list", params, {"messages": []})
+    monkeypatch.setattr(cache_tools, "get_cache_manager", lambda: cache_manager)
+
+    result = cache_tools.cache_invalidate.fn(
+        "email_list:*",
+        account_id=target_account,
+        reason="account_refresh",
+    )
+
+    assert result["entries_deleted"] == 1
+    assert result["pattern"] == "email_list:*"
+    assert result["account_id"] == target_account
+    assert cache_manager.get_cached(target_account, "email_list", params) is None
+    assert cache_manager.get_cached(other_account, "email_list", params) is not None
+
+
+def test_cache_invalidate_tool_scopes_exact_pattern_by_account(
+    monkeypatch,
+    cache_manager,
+):
+    """Exact patterns should still honor account_id filtering."""
+    from src.m365_mcp.tools import cache_tools
+
+    target_account = "target@example.com"
+    other_account = "other@example.com"
+    params = {"email_id": "message-1", "include_body": True}
+    cache_manager.set_cached(target_account, "email_get", params, {"id": "message-1"})
+    cache_manager.set_cached(other_account, "email_get", params, {"id": "message-1"})
+    pattern = generate_cache_key(target_account, "email_get", params)
+    monkeypatch.setattr(cache_tools, "get_cache_manager", lambda: cache_manager)
+
+    result = cache_tools.cache_invalidate.fn(
+        pattern,
+        account_id=target_account,
+        reason="message_update",
+    )
+
+    assert result["entries_deleted"] == 1
+    assert result["pattern"] == pattern
+    assert cache_manager.get_cached(target_account, "email_get", params) is None
+    assert cache_manager.get_cached(other_account, "email_get", params) is not None
 
 
 # Test 12: Test cache_warming_status when not initialized

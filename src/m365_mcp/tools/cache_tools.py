@@ -276,14 +276,11 @@ def cache_invalidate(
     """
     cache_mgr = get_cache_manager()
 
-    # Add account_id to pattern if specified
-    if account_id and ":*" in pattern and f":{account_id}:" not in pattern:
-        # Insert account_id into pattern
-        parts = pattern.split(":")
-        if len(parts) >= 2:
-            pattern = f"{parts[0]}:{account_id}:{':'.join(parts[1:])}"
-
-    deleted_count = cache_mgr.invalidate_pattern(pattern, reason=reason)
+    deleted_count = cache_mgr.invalidate_pattern(
+        pattern,
+        account_id=account_id,
+        reason=reason,
+    )
 
     return {
         "entries_deleted": deleted_count,

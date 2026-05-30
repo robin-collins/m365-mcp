@@ -13,7 +13,8 @@ def cache_manager(tmp_path):
     """Create a temporary cache manager for testing."""
     db_path = tmp_path / "test_cache.db"
     cache_mgr = CacheManager(db_path=str(db_path))
-    return cache_mgr
+    yield cache_mgr
+    cache_mgr.close()
 
 
 @pytest.fixture

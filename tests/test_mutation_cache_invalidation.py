@@ -12,10 +12,12 @@ from src.m365_mcp.tools import file as file_tools
 
 @pytest.fixture
 def cache_manager(tmp_path: Path) -> CacheManager:
-    return CacheManager(
+    manager = CacheManager(
         db_path=str(tmp_path / "mutation_cache.db"),
         encryption_enabled=False,
     )
+    yield manager
+    manager.close()
 
 
 def test_email_delete_invalidates_email_lists_for_only_target_account(

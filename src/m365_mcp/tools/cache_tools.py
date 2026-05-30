@@ -1,5 +1,6 @@
 """Cache management tools for M365 MCP Server."""
 
+import atexit
 from datetime import datetime
 from typing import Any, Optional
 from ..mcp_instance import mcp
@@ -8,6 +9,13 @@ from ..cache import CacheManager
 # Global cache manager instance (lazy-initialized)
 _cache_manager: Optional[CacheManager] = None
 _background_worker = None  # Will be set by background worker when initialized
+_cache_manager_atexit_registered = False
+
+
+def _close_cache_manager() -> None:
+    """Close the singleton cache manager during process shutdown."""
+    if _cache_manager is not None:
+        _cache_manager.close()
 
 
 def get_cache_manager() -> CacheManager:
@@ -18,8 +26,12 @@ def get_cache_manager() -> CacheManager:
         CacheManager: The global cache manager instance.
     """
     global _cache_manager
+    global _cache_manager_atexit_registered
     if _cache_manager is None:
         _cache_manager = CacheManager()
+        if not _cache_manager_atexit_registered:
+            atexit.register(_close_cache_manager)
+            _cache_manager_atexit_registered = True
     return _cache_manager
 
 

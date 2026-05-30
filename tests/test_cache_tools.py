@@ -21,7 +21,8 @@ def cache_manager(temp_cache_db: Path) -> CacheManager:
         db_path=str(temp_cache_db),
         encryption_enabled=False,  # Disable encryption for faster tests
     )
-    return cache_mgr
+    yield cache_mgr
+    cache_mgr.close()
 
 
 # Test 1: Test get_cache_manager helper function
@@ -31,6 +32,7 @@ def test_get_cache_manager_creates_instance(tmp_path):
 
     # Reset global instance
     cache_tools._cache_manager = None
+    manager = None
 
     try:
         # Create a cache manager with a temp path to avoid conflicts
@@ -47,6 +49,8 @@ def test_get_cache_manager_creates_instance(tmp_path):
 
     finally:
         # Cleanup
+        if manager is not None:
+            manager.close()
         cache_tools._cache_manager = None
 
 

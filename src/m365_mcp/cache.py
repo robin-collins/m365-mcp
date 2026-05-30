@@ -144,13 +144,19 @@ class CacheManager:
         finally:
             if not should_repool:
                 conn.close()
-                return
+            else:
+                # Return to pool if under limit
+                with self._pool_lock:
+                    if len(self._connection_pool) < self.max_connections:
+                        self._connection_pool.append(conn)
+                    else:
+                        conn.close()
 
-            # Return to pool if under limit
-            with self._pool_lock:
-                if len(self._connection_pool) < self.max_connections:
-                    self._connection_pool.append(conn)
-                    return
+    def close(self) -> None:
+        """Close all pooled database connections."""
+        with self._pool_lock:
+            while self._connection_pool:
+                conn = self._connection_pool.pop()
                 conn.close()
 
     def _init_database(self) -> None:

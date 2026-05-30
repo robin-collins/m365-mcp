@@ -30,7 +30,9 @@ def temp_db():
 @pytest.fixture
 def cache_manager(temp_db):
     """Create CacheManager instance for testing."""
-    return CacheManager(db_path=temp_db, encryption_enabled=False)
+    manager = CacheManager(db_path=temp_db, encryption_enabled=False)
+    yield manager
+    manager.close()
 
 
 @pytest.fixture

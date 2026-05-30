@@ -35,13 +35,17 @@ def temp_cache_db():
 @pytest.fixture
 def cache_manager(temp_cache_db):
     """Create cache manager instance for testing."""
-    return CacheManager(db_path=temp_cache_db, encryption_enabled=True)
+    manager = CacheManager(db_path=temp_cache_db, encryption_enabled=True)
+    yield manager
+    manager.close()
 
 
 @pytest.fixture
 def cache_manager_no_encryption(temp_cache_db):
     """Create cache manager without encryption for testing."""
-    return CacheManager(db_path=temp_cache_db, encryption_enabled=False)
+    manager = CacheManager(db_path=temp_cache_db, encryption_enabled=False)
+    yield manager
+    manager.close()
 
 
 class TestCacheBasics:
@@ -52,6 +56,7 @@ class TestCacheBasics:
         manager = CacheManager(db_path=temp_cache_db, encryption_enabled=False)
 
         assert manager.max_connections == CONNECTION_POOL_SIZE
+        manager.close()
 
     def test_cache_initialization(self, cache_manager):
         """Test cache manager initializes correctly."""
@@ -120,6 +125,7 @@ class TestCacheBasics:
             results = list(executor.map(round_trip, range(24)))
 
         assert results == [{"value": index} for index in range(24)]
+        manager.close()
 
     def test_erroring_connection_is_not_returned_to_pool(self, tmp_path):
         """Connections that error should be discarded instead of reused."""
@@ -139,6 +145,7 @@ class TestCacheBasics:
                 raise RuntimeError("boom")
 
         assert manager._connection_pool == []
+        manager.close()
 
 
 class TestCacheCompression:
@@ -464,6 +471,7 @@ class TestCacheEncryption:
         )
 
         assert manager.encryption_enabled is False
+        manager.close()
 
     def test_encrypted_cache_creation(self, cache_manager):
         """Test encrypted cache is created."""

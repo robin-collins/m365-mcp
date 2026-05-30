@@ -153,12 +153,11 @@ def cache_get_stats() -> dict[str, Any]:
     Returns:
         Dictionary containing cache statistics:
         - total_entries: Total number of cached entries
-        - total_size_bytes: Total size of cache in bytes
+        - total_bytes: Total size of cache in bytes
         - total_size_mb: Total size in megabytes
         - size_percentage: Percentage of max cache size used
-        - hit_count: Number of cache hits
-        - miss_count: Number of cache misses
-        - hit_rate: Cache hit rate (0.0-1.0)
+        - total_hits: Number of cache hits
+        - hit_rate: None until cache misses are tracked
         - entries_by_resource_type: Count of entries per resource type
         - average_entry_size_bytes: Average size per entry
         - compressed_entries: Number of compressed entries
@@ -169,7 +168,6 @@ def cache_get_stats() -> dict[str, Any]:
 
     Example:
         stats = cache_get_stats()
-        print(f"Cache hit rate: {stats['hit_rate']:.2%}")
         print(f"Cache size: {stats['total_size_mb']:.2f} MB")
         print(f"Size used: {stats['size_percentage']:.1f}%")
     """
@@ -177,18 +175,15 @@ def cache_get_stats() -> dict[str, Any]:
     stats = cache_mgr.get_stats()
 
     # Add human-readable fields
-    total_bytes = stats.get("total_size_bytes", 0)
+    total_bytes = stats.get("total_bytes", 0)
+    stats["total_size_bytes"] = total_bytes
     stats["total_size_mb"] = total_bytes / (1024 * 1024)
 
-    # Calculate size percentage
-    max_size = 2 * 1024 * 1024 * 1024  # 2GB limit
-    stats["size_percentage"] = (total_bytes / max_size) * 100
+    stats["size_percentage"] = stats.get("usage_percent", 0.0)
 
-    # Calculate hit rate
-    hits = stats.get("hit_count", 0)
-    misses = stats.get("miss_count", 0)
-    total_requests = hits + misses
-    stats["hit_rate"] = hits / total_requests if total_requests > 0 else 0.0
+    # Misses are not tracked yet, so a truthful hit rate cannot be computed.
+    stats["miss_count"] = None
+    stats["hit_rate"] = None
 
     # Check if cleanup should be triggered
     stats["cleanup_triggered"] = stats["size_percentage"] >= 80.0

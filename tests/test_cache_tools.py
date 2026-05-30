@@ -132,6 +132,31 @@ def test_cache_get_stats(cache_manager):
     assert stats["total_bytes"] > 0
 
 
+def test_cache_get_stats_tool_uses_cache_manager_keys(monkeypatch):
+    """Tool stats should use the keys returned by CacheManager.get_stats."""
+    from src.m365_mcp.tools import cache_tools
+
+    fake_manager = MagicMock()
+    fake_manager.get_stats.return_value = {
+        "entry_count": 3,
+        "total_bytes": 1024 * 1024,
+        "total_hits": 7,
+        "usage_percent": 81.5,
+    }
+    monkeypatch.setattr(cache_tools, "get_cache_manager", lambda: fake_manager)
+
+    stats = cache_tools.cache_get_stats.fn()
+
+    assert stats["entry_count"] == 3
+    assert stats["total_bytes"] == 1024 * 1024
+    assert stats["total_size_bytes"] == 1024 * 1024
+    assert stats["total_size_mb"] == 1.0
+    assert stats["size_percentage"] == 81.5
+    assert stats["cleanup_triggered"] is True
+    assert stats["hit_rate"] is None
+    assert stats["miss_count"] is None
+
+
 # Test 5: Test cache invalidation
 def test_cache_invalidate(cache_manager):
     """Test invalidating cache entries by pattern."""

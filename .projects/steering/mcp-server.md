@@ -33,7 +33,13 @@ def manage_emails(account_id: str, action: str, **kwargs) -> Any:
 ```
 
 ### Tool Signature Standards
-- **Account isolation**: `account_id: str` as first parameter for all tools
+- **Account isolation**: account-scoped tools must expose `account_id: str`
+  and use it for all Microsoft Graph/cache operations.
+- **Signature compatibility**: preserve existing public tool parameter order.
+  Do not reorder established tools solely to move `account_id` first; that is
+  a breaking API change for generated clients and saved tool calls. For new
+  tools, follow the surrounding tool family convention and document any
+  deliberate deviation.
 - **Type safety**: Complete type annotations for all parameters and returns
 - **Error handling**: Proper exception raising with descriptive messages
 - **Documentation**: Google-style docstrings with Args, Returns, Raises sections

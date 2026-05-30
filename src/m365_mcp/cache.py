@@ -25,7 +25,10 @@ from .cache_config import (
     CACHE_DB_PATH,
     TTL_POLICIES,
     CACHE_LIMITS,
+    CONNECTION_POOL_SIZE,
+    CONNECTION_TIMEOUT,
     CacheState,
+    SQLCIPHER_SETTINGS,
     generate_cache_key,
 )
 
@@ -48,7 +51,7 @@ class CacheManager:
         self,
         db_path: Optional[str] = None,
         encryption_enabled: bool = True,
-        max_connections: int = 5,
+        max_connections: int = CONNECTION_POOL_SIZE,
     ):
         """
         Initialize cache manager.
@@ -87,11 +90,17 @@ class CacheManager:
         Returns:
             SQLite connection with encryption configured.
         """
-        conn = sqlite3.connect(str(self.db_path))  # type: ignore[attr-defined]
+        conn = sqlite3.connect(  # type: ignore[attr-defined]
+            str(self.db_path),
+            timeout=CONNECTION_TIMEOUT,
+        )
 
         if self.encryption_enabled and self.encryption_key:
             # Set encryption key for SQLCipher
             conn.execute(f"PRAGMA key = '{self.encryption_key}'")
+            for setting, value in SQLCIPHER_SETTINGS.items():
+                pragma_value = int(value) if isinstance(value, bool) else value
+                conn.execute(f"PRAGMA {setting} = {pragma_value}")
             conn.execute("PRAGMA cipher_compatibility = 4")
 
         # Performance optimizations

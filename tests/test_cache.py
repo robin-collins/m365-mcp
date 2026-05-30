@@ -6,10 +6,16 @@ import pytest
 import tempfile
 from pathlib import Path
 import time
+from types import SimpleNamespace
 
 from src.m365_mcp import cache as cache_module
 from src.m365_mcp.cache import CacheManager, CacheState
-from src.m365_mcp.cache_config import generate_cache_key
+from src.m365_mcp.cache_config import (
+    CONNECTION_POOL_SIZE,
+    CONNECTION_TIMEOUT,
+    SQLCIPHER_SETTINGS,
+    generate_cache_key,
+)
 
 
 @pytest.fixture
@@ -39,6 +45,12 @@ def cache_manager_no_encryption(temp_cache_db):
 
 class TestCacheBasics:
     """Test basic cache operations."""
+
+    def test_cache_uses_configured_pool_size_by_default(self, temp_cache_db):
+        """Default pool size should come from cache configuration."""
+        manager = CacheManager(db_path=temp_cache_db, encryption_enabled=False)
+
+        assert manager.max_connections == CONNECTION_POOL_SIZE
 
     def test_cache_initialization(self, cache_manager):
         """Test cache manager initializes correctly."""
@@ -342,6 +354,49 @@ class TestCacheStats:
 
 class TestCacheEncryption:
     """Test encryption functionality."""
+
+    def test_connection_uses_configured_timeout_and_sqlcipher_pragmas(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Connection setup should apply central cache configuration."""
+        statements: list[str] = []
+        captured: dict[str, object] = {}
+
+        class FakeConnection:
+            row_factory = None
+
+            def execute(self, statement: str):
+                statements.append(statement)
+                return self
+
+        def fake_connect(path: str, **kwargs):
+            captured["path"] = path
+            captured["kwargs"] = kwargs
+            return FakeConnection()
+
+        monkeypatch.setattr(
+            cache_module,
+            "sqlite3",
+            SimpleNamespace(connect=fake_connect, Row=object),
+        )
+
+        manager = CacheManager.__new__(CacheManager)
+        manager.db_path = tmp_path / "configured.db"
+        manager.encryption_enabled = True
+        manager.encryption_key = "test-key"
+
+        conn = manager._create_connection()
+
+        assert isinstance(conn, FakeConnection)
+        assert captured["path"] == str(manager.db_path)
+        assert captured["kwargs"] == {"timeout": CONNECTION_TIMEOUT}
+        assert "PRAGMA key = 'test-key'" in statements
+        for setting, value in SQLCIPHER_SETTINGS.items():
+            pragma_value = int(value) if isinstance(value, bool) else value
+            assert f"PRAGMA {setting} = {pragma_value}" in statements
+        assert "PRAGMA cipher_compatibility = 4" in statements
 
     def test_encryption_requires_sqlcipher(self, tmp_path, monkeypatch):
         """Encrypted mode should fail loudly without SQLCipher."""

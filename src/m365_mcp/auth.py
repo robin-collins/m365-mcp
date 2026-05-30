@@ -1,10 +1,11 @@
+import pathlib as pl
 import json
 import logging
 import os
 import sys
-import pathlib as pl
+from typing import Any, NamedTuple
+
 import msal
-from typing import NamedTuple, Any
 
 # Note: Environment variables should be loaded by the caller (server.py or authenticate.py)
 # before importing this module
@@ -19,7 +20,7 @@ METADATA_FILE = pl.Path.home() / ".m365_mcp_account_metadata.json"
 # accounts still receive refresh tokens for silent renewal.
 SCOPES = ["https://graph.microsoft.com/.default"]
 RESERVED_SCOPES = ["offline_access"]
-DEVICE_FLOW_SCOPES = SCOPES
+DEVICE_FLOW_SCOPES = SCOPES + RESERVED_SCOPES
 INTERACTIVE_AUTH_ENV_VAR = "M365_MCP_INTERACTIVE_AUTH"
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,18 @@ class Account(NamedTuple):
     username: str
     account_id: str
     account_type: str  # "personal", "work_school", or "unknown"
+
+
+class ReauthenticationResult(NamedTuple):
+    account: Account
+    expires_in: int | None
+
+
+class AccountRemovalResult(NamedTuple):
+    account: Account
+    token_cache_removed: bool
+    metadata_removed: bool
+    database_cache_removed: dict[str, int]
 
 
 def _select_account(
@@ -230,7 +243,85 @@ def get_app() -> tuple[msal.PublicClientApplication, str]:
     return app, tenant_id
 
 
-def get_token(account_id: str | None = None) -> str:
+def _find_cached_account(
+    app: msal.PublicClientApplication, account_identifier: str | None = None
+) -> dict[str, str]:
+    """Find a cached MSAL account by ID or username.
+
+    Args:
+        app: MSAL public client application.
+        account_identifier: Optional home account ID or username. If omitted,
+            exactly one cached account must exist.
+
+    Returns:
+        The matching MSAL account dictionary.
+
+    Raises:
+        RuntimeError: If no accounts are cached.
+        ValueError: If the account cannot be selected unambiguously.
+    """
+    accounts = app.get_accounts()
+    if not accounts:
+        raise RuntimeError(
+            "No Microsoft accounts are configured. Run `uv run authenticate.py` "
+            "to authenticate an account first."
+        )
+
+    if account_identifier:
+        selector = account_identifier.lower()
+        matches = [
+            account
+            for account in accounts
+            if account.get("home_account_id", "").lower() == selector
+            or account.get("username", "").lower() == selector
+        ]
+        if not matches:
+            raise ValueError(
+                f"No configured account matches '{account_identifier}'. "
+                "Use `uv run authenticate.py` to list accounts."
+            )
+        if len(matches) > 1:
+            raise ValueError(
+                f"Multiple accounts match '{account_identifier}'. "
+                "Use the full account ID."
+            )
+        return matches[0]
+
+    if len(accounts) > 1:
+        raise ValueError(
+            "Multiple accounts are configured. Provide an account ID or username."
+        )
+
+    return accounts[0]
+
+
+def _account_from_msal(account: dict[str, str], detect_type: bool = True) -> Account:
+    """Convert an MSAL account dictionary into this module's public Account."""
+    account_id = account["home_account_id"]
+    username = account["username"]
+    if detect_type:
+        account_type = _get_account_type(account_id, username)
+    else:
+        metadata = _read_metadata()
+        account_type = metadata.get(account_id, {}).get("account_type", "unknown")
+
+    return Account(
+        username=username,
+        account_id=account_id,
+        account_type=account_type,
+    )
+
+
+def _save_token_cache_if_changed(app: msal.PublicClientApplication) -> bool:
+    """Persist the MSAL token cache when it has changed."""
+    cache = app.token_cache
+    if isinstance(cache, msal.SerializableTokenCache) and cache.has_state_changed:
+        _write_cache(cache.serialize())
+        return True
+    return False
+
+
+def get_token(account_id: str | None = None, force_refresh: bool = False) -> str:
     app, tenant_id = get_app()
 
     accounts = app.get_accounts()
@@ -243,7 +334,11 @@ def get_token(account_id: str | None = None) -> str:
     elif accounts:
         account = accounts[0]
 
-    result = app.acquire_token_silent(SCOPES, account=account)
+    if account_id and account is None:
+        _raise_interactive_auth_required(account_id)
+
+    silent_kwargs = {"force_refresh": True} if force_refresh else {}
+    result = app.acquire_token_silent(SCOPES, account=account, **silent_kwargs)
 
     if result and "error" in result:
         logger.warning(
@@ -277,9 +372,7 @@ def get_token(account_id: str | None = None) -> str:
             f"Auth failed: {result.get('error_description', result['error'])}"
         )
 
-    cache = app.token_cache
-    if isinstance(cache, msal.SerializableTokenCache) and cache.has_state_changed:
-        _write_cache(cache.serialize())
+    _save_token_cache_if_changed(app)
 
     # Detect and cache account type for this account
     if account:
@@ -312,6 +405,107 @@ def list_accounts() -> list[Account]:
         )
 
     return accounts
+
+
+def reauthenticate_account(account_id: str | None = None) -> ReauthenticationResult:
+    """Force-refresh a cached account token using MSAL's refresh token.
+
+    Args:
+        account_id: Optional account ID or username to refresh. Required when
+            multiple accounts are configured.
+
+    Returns:
+        Account details and the token lifetime in seconds, when provided by MSAL.
+
+    Raises:
+        RuntimeError: If no refresh token is available or Microsoft rejects the
+            silent refresh.
+        ValueError: If the account cannot be selected.
+    """
+    app, _tenant_id = get_app()
+    account = _find_cached_account(app, account_id)
+
+    result = app.acquire_token_silent_with_error(
+        SCOPES,
+        account=account,
+        force_refresh=True,
+    )
+    if not result:
+        raise RuntimeError(
+            f"No cached refresh token is available for {account['username']}. "
+            "Run `uv run authenticate.py --remove` for this account, then "
+            "`uv run authenticate.py` to sign in again."
+        )
+
+    if "error" in result:
+        error = result.get("error")
+        description = result.get("error_description", "no description")
+        raise RuntimeError(
+            f"Token refresh failed for {account['username']}: {error} - {description}"
+        )
+
+    _save_token_cache_if_changed(app)
+    refreshed_account = _account_from_msal(account)
+    expires_in = result.get("expires_in")
+    return ReauthenticationResult(
+        account=refreshed_account,
+        expires_in=expires_in if isinstance(expires_in, int) else None,
+    )
+
+
+def _remove_account_database_cache(account_id: str) -> dict[str, int]:
+    """Remove per-account entries from the encrypted database cache."""
+    from .cache import CacheManager
+    from .cache_config import CACHE_DB_PATH
+
+    cache_path = pl.Path(CACHE_DB_PATH)
+    if not cache_path.exists():
+        return {
+            "cache_entries": 0,
+            "cache_tasks": 0,
+            "cache_invalidation": 0,
+        }
+
+    cache_manager = CacheManager()
+    try:
+        return cache_manager.remove_account_cache(account_id)
+    finally:
+        cache_manager.close()
+
+
+def remove_account(account_id: str) -> AccountRemovalResult:
+    """Remove an account and its cached token, metadata, and data cache.
+
+    Args:
+        account_id: Account ID or username to remove.
+
+    Returns:
+        Details about the removed account and cache rows deleted.
+
+    Raises:
+        RuntimeError: If no configured accounts exist.
+        ValueError: If the account cannot be selected.
+    """
+    app, _tenant_id = get_app()
+    account = _find_cached_account(app, account_id)
+    removed_account = _account_from_msal(account, detect_type=False)
+
+    app.remove_account(account)
+    token_cache_removed = _save_token_cache_if_changed(app)
+
+    metadata = _read_metadata()
+    metadata_removed = metadata.pop(removed_account.account_id, None) is not None
+    if metadata_removed:
+        _write_metadata(metadata)
+
+    database_cache_removed = _remove_account_database_cache(removed_account.account_id)
+
+    return AccountRemovalResult(
+        account=removed_account,
+        token_cache_removed=token_cache_removed,
+        metadata_removed=metadata_removed,
+        database_cache_removed=database_cache_removed,
+    )
 
 
 def authenticate_new_account() -> Account | None:

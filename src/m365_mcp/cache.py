@@ -96,15 +96,6 @@ class CacheManager:
         self._init_database()
         logger.info(f"Cache manager initialized at {self.db_path}")
 
-    def close(self) -> None:
-        """Close all connections in the connection pool."""
-        while self._connection_pool:
-            conn = self._connection_pool.pop()
-            try:
-                conn.close()
-            except Exception:
-                pass
-
     def __del__(self) -> None:
         self.close()
 
@@ -536,6 +527,40 @@ class CacheManager:
             logger.info(f"Cleaned up {count} expired entries")
 
         return count
+
+    def remove_account_cache(self, account_id: str) -> dict[str, int]:
+        """Remove all cache rows scoped to an account.
+
+        Args:
+            account_id: Microsoft account identifier.
+
+        Returns:
+            Mapping of cache table names to deleted row counts.
+        """
+        with self._db() as conn:
+            entries = conn.execute(
+                "DELETE FROM cache_entries WHERE account_id = ?",
+                (account_id,),
+            ).rowcount
+            tasks = conn.execute(
+                "DELETE FROM cache_tasks WHERE account_id = ?",
+                (account_id,),
+            ).rowcount
+            invalidations = conn.execute(
+                "DELETE FROM cache_invalidation WHERE account_id = ?",
+                (account_id,),
+            ).rowcount
+
+        deleted = {
+            "cache_entries": entries,
+            "cache_tasks": tasks,
+            "cache_invalidation": invalidations,
+        }
+        logger.info(
+            "Removed account cache rows",
+            extra={"account_id": account_id, **deleted},
+        )
+        return deleted
 
     @staticmethod
     def _serialize_task_parameters(parameters: dict[str, Any]) -> str:

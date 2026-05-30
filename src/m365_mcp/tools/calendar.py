@@ -963,7 +963,9 @@ def calendar_list_calendars(
         graph.request_paginated(
             "/me/calendars",
             account_id,
-            params={"$select": "id,name,color,canEdit,canShare,canViewPrivateItems,owner,isDefaultCalendar"},
+            params={
+                "$select": "id,name,color,canEdit,canShare,canViewPrivateItems,owner,isDefaultCalendar"
+            },
         )
     )
 

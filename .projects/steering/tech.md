@@ -105,9 +105,8 @@ uv run authenticate.py
 
 # Complete authentication flow
 uv run python -c "
-import asyncio
-from src.m365_mcp.tools import complete_authentication
-result = asyncio.run(complete_authentication('your-flow-cache'))
+from src.m365_mcp.tools import account_complete_auth
+result = account_complete_auth.fn('your-flow-cache')
 print(result)
 "
 ```
@@ -127,6 +126,8 @@ print(result)
 
 ### Architecture Patterns
 - **MCP Tool Pattern** - All Microsoft 365 operations exposed as MCP tools
+- **Modular Tool Package** - Tool implementations live under `src/m365_mcp/tools/`
+  and register against the shared FastMCP instance from `mcp_instance.py`
 - **Authentication Proxy** - Centralized token management and refresh
 - **Graph API Client** - Unified HTTP client with retry logic and rate limiting
 - **Multi-account Support** - Account isolation and context management
@@ -146,9 +147,12 @@ print(result)
 - **Smart Invalidation** - Pattern-based cache invalidation on write operations
 - **Connection Pooling** - Pool of 5 SQLite connections for concurrent access
 - **Automatic Cleanup** - Triggers at 80% of 2GB limit, reduces to 60% target
-- **Cache Warming** - Background pre-population on server startup (non-blocking)
+- **Cache Warming** - Background pre-population and stale-cache refresh are
+  wired behind `M365_MCP_CACHE_WARMING=true`; default startup leaves the worker
+  inactive
 - **Performance Impact** - 300x faster for folder_get_tree, 40-100x for email_list/file_list
-- **Encryption Key Management** - System keyring integration with environment fallback
+- **Encryption Key Management** - System keyring integration with environment
+  fallback and explicit warnings for non-persistent generated keys
 
 ### Large Dataset Handling
 - **Pagination** - Efficient handling of large result sets
@@ -158,9 +162,10 @@ print(result)
 ## Security Model
 
 ### Authentication Flow
-1. **Device Code Flow** - User-friendly authentication for installed applications
-2. **Token Caching** - Secure local storage of refresh tokens
-3. **Scope Management** - Minimal required permissions for security
+1. **Device Code Flow** - User-friendly authentication for installed applications through `authenticate.py` or `M365_MCP_INTERACTIVE_AUTH=true`
+2. **Silent Token Use** - Normal MCP requests fail fast with an actionable error if no cached token is available
+3. **Token Caching** - Secure local storage of refresh tokens
+4. **Scope Management** - Minimal required permissions for security
 
 ### Transport Security
 - **stdio Mode** - Inherently secure through process isolation
@@ -168,7 +173,7 @@ print(result)
 - **Environment Variables** - Secure configuration management
 
 ### Data Security
-- **Cache Encryption** - AES-256 encryption for all cached data via SQLCipher
+- **Cache Encryption** - AES-256 encryption for cached data via SQLCipher by default; startup fails if SQLCipher is unavailable while encryption is enabled
 - **Key Storage** - Secure keyring integration (macOS Keychain, Windows Credential Manager, Linux Secret Service)
-- **Key Fallback** - Environment variable `M365_MCP_CACHE_KEY` for headless servers
-- **Compliance** - GDPR Article 32 and HIPAA §164.312 compliant encryption
+- **Key Fallback** - Environment variable `M365_MCP_CACHE_KEY` for headless servers; generated ephemeral keys are warned and not durable
+- **Compliance** - Encryption, TTL, and account isolation controls for GDPR/HIPAA-aligned deployments

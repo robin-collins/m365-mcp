@@ -110,6 +110,9 @@ def test_search_events_filters_by_range(
     from src.m365_mcp import search_router
 
     monkeypatch.setattr(search_router, "search_events", fake_search_events)
+    monkeypatch.setattr(
+        search_tools, "_get_account_type", lambda account_id: "personal"
+    )
 
     results = search_tools.search_events.fn(
         query="meeting",
@@ -164,6 +167,9 @@ def test_search_files_trims_query(
     from src.m365_mcp import search_router
 
     monkeypatch.setattr(search_router, "search_files", fake_search_files)
+    monkeypatch.setattr(
+        search_tools, "_get_account_type", lambda account_id: "personal"
+    )
 
     search_tools.search_files.fn(
         query="  quarterly report ",
@@ -175,3 +181,48 @@ def test_search_files_trims_query(
     assert captured["query"] == "quarterly report"
     assert captured["account_id"] == mock_account_id
     assert captured["limit"] == 25
+
+
+@pytest.mark.parametrize(
+    ("query", "literal"),
+    [
+        ("O'Brien", "'O''Brien'"),
+        ("O''Brien", "'O''''Brien'"),
+        ("x') or startswith(displayName,'", "'x'') or startswith(displayName,'''"),
+    ],
+)
+def test_contact_search_escapes_odata_string_literals(
+    monkeypatch: pytest.MonkeyPatch,
+    mock_account_id: str,
+    query: str,
+    literal: str,
+) -> None:
+    from src.m365_mcp import search_router
+
+    captured: dict[str, Any] = {}
+
+    def fake_request(
+        method: str,
+        path: str,
+        account_id: str,
+        params: dict[str, Any],
+    ) -> dict[str, list[Any]]:
+        captured["method"] = method
+        captured["path"] = path
+        captured["account_id"] = account_id
+        captured["filter"] = params["$filter"]
+        return {"value": []}
+
+    monkeypatch.setattr(search_router.graph, "request", fake_request)
+
+    result = search_router._search_contacts_filter(mock_account_id, query, limit=25)
+
+    assert result == []
+    assert captured["method"] == "GET"
+    assert captured["path"] == "/me/contacts"
+    assert captured["account_id"] == mock_account_id
+    assert captured["filter"] == (
+        f"startswith(displayName,{literal}) or "
+        f"startswith(givenName,{literal}) or "
+        f"startswith(surname,{literal})"
+    )

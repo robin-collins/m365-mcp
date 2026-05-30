@@ -13,26 +13,29 @@ M365 MCP is a Model Context Protocol (MCP) server that provides AI assistants wi
 - **`src/m365_mcp/server.py`**: Entry point that initializes the FastMCP server
 - **`src/m365_mcp/auth.py`**: Handles MSAL authentication using device flow, token caching to `~/.m365_mcp_token_cache.json`, and multi-account management
 - **`src/m365_mcp/graph.py`**: HTTP client wrapper for Microsoft Graph API with retry logic, pagination, chunked uploads (15×320 KiB chunks), and rate limiting handling
-- **`src/m365_mcp/tools.py`**: Defines 51 MCP tools using FastMCP decorators (`@mcp.tool`)
+- **`src/m365_mcp/mcp_instance.py`**: Defines the shared FastMCP instance
+- **`src/m365_mcp/tools/`**: Modular MCP tool package; each domain module
+  registers tools with FastMCP decorators (`@mcp.tool`)
 - **`authenticate.py`**: Standalone script for interactive account authentication
 
 ### Cache System
 
 - **`src/m365_mcp/cache.py`**: Encrypted SQLite cache manager with AES-256 encryption via SQLCipher
 - **`src/m365_mcp/cache_config.py`**: Cache configuration, TTL policies, and cache key generation
-- **`src/m365_mcp/cache_warming.py`**: Automatic cache warming on server startup for faster first requests
-- **`src/m365_mcp/background_worker.py`**: Async background worker for cache warming and maintenance tasks
-- **`src/m365_mcp/encryption.py`**: Encryption key management with keyring integration and environment fallback
-- **`src/m365_mcp/cache_migration.py`**: Database migration utilities for cache schema updates
+- **`src/m365_mcp/cache_warming.py`**: Optional startup cache warming when `M365_MCP_CACHE_WARMING=true`
+- **`src/m365_mcp/background_worker.py`**: Async background worker for cache warming and stale-cache refresh tasks
+- **`src/m365_mcp/encryption.py`**: Encryption key management with keyring integration, environment fallback, and ephemeral-key warnings
 
 ### Key Design Patterns
 
-- **Multi-Account Architecture**: All tool functions require `account_id` as first parameter. Use `list_accounts()` to get available account IDs.
-- **Token Management**: Uses MSAL `PublicClientApplication` with device flow authentication. Tokens are automatically refreshed and cached.
+- **Multi-Account Architecture**: Account-scoped tool functions require `account_id`, but established public signatures preserve their historical parameter order. Use `account_list()` to get available account IDs.
+- **Token Management**: Uses MSAL `PublicClientApplication` with cached silent refresh during normal MCP requests. The interactive device flow is enabled by `authenticate.py` or `M365_MCP_INTERACTIVE_AUTH=true`.
 - **Pagination**: `graph.request_paginated()` follows `@odata.nextLink` for large result sets
 - **Large File Handling**: Files >4.8MB use resumable upload sessions via `graph.upload_large_file()` and `graph.upload_large_mail_attachment()`
 - **Error Handling**: Graph requests implement exponential backoff for 5xx errors and respect 429 rate limit headers
-- **Encrypted Caching**: AES-256 encrypted SQLite cache with automatic compression, TTL management, and cache warming for 300x performance improvement on repeated operations
+- **Encrypted Caching**: AES-256 encrypted SQLite cache with automatic
+  compression, TTL management, and on-demand cache hits for large performance
+  improvements on repeated operations
 
 ### Cache Architecture
 
@@ -43,7 +46,8 @@ The M365 MCP server includes a comprehensive caching system that dramatically im
 1. **AES-256 Encryption**: All cached data is encrypted at rest using SQLCipher
    - Encryption keys stored securely in system keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service)
    - Environment variable fallback for headless servers (`M365_MCP_CACHE_KEY`)
-   - GDPR and HIPAA compliant data protection
+   - Startup fails if SQLCipher is unavailable while encryption is enabled
+   - Generated non-persistent keys are allowed only with an explicit warning
 
 2. **Intelligent TTL Management**: Three-state cache lifecycle
    - **Fresh** (0-5 min for folder tree, 0-5 min for emails): Return immediately, no API call
@@ -56,10 +60,9 @@ The M365 MCP server includes a comprehensive caching system that dramatically im
    - Pattern-based invalidation (e.g., `email_*` invalidates all email caches)
    - Account-isolated invalidation (changes to account A don't affect account B)
 
-5. **Cache Warming**: Automatic background cache population on server startup
-   - Non-blocking startup (server responds immediately)
-   - Prioritized queue (folder trees → email lists → file lists)
-   - Throttled execution to respect API rate limits
+5. **Cache Warming**: Startup warming and stale-cache background refresh are
+   wired behind `M365_MCP_CACHE_WARMING=true`; disabled-by-default mode reports
+   an inactive status provider
 
 6. **Connection Pooling**: Pool of 5 SQLite connections for concurrent access
 
@@ -70,13 +73,13 @@ The M365 MCP server includes a comprehensive caching system that dramatically im
 
 #### Cache Tools
 
-Five new MCP tools for cache management:
+Five MCP tools for cache management:
 
 1. **`cache_get_stats()`**: View cache statistics (size, entries, hit rate)
 2. **`cache_invalidate(pattern, account_id?, reason?)`**: Manually invalidate cache entries
-3. **`cache_task_enqueue(task_type, params, priority?)`**: Queue background cache task
-4. **`cache_task_status(task_id)`**: Check status of background task
-5. **`cache_task_list(account_id?, status?)`**: List all queued/running tasks
+3. **`cache_task_get_status(task_id)`**: Check status of background task
+4. **`cache_task_list(account_id?, status?)`**: List queued/running tasks
+5. **`cache_warming_status()`**: Report startup warming and stale refresh status
 
 #### Performance Impact
 
@@ -166,12 +169,12 @@ Tests in `tests/test_integration.py` run against live Microsoft Graph API and re
 
 ### Working with Account IDs
 ```python
-# All tools require account_id as first parameter
-accounts = list_accounts()
+# Account-scoped tools require account_id; check each tool schema for ordering
+accounts = account_list()
 account_id = accounts[0]["account_id"]
 
 # Use in tool calls
-send_email(account_id, to="user@example.com", subject="Test", body="Hello")
+email_send(account_id, to="user@example.com", subject="Test", body="Hello")
 ```
 
 ### Email with Attachments
@@ -182,22 +185,24 @@ attachments = [{
     "content_bytes": base64_string,
     "content_type": "application/pdf"
 }]
-send_email(account_id, to="...", subject="...", body="...", attachments=attachments)
+email_send(account_id, to="...", subject="...", body="...", attachments=attachments)
 ```
 
 ### File Uploads
 ```python
 # Files auto-switch to chunked upload for files >4.8MB
-create_file(
-    account_id=account_id,
+file_create(
+    onedrive_path="/Uploads/file.pdf",
     local_file_path="/path/to/file.pdf",
-    parent_folder_id="root"  # Use "root" for OneDrive root
+    account_id=account_id,
 )
 ```
 
 ## Important Notes
 
-- FastMCP handles tool registration via decorators; tools are auto-discovered from `tools.py`
+- FastMCP handles tool registration via decorators; importing
+  `src/m365_mcp/tools/__init__.py` loads the domain modules and registers tools
+  against `mcp_instance.mcp`
 - Graph API requests automatically add `ConsistencyLevel: eventual` header for search queries
 - Email body content returns as plain text (via `outlook.body-content-type="text"` preference header)
 - Folder names in `FOLDERS` dict map user-friendly names to Graph API folder IDs (e.g., "deleted" → "deleteditems")

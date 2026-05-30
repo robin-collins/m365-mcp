@@ -19,7 +19,8 @@ METADATA_FILE = pl.Path.home() / ".m365_mcp_account_metadata.json"
 # accounts still receive refresh tokens for silent renewal.
 SCOPES = ["https://graph.microsoft.com/.default"]
 RESERVED_SCOPES = ["offline_access"]
-DEVICE_FLOW_SCOPES = SCOPES 
+DEVICE_FLOW_SCOPES = SCOPES
+INTERACTIVE_AUTH_ENV_VAR = "M365_MCP_INTERACTIVE_AUTH"
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ def _select_account(
 
     return accounts[0] if accounts else None
 
+
 def _read_cache() -> str | None:
     try:
         return CACHE_FILE.read_text()
@@ -61,6 +63,20 @@ def _read_cache() -> str | None:
 def _write_cache(content: str) -> None:
     CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
     CACHE_FILE.write_text(content)
+
+
+def _interactive_auth_enabled() -> bool:
+    return os.getenv(INTERACTIVE_AUTH_ENV_VAR, "false").lower() == "true"
+
+
+def _raise_interactive_auth_required(account_id: str | None) -> None:
+    account_hint = f" for account_id '{account_id}'" if account_id else ""
+    raise RuntimeError(
+        f"No cached Microsoft access token is available{account_hint}. "
+        "Run `uv run authenticate.py` to authenticate interactively before "
+        "using MCP tools, or set M365_MCP_INTERACTIVE_AUTH=true only for an "
+        "intentional interactive authentication process."
+    )
 
 
 def _build_app(
@@ -134,7 +150,9 @@ def _initiate_device_flow(
         if "user_code" in flow:
             return flow
 
-        error_message = flow.get("error_description", flow.get("error", "Unknown error"))
+        error_message = flow.get(
+            "error_description", flow.get("error", "Unknown error")
+        )
         raise Exception(error_message)
 
     try:
@@ -236,6 +254,9 @@ def get_token(account_id: str | None = None) -> str:
         result = None
 
     if not result:
+        if not _interactive_auth_enabled():
+            _raise_interactive_auth_required(account_id)
+
         app, flow = _initiate_device_flow(app, tenant_id)
         verification_uri = flow.get(
             "verification_uri",

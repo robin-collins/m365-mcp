@@ -53,6 +53,10 @@ def test_validate_request_size_enforces_limit() -> None:
         validators.validate_request_size(8192, 4096)
 
 
+def test_validate_timezone_accepts_utc() -> None:
+    assert validators.validate_timezone("UTC") == "UTC"
+
+
 def test_validate_choices_accepts_case_insensitive_value() -> None:
     result = validators.validate_choices("ACCEPT", {"accept", "decline"}, "response")
     assert result == "accept"

@@ -1,7 +1,7 @@
 # M365 MCP Cache Examples
 
 **Version**: 1.0
-**Last Updated**: 2025-10-14
+**Last Updated**: 2026-05-30
 
 ## Table of Contents
 
@@ -38,10 +38,10 @@ def browse_documents(account_id):
 # Upload a file, then refresh cache to see it
 def upload_and_verify(account_id, file_path):
     # Upload file
-    result = create_file(
-        account_id=account_id,
+    result = file_create(
+        onedrive_path="/Uploads/report.pdf",
         local_file_path=file_path,
-        parent_folder_id="root"
+        account_id=account_id,
     )
 
     # Force refresh to see new file immediately
@@ -66,9 +66,9 @@ def upload_and_verify(account_id, file_path):
 # One-time lookup that shouldn't pollute cache
 def quick_check(account_id, email_id):
     # Get email without caching
-    email = get_email(
-        account_id,
+    email = email_get(
         email_id,
+        account_id,
         use_cache=False  # No cache read or write
     )
 
@@ -244,10 +244,10 @@ def analyze_cache_by_account(accounts):
 # Automatically invalidate related caches after operations
 def upload_file_smart(account_id, file_path, parent_folder):
     # Upload file
-    result = create_file(
-        account_id=account_id,
+    result = file_create(
+        onedrive_path="/Uploads/report.pdf",
         local_file_path=file_path,
-        parent_folder_id=parent_folder
+        account_id=account_id,
     )
 
     # Smart invalidation: Clear related caches
@@ -509,43 +509,22 @@ def sync_accounts(accounts):
 
 **Performance**: Processes 10 accounts in ~500ms (vs. 20-50s without cache)
 
-### Workflow 4: Cache Warming on Startup
+### Workflow 4: Optional Cache Warming
+
+Startup warming and stale-cache background refresh are available when the server
+starts with `M365_MCP_CACHE_WARMING=true`. Leave the variable unset or `false`
+for the default on-demand cache behavior.
+
+```bash
+# Enable worker-owned startup warming and stale refresh tasks
+export M365_MCP_CACHE_WARMING=true
+uv run m365-mcp
+```
 
 ```python
-# Warm cache on application startup
-import asyncio
-
-async def warm_cache_on_startup(accounts):
-    """Pre-populate cache for all accounts on startup."""
-
-    print("Starting cache warming...")
-
-    tasks = []
-    for account in accounts:
-        account_id = account['account_id']
-
-        # Queue high-priority operations
-        tasks.append(warm_account_cache(account_id))
-
-    # Run concurrently but throttled
-    for i in range(0, len(tasks), 3):  # 3 at a time
-        batch = tasks[i:i+3]
-        await asyncio.gather(*batch)
-        await asyncio.sleep(0.5)  # Throttle
-
-    print(f"Cache warming complete for {len(accounts)} accounts")
-
-async def warm_account_cache(account_id):
-    """Warm cache for single account."""
-
-    # Priority 1: Folder structure (slowest without cache)
-    folder_get_tree(account_id, path="/", force_refresh=True)
-
-    # Priority 2: Inbox
-    email_list(account_id, folder="inbox", limit=50, force_refresh=True)
-
-    # Priority 3: Recent files
-    file_list(account_id, folder_id="root", force_refresh=True)
+# Inspect warming/background-refresh state from an MCP client
+status = cache_warming_status()
+print(status["status"])
 ```
 
 ### Workflow 5: Scheduled Cache Maintenance
@@ -602,7 +581,8 @@ def daily_cache_maintenance():
 1. **Batch operations**: Process multiple items in one loop
 2. **Lazy load**: Only fetch data when needed
 3. **Progressive enhancement**: Show cached data first, refresh background
-4. **Cache warming**: Pre-populate on startup for instant responses
+4. **Cache warming**: Disabled on startup for now; use controlled manual
+   warming only after worker lifecycle hardening
 5. **Monitor metrics**: Track hit rate and adjust patterns
 
 ---
@@ -637,5 +617,5 @@ cache_invalidate("email_*")  # Emails usually largest
 ---
 
 **Document Version**: 1.0
-**Last Updated**: 2025-10-14
+**Last Updated**: 2026-05-30
 **See Also**: `cache_user_guide.md`, `cache_security.md`

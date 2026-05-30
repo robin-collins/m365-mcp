@@ -1,6 +1,5 @@
 import base64
 import logging
-import pathlib as pl
 from datetime import datetime, timezone
 from typing import Any
 
@@ -13,6 +12,7 @@ from ..validators import (
     format_validation_error,
     normalize_recipients,
     require_confirm,
+    validate_attachments,
     validate_account_id,
     validate_choices,
     validate_folder_choice,
@@ -40,6 +40,9 @@ FOLDERS = {
 EMAIL_FOLDER_NAMES = tuple(FOLDERS.keys())
 
 MAX_ATTACHMENT_DOWNLOAD_BYTES = 25 * 1024 * 1024
+MAX_MAIL_ATTACHMENT_BYTES = 25 * 1024 * 1024
+MAX_MAIL_ATTACHMENTS = 10
+MAIL_INLINE_ATTACHMENT_THRESHOLD = 3 * 1024 * 1024
 MAX_EMAIL_RECIPIENTS = 500
 ALLOWED_EMAIL_UPDATE_KEYS = (
     "isRead",
@@ -58,6 +61,74 @@ ALLOWED_EMAIL_FLAG_KEYS = (
 )
 ALLOWED_FLAG_DATETIME_KEYS = ("dateTime", "timeZone")
 FLAG_STATUS_CHOICES = {"notFlagged", "flagged", "complete"}
+
+
+def _prepare_outbound_attachments(
+    attachments: str | list[str] | None,
+) -> list[dict[str, Any]]:
+    """Validate and read local files for outbound mail attachments."""
+    paths = validate_attachments(
+        attachments,
+        max_inline_size_bytes=MAX_MAIL_ATTACHMENT_BYTES,
+        max_attachments=MAX_MAIL_ATTACHMENTS,
+        param_name="attachments",
+    )
+
+    prepared: list[dict[str, Any]] = []
+    for path in paths:
+        size = path.stat().st_size
+        validate_request_size(size, MAX_MAIL_ATTACHMENT_BYTES, "attachment_size")
+        content_bytes = path.read_bytes()
+        prepared.append(
+            {
+                "name": path.name,
+                "content_bytes": content_bytes,
+                "content_type": "application/octet-stream",
+                "size": size,
+            }
+        )
+    return prepared
+
+
+def _prepare_message_recipients(
+    to: str | list[str],
+    cc: str | list[str] | None,
+) -> tuple[list[str], list[str]]:
+    """Validate, deduplicate, and limit message recipients."""
+    to_normalized = normalize_recipients(to, "to")
+    cc_normalized = normalize_recipients(cc, "cc") if cc else []
+
+    seen: set[str] = set()
+    to_unique: list[str] = []
+    cc_unique: list[str] = []
+
+    for address in to_normalized:
+        key = address.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        to_unique.append(address)
+
+    for address in cc_normalized:
+        key = address.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        cc_unique.append(address)
+
+    total_unique = len(to_unique) + len(cc_unique)
+    if total_unique > MAX_EMAIL_RECIPIENTS:
+        reason = f"must not exceed {MAX_EMAIL_RECIPIENTS} unique recipients"
+        raise ValidationError(
+            format_validation_error(
+                "recipients",
+                total_unique,
+                reason,
+                f"<= {MAX_EMAIL_RECIPIENTS}",
+            )
+        )
+
+    return to_unique, cc_unique
 
 
 def _validate_flag_datetime_section(
@@ -442,50 +513,36 @@ def email_create_draft(
     Returns:
         Created draft message with ID
     """
-    to_list = [to] if isinstance(to, str) else to
+    to_unique, cc_unique = _prepare_message_recipients(to, cc)
 
     message = {
         "subject": subject,
         "body": {"contentType": "Text", "content": body},
-        "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_list],
+        "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_unique],
     }
 
-    if cc:
-        cc_list = [cc] if isinstance(cc, str) else cc
+    if cc_unique:
         message["ccRecipients"] = [
-            {"emailAddress": {"address": addr}} for addr in cc_list
+            {"emailAddress": {"address": addr}} for addr in cc_unique
         ]
 
     small_attachments = []
     large_attachments = []
 
     if attachments:
-        # Convert single path to list
-        attachment_paths = (
-            [attachments] if isinstance(attachments, str) else attachments
-        )
-        for file_path in attachment_paths:
-            path = pl.Path(file_path).expanduser().resolve()
-            content_bytes = path.read_bytes()
-            att_size = len(content_bytes)
-            att_name = path.name
-
-            if att_size < 3 * 1024 * 1024:
+        for attachment in _prepare_outbound_attachments(attachments):
+            if attachment["size"] < MAIL_INLINE_ATTACHMENT_THRESHOLD:
                 small_attachments.append(
                     {
                         "@odata.type": "#microsoft.graph.fileAttachment",
-                        "name": att_name,
-                        "contentBytes": base64.b64encode(content_bytes).decode("utf-8"),
+                        "name": attachment["name"],
+                        "contentBytes": base64.b64encode(
+                            attachment["content_bytes"]
+                        ).decode("utf-8"),
                     }
                 )
             else:
-                large_attachments.append(
-                    {
-                        "name": att_name,
-                        "content_bytes": content_bytes,
-                        "content_type": "application/octet-stream",
-                    }
-                )
+                large_attachments.append(attachment)
 
     if small_attachments:
         message["attachments"] = small_attachments
@@ -558,39 +615,7 @@ def email_send(
         ValidationError: If recipients are invalid, exceed limits,
             or confirm is False.
     """
-    to_normalized = normalize_recipients(to, "to")
-    cc_normalized = normalize_recipients(cc, "cc") if cc else []
-
-    seen: set[str] = set()
-    to_unique: list[str] = []
-    cc_unique: list[str] = []
-
-    for address in to_normalized:
-        key = address.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        to_unique.append(address)
-
-    for address in cc_normalized:
-        key = address.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        cc_unique.append(address)
-
-    total_unique = len(to_unique) + len(cc_unique)
-    if total_unique > MAX_EMAIL_RECIPIENTS:
-        reason = f"must not exceed {MAX_EMAIL_RECIPIENTS} unique recipients"
-        raise ValidationError(
-            format_validation_error(
-                "recipients",
-                total_unique,
-                reason,
-                f"≤ {MAX_EMAIL_RECIPIENTS}",
-            )
-        )
-
+    to_unique, cc_unique = _prepare_message_recipients(to, cc)
     require_confirm(confirm, "send email")
 
     def build_message() -> dict[str, Any]:
@@ -605,31 +630,10 @@ def email_send(
             ]
         return payload
 
-    has_large_attachments = False
-    processed_attachments = []
-
-    if attachments:
-        # Convert single path to list
-        attachment_paths = (
-            [attachments] if isinstance(attachments, str) else attachments
-        )
-        for file_path in attachment_paths:
-            path = pl.Path(file_path).expanduser().resolve()
-            content_bytes = path.read_bytes()
-            att_size = len(content_bytes)
-            att_name = path.name
-
-            processed_attachments.append(
-                {
-                    "name": att_name,
-                    "content_bytes": content_bytes,
-                    "content_type": "application/octet-stream",
-                    "size": att_size,
-                }
-            )
-
-            if att_size >= 3 * 1024 * 1024:
-                has_large_attachments = True
+    processed_attachments = _prepare_outbound_attachments(attachments)
+    has_large_attachments = any(
+        att["size"] >= MAIL_INLINE_ATTACHMENT_THRESHOLD for att in processed_attachments
+    )
 
     if not has_large_attachments and processed_attachments:
         message = build_message()
@@ -646,7 +650,7 @@ def email_send(
         # Invalidate cache for sent folder
         try:
             cache_manager = get_cache_manager()
-            cache_manager.invalidate_pattern(account_id, "email_list:*folder*sent*")
+            cache_manager.invalidate_pattern("email_list:*", account_id=account_id)
         except Exception:
             pass
 
@@ -662,7 +666,7 @@ def email_send(
         message_id = result["id"]
 
         for att in processed_attachments:
-            if att["size"] >= 3 * 1024 * 1024:
+            if att["size"] >= MAIL_INLINE_ATTACHMENT_THRESHOLD:
                 graph.upload_large_mail_attachment(
                     message_id,
                     att["name"],
@@ -690,7 +694,7 @@ def email_send(
         # Invalidate cache for sent folder
         try:
             cache_manager = get_cache_manager()
-            cache_manager.invalidate_pattern(account_id, "email_list:*folder*sent*")
+            cache_manager.invalidate_pattern("email_list:*", account_id=account_id)
         except Exception:
             pass
 
@@ -703,7 +707,7 @@ def email_send(
         # Invalidate cache for sent folder
         try:
             cache_manager = get_cache_manager()
-            cache_manager.invalidate_pattern(account_id, "email_list:*folder*sent*")
+            cache_manager.invalidate_pattern("email_list:*", account_id=account_id)
         except Exception:
             pass
 
@@ -837,7 +841,7 @@ def email_update(
     # Invalidate cache for the specific email
     try:
         cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern(account_id, f"email_get:*email_id={email_id}*")
+        cache_manager.invalidate_pattern("email_get:*", account_id=account_id)
     except Exception:
         # Don't fail the operation if cache invalidation fails
         pass
@@ -885,9 +889,9 @@ def email_delete(
     try:
         cache_manager = get_cache_manager()
         # Invalidate all email lists
-        cache_manager.invalidate_pattern(account_id, "email_list:*")
+        cache_manager.invalidate_pattern("email_list:*", account_id=account_id)
         # Invalidate the specific email
-        cache_manager.invalidate_pattern(account_id, f"email_get:*email_id={email_id}*")
+        cache_manager.invalidate_pattern("email_get:*", account_id=account_id)
     except Exception:
         # Don't fail the operation if cache invalidation fails
         pass
@@ -971,7 +975,7 @@ def email_move(
     # Invalidate cache for email lists (folder contents changed)
     try:
         cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern(account_id, "email_list:*")
+        cache_manager.invalidate_pattern("email_list:*", account_id=account_id)
     except Exception:
         # Don't fail the operation if cache invalidation fails
         pass
@@ -1348,8 +1352,8 @@ def email_mark_read(
     # Invalidate cache for the specific email and email lists
     try:
         cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern(account, f"email_get:*email_id={message_id}*")
-        cache_manager.invalidate_pattern(account, "email_list:*")
+        cache_manager.invalidate_pattern("email_get:*", account_id=account)
+        cache_manager.invalidate_pattern("email_list:*", account_id=account)
     except Exception:
         # Don't fail the operation if cache invalidation fails
         pass
@@ -1413,7 +1417,7 @@ def email_flag(
     # Invalidate cache for the specific email
     try:
         cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern(account, f"email_get:*email_id={message_id}*")
+        cache_manager.invalidate_pattern("email_get:*", account_id=account)
     except Exception:
         # Don't fail the operation if cache invalidation fails
         pass
@@ -1517,7 +1521,7 @@ def email_add_category(
     # Invalidate cache for the specific email
     try:
         cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern(account, f"email_get:*email_id={message_id}*")
+        cache_manager.invalidate_pattern("email_get:*", account_id=account)
     except Exception:
         # Don't fail the operation if cache invalidation fails
         pass
@@ -1605,7 +1609,7 @@ def email_archive(
     # Invalidate cache for email lists (folder contents changed)
     try:
         cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern(account, "email_list:*")
+        cache_manager.invalidate_pattern("email_list:*", account_id=account)
     except Exception:
         # Don't fail the operation if cache invalidation fails
         pass

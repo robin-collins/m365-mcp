@@ -68,6 +68,19 @@ class EncryptionKeyManager:
         return key_b64
 
     @staticmethod
+    def sqlcipher_key_pragma(key: str) -> str:
+        """Return a SQLCipher raw-key PRAGMA for a validated base64 key."""
+        try:
+            key_bytes = base64.b64decode(key, validate=True)
+        except Exception as e:
+            raise ValueError("Invalid cache encryption key format") from e
+
+        if len(key_bytes) != EncryptionKeyManager.KEY_BYTES:
+            raise ValueError("Invalid cache encryption key length")
+
+        return f"PRAGMA key = \"x'{key_bytes.hex()}'\""
+
+    @staticmethod
     def get_or_create_key() -> str:
         """Get encryption key with automatic fallback and generation.
 
@@ -119,9 +132,12 @@ class EncryptionKeyManager:
             logger.info("New encryption key generated and stored in system keyring")
         else:
             logger.warning(
-                f"New encryption key generated but could not be stored in keyring. "
-                f"To persist the key across sessions, set the {EncryptionKeyManager.ENV_VAR} "
-                f"environment variable."
+                "Using an ephemeral cache encryption key because neither the "
+                "system keyring nor %s provided durable key storage. Existing "
+                "encrypted cache files may be unreadable after restart; set %s "
+                "to persist the key across sessions.",
+                EncryptionKeyManager.ENV_VAR,
+                EncryptionKeyManager.ENV_VAR,
             )
 
         return key

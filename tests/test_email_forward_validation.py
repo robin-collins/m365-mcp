@@ -4,8 +4,9 @@ Tests validation, error handling, and API calls for email_forward.
 """
 
 from typing import Any
-from unittest.mock import MagicMock
+
 import pytest
+
 from src.m365_mcp.tools import email as email_tools
 
 
@@ -18,17 +19,18 @@ def mock_account_id() -> str:
 @pytest.fixture(autouse=True)
 def mock_validators(monkeypatch: pytest.MonkeyPatch) -> None:
     """Auto-mock normalize_recipients for all tests."""
+
     # Mock normalize_recipients to return emails as-is (in a list)
-    def fake_normalize(recipients: str | list[str] | None, param_name: str) -> list[str]:
+    def fake_normalize(
+        recipients: str | list[str] | None, param_name: str
+    ) -> list[str]:
         if recipients is None:
             return []
         if isinstance(recipients, str):
             return [recipients]
         return list(recipients)
 
-    monkeypatch.setattr(
-        "src.m365_mcp.tools.email.normalize_recipients", fake_normalize
-    )
+    monkeypatch.setattr("src.m365_mcp.tools.email.normalize_recipients", fake_normalize)
 
 
 # email_forward tests
@@ -64,7 +66,10 @@ def test_email_forward_success(
     assert captured["method"] == "POST"
     assert captured["path"] == "/me/messages/email-123/forward"
     assert len(captured["json"]["toRecipients"]) == 1
-    assert captured["json"]["toRecipients"][0]["emailAddress"]["address"] == "recipient@example.com"
+    assert (
+        captured["json"]["toRecipients"][0]["emailAddress"]["address"]
+        == "recipient@example.com"
+    )
     assert "ccRecipients" not in captured["json"]
     assert "comment" not in captured["json"]
 
@@ -96,7 +101,10 @@ def test_email_forward_with_cc(
     )
 
     assert len(captured["json"]["ccRecipients"]) == 1
-    assert captured["json"]["ccRecipients"][0]["emailAddress"]["address"] == "cc@example.com"
+    assert (
+        captured["json"]["ccRecipients"][0]["emailAddress"]["address"]
+        == "cc@example.com"
+    )
 
 
 def test_email_forward_with_body(
@@ -188,7 +196,9 @@ def test_email_forward_empty_body_not_included(
 
 def test_email_forward_without_confirm(mock_account_id: str) -> None:
     """Test forwarding email without confirmation raises error."""
-    with pytest.raises(Exception, match="forward email on resource requires confirm=True"):
+    with pytest.raises(
+        Exception, match="forward email on resource requires confirm=True"
+    ):
         email_tools.email_forward.fn(
             account_id=mock_account_id,
             email_id="email-123",

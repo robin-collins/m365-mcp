@@ -6,9 +6,18 @@ import pytest
 import tempfile
 from pathlib import Path
 import time
+from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
+from src.m365_mcp import cache as cache_module
 from src.m365_mcp.cache import CacheManager, CacheState
-from src.m365_mcp.cache_config import generate_cache_key
+from src.m365_mcp.cache_config import (
+    CONNECTION_POOL_SIZE,
+    CONNECTION_TIMEOUT,
+    SQLCIPHER_SETTINGS,
+    generate_cache_key,
+)
+from src.m365_mcp.encryption import EncryptionKeyManager
 
 
 @pytest.fixture
@@ -27,17 +36,28 @@ def temp_cache_db():
 @pytest.fixture
 def cache_manager(temp_cache_db):
     """Create cache manager instance for testing."""
-    return CacheManager(db_path=temp_cache_db, encryption_enabled=True)
+    manager = CacheManager(db_path=temp_cache_db, encryption_enabled=True)
+    yield manager
+    manager.close()
 
 
 @pytest.fixture
 def cache_manager_no_encryption(temp_cache_db):
     """Create cache manager without encryption for testing."""
-    return CacheManager(db_path=temp_cache_db, encryption_enabled=False)
+    manager = CacheManager(db_path=temp_cache_db, encryption_enabled=False)
+    yield manager
+    manager.close()
 
 
 class TestCacheBasics:
     """Test basic cache operations."""
+
+    def test_cache_uses_configured_pool_size_by_default(self, temp_cache_db):
+        """Default pool size should come from cache configuration."""
+        manager = CacheManager(db_path=temp_cache_db, encryption_enabled=False)
+
+        assert manager.max_connections == CONNECTION_POOL_SIZE
+        manager.close()
 
     def test_cache_initialization(self, cache_manager):
         """Test cache manager initializes correctly."""
@@ -83,6 +103,170 @@ class TestCacheBasics:
 
         assert key1 == key2
         assert key1 != key3
+
+    def test_cache_operations_across_threads(self, tmp_path):
+        """Connections reused from the pool should work across worker threads."""
+        manager = CacheManager(
+            db_path=str(tmp_path / "threaded.db"),
+            encryption_enabled=False,
+            max_connections=2,
+        )
+
+        def round_trip(index: int) -> dict[str, int]:
+            params = {"index": index}
+            data = {"value": index}
+            manager.set_cached("thread-account", "email_list", params, data)
+            result = manager.get_cached("thread-account", "email_list", params)
+            assert result is not None
+            cached_data, state = result
+            assert state == CacheState.FRESH
+            return cached_data
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            results = list(executor.map(round_trip, range(24)))
+
+        assert results == [{"value": index} for index in range(24)]
+        manager.close()
+
+    def test_erroring_connection_is_not_returned_to_pool(self, tmp_path):
+        """Connections that error should be discarded instead of reused."""
+        manager = CacheManager(
+            db_path=str(tmp_path / "poisoned.db"),
+            encryption_enabled=False,
+            max_connections=1,
+        )
+
+        with manager._db():
+            pass
+
+        assert len(manager._connection_pool) == 1
+
+        with pytest.raises(RuntimeError, match="boom"):
+            with manager._db():
+                raise RuntimeError("boom")
+
+        assert manager._connection_pool == []
+        manager.close()
+
+    def test_cache_initialization_recovers_corrupt_database(self, tmp_path):
+        """Recoverable startup corruption should recreate an empty cache DB."""
+        db_path = tmp_path / "corrupt.db"
+        db_path.write_bytes(b"not a sqlite database")
+
+        manager = CacheManager(db_path=str(db_path), encryption_enabled=False)
+
+        try:
+            assert manager.get_stats()["entry_count"] == 0
+            manager.set_cached("account-1", "email_list", {}, {"emails": []})
+            assert manager.get_cached("account-1", "email_list", {}) is not None
+        finally:
+            manager.close()
+
+    @pytest.mark.skipif(
+        not cache_module.USING_SQLCIPHER,
+        reason="SQLCipher is required to exercise encrypted key mismatch recovery.",
+    )
+    def test_cache_initialization_recovers_encrypted_key_mismatch(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """A stale encrypted cache with the wrong key should be recreated."""
+        db_path = tmp_path / "key_mismatch.db"
+        first_key = EncryptionKeyManager.generate_key()
+        second_key = EncryptionKeyManager.generate_key()
+
+        monkeypatch.setattr(
+            EncryptionKeyManager,
+            "get_or_create_key",
+            staticmethod(lambda: first_key),
+        )
+        first_manager = CacheManager(db_path=str(db_path), encryption_enabled=True)
+        first_manager.set_cached("account-1", "email_list", {}, {"emails": [1]})
+        first_manager.close()
+
+        monkeypatch.setattr(
+            EncryptionKeyManager,
+            "get_or_create_key",
+            staticmethod(lambda: second_key),
+        )
+        recovered_manager = CacheManager(db_path=str(db_path), encryption_enabled=True)
+
+        try:
+            assert recovered_manager.get_cached("account-1", "email_list", {}) is None
+            recovered_manager.set_cached("account-1", "email_list", {}, {"emails": [2]})
+            refreshed = recovered_manager.get_cached("account-1", "email_list", {})
+            assert refreshed is not None
+            assert refreshed[0] == {"emails": [2]}
+        finally:
+            recovered_manager.close()
+
+    def test_stale_cache_entry_enqueues_background_refresh(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Stale reads should enqueue one refresh task when warming is enabled."""
+        monkeypatch.setattr(cache_module, "CACHE_WARMING_ENABLED", True)
+        manager = CacheManager(
+            db_path=str(tmp_path / "stale_refresh.db"),
+            encryption_enabled=False,
+        )
+        params = {"folder_id": "inbox"}
+
+        try:
+            manager.set_cached("account-1", "email_list", params, {"emails": []})
+            cache_key = generate_cache_key("account-1", "email_list", params)
+            with manager._db() as conn:
+                conn.execute(
+                    "UPDATE cache_entries SET created_at = ? WHERE cache_key = ?",
+                    (time.time() - 180, cache_key),
+                )
+
+            result = manager.get_cached("account-1", "email_list", params)
+            assert result is not None
+            _, state = result
+            assert state == CacheState.STALE
+
+            # A second stale read should not duplicate an existing queued refresh.
+            manager.get_cached("account-1", "email_list", params)
+
+            tasks = manager.list_tasks(account_id="account-1", status="queued")
+            assert len(tasks) == 1
+            assert tasks[0]["operation"] == "email_list"
+            assert tasks[0]["parameters"] == params
+        finally:
+            manager.close()
+
+    def test_stale_cache_entry_does_not_enqueue_when_disabled(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """The default disabled flag should leave stale cache reads unchanged."""
+        monkeypatch.setattr(cache_module, "CACHE_WARMING_ENABLED", False)
+        manager = CacheManager(
+            db_path=str(tmp_path / "stale_no_refresh.db"),
+            encryption_enabled=False,
+        )
+        params = {"folder_id": "inbox"}
+
+        try:
+            manager.set_cached("account-1", "email_list", params, {"emails": []})
+            cache_key = generate_cache_key("account-1", "email_list", params)
+            with manager._db() as conn:
+                conn.execute(
+                    "UPDATE cache_entries SET created_at = ? WHERE cache_key = ?",
+                    (time.time() - 180, cache_key),
+                )
+
+            result = manager.get_cached("account-1", "email_list", params)
+            assert result is not None
+            _, state = result
+            assert state == CacheState.STALE
+            assert manager.list_tasks(account_id="account-1") == []
+        finally:
+            manager.close()
 
 
 class TestCacheCompression:
@@ -341,6 +525,77 @@ class TestCacheStats:
 
 class TestCacheEncryption:
     """Test encryption functionality."""
+
+    def test_connection_uses_configured_timeout_and_sqlcipher_pragmas(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Connection setup should apply central cache configuration."""
+        statements: list[str] = []
+        captured: dict[str, object] = {}
+
+        class FakeConnection:
+            row_factory = None
+
+            def execute(self, statement: str):
+                statements.append(statement)
+                return self
+
+        def fake_connect(path: str, **kwargs):
+            captured["path"] = path
+            captured["kwargs"] = kwargs
+            return FakeConnection()
+
+        monkeypatch.setattr(
+            cache_module,
+            "sqlite3",
+            SimpleNamespace(connect=fake_connect, Row=object),
+        )
+
+        manager = CacheManager.__new__(CacheManager)
+        manager.db_path = tmp_path / "configured.db"
+        manager.encryption_enabled = True
+        manager.encryption_key = EncryptionKeyManager.generate_key()
+
+        conn = manager._create_connection()
+
+        assert isinstance(conn, FakeConnection)
+        assert captured["path"] == str(manager.db_path)
+        assert captured["kwargs"] == {
+            "timeout": CONNECTION_TIMEOUT,
+            "check_same_thread": False,
+        }
+        assert (
+            EncryptionKeyManager.sqlcipher_key_pragma(manager.encryption_key)
+            in statements
+        )
+        for setting, value in SQLCIPHER_SETTINGS.items():
+            pragma_value = int(value) if isinstance(value, bool) else value
+            assert f"PRAGMA {setting} = {pragma_value}" in statements
+        assert "PRAGMA cipher_compatibility = 4" in statements
+
+    def test_encryption_requires_sqlcipher(self, tmp_path, monkeypatch):
+        """Encrypted mode should fail loudly without SQLCipher."""
+        monkeypatch.setattr(cache_module, "USING_SQLCIPHER", False)
+
+        with pytest.raises(ImportError, match="sqlcipher3 is unavailable"):
+            CacheManager(
+                db_path=str(tmp_path / "missing_sqlcipher.db"),
+                encryption_enabled=True,
+            )
+
+    def test_plaintext_mode_allows_sqlite_fallback(self, tmp_path, monkeypatch):
+        """Plaintext mode can still use stdlib sqlite fallback explicitly."""
+        monkeypatch.setattr(cache_module, "USING_SQLCIPHER", False)
+
+        manager = CacheManager(
+            db_path=str(tmp_path / "plaintext.db"),
+            encryption_enabled=False,
+        )
+
+        assert manager.encryption_enabled is False
+        manager.close()
 
     def test_encrypted_cache_creation(self, cache_manager):
         """Test encrypted cache is created."""

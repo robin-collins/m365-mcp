@@ -605,7 +605,14 @@ def contact_add_to_list(
     contact_copy = {
         k: v
         for k, v in contact.items()
-        if k not in ("id", "@odata.context", "@odata.etag", "createdDateTime", "lastModifiedDateTime")
+        if k
+        not in (
+            "id",
+            "@odata.context",
+            "@odata.etag",
+            "createdDateTime",
+            "lastModifiedDateTime",
+        )
     }
 
     # Add the contact to the folder
@@ -726,7 +733,9 @@ def contact_export(
         postal_code = business_address.get("postalCode", "")
         country = business_address.get("countryOrRegion", "")
         # Format: POBox;Extended;Street;City;State;PostalCode;Country
-        vcard_lines.append(f"ADR;type=WORK:;;{street};{city};{state};{postal_code};{country}")
+        vcard_lines.append(
+            f"ADR;type=WORK:;;{street};{city};{state};{postal_code};{country}"
+        )
 
     # Add home address if available
     home_address = contact.get("homeAddress")
@@ -736,7 +745,9 @@ def contact_export(
         state = home_address.get("state", "")
         postal_code = home_address.get("postalCode", "")
         country = home_address.get("countryOrRegion", "")
-        vcard_lines.append(f"ADR;type=HOME:;;{street};{city};{state};{postal_code};{country}")
+        vcard_lines.append(
+            f"ADR;type=HOME:;;{street};{city};{state};{postal_code};{country}"
+        )
 
     vcard_lines.append("END:VCARD")
 

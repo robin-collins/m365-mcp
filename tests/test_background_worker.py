@@ -27,7 +27,9 @@ def temp_cache_db():
 @pytest.fixture
 def cache_manager(temp_cache_db):
     """Create a CacheManager instance with temporary database."""
-    return CacheManager(db_path=str(temp_cache_db), encryption_enabled=False)
+    manager = CacheManager(db_path=str(temp_cache_db), encryption_enabled=False)
+    yield manager
+    manager.close()
 
 
 @pytest.fixture
@@ -140,6 +142,39 @@ class TestBackgroundWorker:
         assert worker.is_running is False
         assert worker.max_retries == 3
 
+    def test_worker_reports_inactive_warming_without_warmer(
+        self,
+        cache_manager,
+        mock_tool_executor,
+    ):
+        """A worker without a warmer should expose inactive warming status."""
+        worker = BackgroundWorker(cache_manager, mock_tool_executor)
+
+        status = worker.get_warming_status()
+
+        assert status["is_warming"] is False
+        assert status["operations_total"] == 0
+        assert status["progress_percent"] == 0.0
+
+    def test_worker_proxies_attached_cache_warmer_status(
+        self,
+        cache_manager,
+        mock_tool_executor,
+    ):
+        """A worker can proxy status from its attached CacheWarmer."""
+        worker = BackgroundWorker(cache_manager, mock_tool_executor)
+
+        class FakeWarmer:
+            def get_warming_status(self):
+                return {"is_warming": True, "operations_total": 3}
+
+        worker.set_cache_warmer(FakeWarmer())
+
+        assert worker.get_warming_status() == {
+            "is_warming": True,
+            "operations_total": 3,
+        }
+
     @pytest.mark.asyncio
     async def test_worker_start_stop(self, cache_manager, mock_tool_executor):
         """Test starting and stopping worker."""
@@ -169,6 +204,44 @@ class TestBackgroundWorker:
         assert processed is True
 
         # Check task status
+        task = cache_manager.get_task_status(task_id)
+        assert task["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_concurrent_workers_claim_single_task_once(self, cache_manager):
+        """Two workers racing for one queued task should process it only once."""
+        started = asyncio.Event()
+        release = asyncio.Event()
+        calls = 0
+
+        async def gated_executor(operation: str, parameters: dict):
+            nonlocal calls
+            calls += 1
+            started.set()
+            await release.wait()
+            return {"success": True, "operation": operation}
+
+        worker_one = BackgroundWorker(cache_manager, gated_executor)
+        worker_two = BackgroundWorker(cache_manager, gated_executor)
+        task_id = cache_manager.enqueue_task(
+            account_id="test-account",
+            operation="folder_get_tree",
+            parameters={"folder_id": "root"},
+            priority=1,
+        )
+
+        process_one = asyncio.create_task(worker_one.process_next_task())
+        process_two = asyncio.create_task(worker_two.process_next_task())
+
+        await asyncio.wait_for(started.wait(), timeout=1)
+        await asyncio.sleep(0.05)
+        assert calls == 1
+
+        release.set()
+        results = await asyncio.gather(process_one, process_two)
+
+        assert sorted(results) == [False, True]
+        assert calls == 1
         task = cache_manager.get_task_status(task_id)
         assert task["status"] == "completed"
 

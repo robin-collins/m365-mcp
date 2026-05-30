@@ -20,7 +20,10 @@ def test_calendar_forward_event_invalid_recipient():
         calendar_tools.calendar_forward_event.fn(
             "test-account", "EVENT123", "invalid-email", confirm=True
         )
-    assert "email" in str(exc_info.value).lower() or "recipient" in str(exc_info.value).lower()
+    assert (
+        "email" in str(exc_info.value).lower()
+        or "recipient" in str(exc_info.value).lower()
+    )
 
 
 def test_calendar_forward_event_too_many_recipients():

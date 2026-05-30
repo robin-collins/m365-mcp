@@ -94,6 +94,51 @@ def _validate_bool(value: Any, param_name: str) -> bool:
     return value
 
 
+def _validate_rule_display_name(value: Any, param_name: str) -> str:
+    if not isinstance(value, str):
+        raise ValidationError(
+            format_validation_error(
+                param_name,
+                value,
+                "must be a string",
+                "Rule display name",
+            )
+        )
+    trimmed = value.strip()
+    if not trimmed:
+        raise ValidationError(
+            format_validation_error(
+                param_name,
+                value,
+                "cannot be empty",
+                "Non-empty rule name",
+            )
+        )
+    return trimmed
+
+
+def _validate_rule_sequence(value: Any, param_name: str) -> int:
+    if not isinstance(value, int):
+        raise ValidationError(
+            format_validation_error(
+                param_name,
+                value,
+                "must be an integer",
+                "Integer value ≥ 1",
+            )
+        )
+    if value < 1:
+        raise ValidationError(
+            format_validation_error(
+                param_name,
+                value,
+                "must be at least 1",
+                "Integer value ≥ 1",
+            )
+        )
+    return value
+
+
 def _validate_string_list(values: Any, param_name: str) -> list[str]:
     if not isinstance(values, list):
         raise ValidationError(
@@ -448,15 +493,15 @@ def emailrules_create(
         Created rule with its ID and full configuration
     """
     rule_data = {
-        "displayName": display_name,
-        "sequence": sequence,
-        "isEnabled": is_enabled,
-        "conditions": conditions,
-        "actions": actions,
+        "displayName": _validate_rule_display_name(display_name, "display_name"),
+        "sequence": _validate_rule_sequence(sequence, "sequence"),
+        "isEnabled": _validate_bool(is_enabled, "is_enabled"),
+        "conditions": _validate_rule_predicates(conditions, "conditions"),
+        "actions": _validate_rule_actions(actions, "actions"),
     }
 
-    if exceptions:
-        rule_data["exceptions"] = exceptions
+    if exceptions is not None:
+        rule_data["exceptions"] = _validate_rule_predicates(exceptions, "exceptions")
 
     result = graph.request(
         "POST", "/me/mailFolders/inbox/messageRules", account_id, json=rule_data
@@ -512,26 +557,10 @@ def emailrules_update(
     updates: dict[str, Any] = {}
 
     if display_name is not None:
-        if not isinstance(display_name, str):
-            raise ValidationError(
-                format_validation_error(
-                    "display_name",
-                    display_name,
-                    "must be a string",
-                    "Rule display name",
-                )
-            )
-        trimmed = display_name.strip()
-        if not trimmed:
-            raise ValidationError(
-                format_validation_error(
-                    "display_name",
-                    display_name,
-                    "cannot be empty",
-                    "Non-empty rule name",
-                )
-            )
-        updates["displayName"] = trimmed
+        updates["displayName"] = _validate_rule_display_name(
+            display_name,
+            "display_name",
+        )
 
     if conditions is not None:
         updates["conditions"] = _validate_rule_predicates(conditions, "conditions")
@@ -540,25 +569,7 @@ def emailrules_update(
         updates["actions"] = _validate_rule_actions(actions, "actions")
 
     if sequence is not None:
-        if not isinstance(sequence, int):
-            raise ValidationError(
-                format_validation_error(
-                    "sequence",
-                    sequence,
-                    "must be an integer",
-                    "Integer value ≥ 1",
-                )
-            )
-        if sequence < 1:
-            raise ValidationError(
-                format_validation_error(
-                    "sequence",
-                    sequence,
-                    "must be at least 1",
-                    "Integer value ≥ 1",
-                )
-            )
-        updates["sequence"] = sequence
+        updates["sequence"] = _validate_rule_sequence(sequence, "sequence")
 
     if is_enabled is not None:
         updates["isEnabled"] = _validate_bool(is_enabled, "is_enabled")

@@ -1,13 +1,31 @@
 """Cache management tools for M365 MCP Server."""
 
+import atexit
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 from ..mcp_instance import mcp
 from ..cache import CacheManager
+from ..cache_warming import get_inactive_warming_status
+
+
+class WarmingStatusProvider(Protocol):
+    """Object capable of reporting cache warming status."""
+
+    def get_warming_status(self) -> dict[str, Any]:
+        """Return the current cache warming status."""
+        ...
+
 
 # Global cache manager instance (lazy-initialized)
 _cache_manager: Optional[CacheManager] = None
-_background_worker = None  # Will be set by background worker when initialized
+_warming_status_provider: Optional[WarmingStatusProvider] = None
+_cache_manager_atexit_registered = False
+
+
+def _close_cache_manager() -> None:
+    """Close the singleton cache manager during process shutdown."""
+    if _cache_manager is not None:
+        _cache_manager.close()
 
 
 def get_cache_manager() -> CacheManager:
@@ -18,20 +36,34 @@ def get_cache_manager() -> CacheManager:
         CacheManager: The global cache manager instance.
     """
     global _cache_manager
+    global _cache_manager_atexit_registered
     if _cache_manager is None:
         _cache_manager = CacheManager()
+        if not _cache_manager_atexit_registered:
+            atexit.register(_close_cache_manager)
+            _cache_manager_atexit_registered = True
     return _cache_manager
 
 
-def set_background_worker(worker) -> None:
+def set_warming_status_provider(provider: Optional[WarmingStatusProvider]) -> None:
+    """Set the object that owns cache warming status."""
+    global _warming_status_provider
+    _warming_status_provider = provider
+
+
+def set_cache_warmer(warmer: Optional[WarmingStatusProvider]) -> None:
+    """Set the cache warmer used by `cache_warming_status`."""
+    set_warming_status_provider(warmer)
+
+
+def set_background_worker(worker: Optional[WarmingStatusProvider]) -> None:
     """
-    Set the background worker instance for cache warming status.
+    Set a background worker that proxies cache warming status.
 
     Args:
-        worker: The BackgroundWorker instance.
+        worker: BackgroundWorker instance with get_warming_status().
     """
-    global _background_worker
-    _background_worker = worker
+    set_warming_status_provider(worker)
 
 
 # cache_task_get_status
@@ -153,12 +185,11 @@ def cache_get_stats() -> dict[str, Any]:
     Returns:
         Dictionary containing cache statistics:
         - total_entries: Total number of cached entries
-        - total_size_bytes: Total size of cache in bytes
+        - total_bytes: Total size of cache in bytes
         - total_size_mb: Total size in megabytes
         - size_percentage: Percentage of max cache size used
-        - hit_count: Number of cache hits
-        - miss_count: Number of cache misses
-        - hit_rate: Cache hit rate (0.0-1.0)
+        - total_hits: Number of cache hits
+        - hit_rate: None until cache misses are tracked
         - entries_by_resource_type: Count of entries per resource type
         - average_entry_size_bytes: Average size per entry
         - compressed_entries: Number of compressed entries
@@ -169,7 +200,6 @@ def cache_get_stats() -> dict[str, Any]:
 
     Example:
         stats = cache_get_stats()
-        print(f"Cache hit rate: {stats['hit_rate']:.2%}")
         print(f"Cache size: {stats['total_size_mb']:.2f} MB")
         print(f"Size used: {stats['size_percentage']:.1f}%")
     """
@@ -177,18 +207,15 @@ def cache_get_stats() -> dict[str, Any]:
     stats = cache_mgr.get_stats()
 
     # Add human-readable fields
-    total_bytes = stats.get("total_size_bytes", 0)
+    total_bytes = stats.get("total_bytes", 0)
+    stats["total_size_bytes"] = total_bytes
     stats["total_size_mb"] = total_bytes / (1024 * 1024)
 
-    # Calculate size percentage
-    max_size = 2 * 1024 * 1024 * 1024  # 2GB limit
-    stats["size_percentage"] = (total_bytes / max_size) * 100
+    stats["size_percentage"] = stats.get("usage_percent", 0.0)
 
-    # Calculate hit rate
-    hits = stats.get("hit_count", 0)
-    misses = stats.get("miss_count", 0)
-    total_requests = hits + misses
-    stats["hit_rate"] = hits / total_requests if total_requests > 0 else 0.0
+    # Misses are not tracked yet, so a truthful hit rate cannot be computed.
+    stats["miss_count"] = None
+    stats["hit_rate"] = None
 
     # Check if cleanup should be triggered
     stats["cleanup_triggered"] = stats["size_percentage"] >= 80.0
@@ -249,14 +276,11 @@ def cache_invalidate(
     """
     cache_mgr = get_cache_manager()
 
-    # Add account_id to pattern if specified
-    if account_id and ":*" in pattern and f":{account_id}:" not in pattern:
-        # Insert account_id into pattern
-        parts = pattern.split(":")
-        if len(parts) >= 2:
-            pattern = f"{parts[0]}:{account_id}:{':'.join(parts[1:])}"
-
-    deleted_count = cache_mgr.invalidate_pattern(pattern, reason=reason)
+    deleted_count = cache_mgr.invalidate_pattern(
+        pattern,
+        account_id=account_id,
+        reason=reason,
+    )
 
     return {
         "entries_deleted": deleted_count,
@@ -290,10 +314,10 @@ def cache_warming_status() -> dict[str, Any]:
         - is_warming: Whether cache warming is currently active
         - started_at: When warming started (if active)
         - completed_at: When warming completed (if finished)
-        - total_operations: Total number of warming operations
-        - completed_operations: Number of completed operations
-        - failed_operations: Number of failed operations
-        - progress_percentage: Progress percentage (0-100)
+        - operations_total: Total number of warming operations
+        - operations_completed: Number of completed operations
+        - operations_failed: Number of failed operations
+        - progress_percent: Progress percentage (0-100)
         - estimated_completion: Estimated completion time
         - accounts_warmed: Number of accounts warmed
         - operations_by_type: Breakdown of operations by type
@@ -302,23 +326,16 @@ def cache_warming_status() -> dict[str, Any]:
     Example:
         status = cache_warming_status()
         if status['is_warming']:
-            print(f"Warming in progress: {status['progress_percentage']:.1f}%")
+            print(f"Warming in progress: {status['progress_percent']:.1f}%")
         else:
             print("Cache warming complete or not started")
     """
-    global _background_worker
+    if _warming_status_provider is None:
+        return get_inactive_warming_status(
+            "Cache warming disabled: warming status provider not initialized."
+        )
 
-    if _background_worker is None:
-        return {
-            "is_warming": False,
-            "status": "Background worker not initialized",
-            "total_operations": 0,
-            "completed_operations": 0,
-            "failed_operations": 0,
-            "progress_percentage": 0.0,
-        }
-
-    # Get warming status from background worker
-    status = _background_worker.get_warming_status()
+    # Get warming status from the configured owner.
+    status = _warming_status_provider.get_warming_status()
 
     return status

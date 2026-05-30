@@ -42,6 +42,8 @@ def main():
         print(f"Warning: Environment file not found: {env_file}")
         print("Continuing with system environment variables...\n")
 
+    os.environ["M365_MCP_INTERACTIVE_AUTH"] = "true"
+
     # Import auth module after loading environment
     from m365_mcp import auth
 

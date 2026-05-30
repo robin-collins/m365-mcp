@@ -490,7 +490,7 @@ class TestCacheEncryption:
         manager = CacheManager.__new__(CacheManager)
         manager.db_path = tmp_path / "configured.db"
         manager.encryption_enabled = True
-        manager.encryption_key = "test-key"
+        manager.encryption_key = EncryptionKeyManager.generate_key()
 
         conn = manager._create_connection()
 
@@ -500,7 +500,9 @@ class TestCacheEncryption:
             "timeout": CONNECTION_TIMEOUT,
             "check_same_thread": False,
         }
-        assert "PRAGMA key = 'test-key'" in statements
+        assert EncryptionKeyManager.sqlcipher_key_pragma(
+            manager.encryption_key
+        ) in statements
         for setting, value in SQLCIPHER_SETTINGS.items():
             pragma_value = int(value) if isinstance(value, bool) else value
             assert f"PRAGMA {setting} = {pragma_value}" in statements

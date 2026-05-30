@@ -59,7 +59,7 @@ def migrate_to_encrypted_cache(
 
         # Create new encrypted database
         new_conn = sqlite3.connect(str(new_db))  # type: ignore[attr-defined]
-        new_conn.execute(f"PRAGMA key = '{encryption_key}'")
+        new_conn.execute(EncryptionKeyManager.sqlcipher_key_pragma(encryption_key))
         new_conn.execute("PRAGMA cipher_compatibility = 4")
 
         # Copy schema
@@ -122,7 +122,7 @@ def detect_and_migrate() -> bool:
         encryption_key = key_manager.get_or_create_key()
 
         conn = sqlite3.connect(str(cache_db_path))  # type: ignore[attr-defined]
-        conn.execute(f"PRAGMA key = '{encryption_key}'")
+        conn.execute(EncryptionKeyManager.sqlcipher_key_pragma(encryption_key))
         conn.execute("SELECT COUNT(*) FROM sqlite_master")
         conn.close()
 

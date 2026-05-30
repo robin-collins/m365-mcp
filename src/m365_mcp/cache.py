@@ -109,7 +109,9 @@ class CacheManager:
         try:
             if self.encryption_enabled and self.encryption_key:
                 # Set encryption key for SQLCipher
-                conn.execute(f"PRAGMA key = '{self.encryption_key}'")
+                conn.execute(
+                    EncryptionKeyManager.sqlcipher_key_pragma(self.encryption_key)
+                )
                 for setting, value in SQLCIPHER_SETTINGS.items():
                     pragma_value = int(value) if isinstance(value, bool) else value
                     conn.execute(f"PRAGMA {setting} = {pragma_value}")

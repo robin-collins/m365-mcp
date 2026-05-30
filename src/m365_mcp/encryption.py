@@ -68,6 +68,19 @@ class EncryptionKeyManager:
         return key_b64
 
     @staticmethod
+    def sqlcipher_key_pragma(key: str) -> str:
+        """Return a SQLCipher raw-key PRAGMA for a validated base64 key."""
+        try:
+            key_bytes = base64.b64decode(key, validate=True)
+        except Exception as e:
+            raise ValueError("Invalid cache encryption key format") from e
+
+        if len(key_bytes) != EncryptionKeyManager.KEY_BYTES:
+            raise ValueError("Invalid cache encryption key length")
+
+        return f"PRAGMA key = \"x'{key_bytes.hex()}'\""
+
+    @staticmethod
     def get_or_create_key() -> str:
         """Get encryption key with automatic fallback and generation.
 

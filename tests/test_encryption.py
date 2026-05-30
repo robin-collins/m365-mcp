@@ -90,6 +90,32 @@ class TestKeyValidation:
         valid_key = base64.b64encode(b"0" * 32).decode("utf-8")
         assert EncryptionKeyManager._validate_key(valid_key) is True
 
+    def test_sqlcipher_key_pragma_uses_raw_hex_key(self):
+        """Generated keys should be encoded without SQL string interpolation."""
+        key = base64.b64encode(bytes(range(32))).decode("utf-8")
+
+        pragma = EncryptionKeyManager.sqlcipher_key_pragma(key)
+
+        assert pragma == (
+            "PRAGMA key = "
+            "\"x'000102030405060708090a0b0c0d0e0f"
+            "101112131415161718191a1b1c1d1e1f'\""
+        )
+
+    def test_sqlcipher_key_pragma_accepts_env_style_base64_key(self):
+        """Environment-provided base64 keys should encode to raw SQLCipher keys."""
+        key = base64.b64encode(b"a" * 32).decode("utf-8")
+
+        assert EncryptionKeyManager.sqlcipher_key_pragma(key) == (
+            "PRAGMA key = "
+            "\"x'6161616161616161616161616161616161616161616161616161616161616161'\""
+        )
+
+    def test_sqlcipher_key_pragma_rejects_invalid_key(self):
+        """Invalid key input should fail before a PRAGMA string is built."""
+        with pytest.raises(ValueError, match="format"):
+            EncryptionKeyManager.sqlcipher_key_pragma("not-valid-base64")
+
 
 class TestKeyringIntegration:
     """Test system keyring integration."""

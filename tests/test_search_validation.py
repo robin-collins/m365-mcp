@@ -110,7 +110,9 @@ def test_search_events_filters_by_range(
     from src.m365_mcp import search_router
 
     monkeypatch.setattr(search_router, "search_events", fake_search_events)
-    monkeypatch.setattr(search_tools, "_get_account_type", lambda account_id: "personal")
+    monkeypatch.setattr(
+        search_tools, "_get_account_type", lambda account_id: "personal"
+    )
 
     results = search_tools.search_events.fn(
         query="meeting",
@@ -165,7 +167,9 @@ def test_search_files_trims_query(
     from src.m365_mcp import search_router
 
     monkeypatch.setattr(search_router, "search_files", fake_search_files)
-    monkeypatch.setattr(search_tools, "_get_account_type", lambda account_id: "personal")
+    monkeypatch.setattr(
+        search_tools, "_get_account_type", lambda account_id: "personal"
+    )
 
     search_tools.search_files.fn(
         query="  quarterly report ",

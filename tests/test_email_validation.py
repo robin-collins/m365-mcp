@@ -263,12 +263,10 @@ def test_email_create_draft_deduplicates_recipients(
 
     assert result == {"id": "draft-1"}
     to_addresses = [
-        entry["emailAddress"]["address"]
-        for entry in captured["json"]["toRecipients"]
+        entry["emailAddress"]["address"] for entry in captured["json"]["toRecipients"]
     ]
     cc_addresses = [
-        entry["emailAddress"]["address"]
-        for entry in captured["json"]["ccRecipients"]
+        entry["emailAddress"]["address"] for entry in captured["json"]["ccRecipients"]
     ]
     assert to_addresses == ["user@example.com", "other@example.com"]
     assert cc_addresses == ["cc@example.com"]

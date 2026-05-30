@@ -52,6 +52,7 @@ def _select_account(
 
     return accounts[0] if accounts else None
 
+
 def _read_cache() -> str | None:
     try:
         return CACHE_FILE.read_text()
@@ -149,7 +150,9 @@ def _initiate_device_flow(
         if "user_code" in flow:
             return flow
 
-        error_message = flow.get("error_description", flow.get("error", "Unknown error"))
+        error_message = flow.get(
+            "error_description", flow.get("error", "Unknown error")
+        )
         raise Exception(error_message)
 
     try:

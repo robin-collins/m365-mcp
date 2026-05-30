@@ -632,8 +632,7 @@ def email_send(
 
     processed_attachments = _prepare_outbound_attachments(attachments)
     has_large_attachments = any(
-        att["size"] >= MAIL_INLINE_ATTACHMENT_THRESHOLD
-        for att in processed_attachments
+        att["size"] >= MAIL_INLINE_ATTACHMENT_THRESHOLD for att in processed_attachments
     )
 
     if not has_large_attachments and processed_attachments:
@@ -651,9 +650,7 @@ def email_send(
         # Invalidate cache for sent folder
         try:
             cache_manager = get_cache_manager()
-            cache_manager.invalidate_pattern(
-                "email_list:*", account_id=account_id
-            )
+            cache_manager.invalidate_pattern("email_list:*", account_id=account_id)
         except Exception:
             pass
 
@@ -697,9 +694,7 @@ def email_send(
         # Invalidate cache for sent folder
         try:
             cache_manager = get_cache_manager()
-            cache_manager.invalidate_pattern(
-                "email_list:*", account_id=account_id
-            )
+            cache_manager.invalidate_pattern("email_list:*", account_id=account_id)
         except Exception:
             pass
 
@@ -712,9 +707,7 @@ def email_send(
         # Invalidate cache for sent folder
         try:
             cache_manager = get_cache_manager()
-            cache_manager.invalidate_pattern(
-                "email_list:*", account_id=account_id
-            )
+            cache_manager.invalidate_pattern("email_list:*", account_id=account_id)
         except Exception:
             pass
 

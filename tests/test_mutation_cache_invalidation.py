@@ -140,7 +140,10 @@ def test_file_delete_invalidates_file_and_folder_lists_for_only_target_account(
 
     assert result == {"status": "deleted"}
     assert cache_manager.get_cached(target_account, "file_list", file_params) is None
-    assert cache_manager.get_cached(target_account, "folder_get_tree", folder_params) is None
+    assert (
+        cache_manager.get_cached(target_account, "folder_get_tree", folder_params)
+        is None
+    )
     assert cache_manager.get_cached(other_account, "file_list", file_params) is not None
     assert (
         cache_manager.get_cached(other_account, "folder_get_tree", folder_params)

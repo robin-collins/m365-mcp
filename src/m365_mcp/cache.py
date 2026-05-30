@@ -16,9 +16,11 @@ from typing import Any, Optional
 
 try:
     import sqlcipher3 as sqlite3
+
     USING_SQLCIPHER = True
 except ImportError:
     import sqlite3
+
     USING_SQLCIPHER = False
 
 from .encryption import EncryptionKeyManager
@@ -179,8 +181,7 @@ class CacheManager:
         """Return True for cache files that can be safely recreated."""
         message = str(error).lower()
         return any(
-            fragment in message
-            for fragment in _RECOVERABLE_DATABASE_ERROR_FRAGMENTS
+            fragment in message for fragment in _RECOVERABLE_DATABASE_ERROR_FRAGMENTS
         )
 
     def _reset_database_file(self) -> None:

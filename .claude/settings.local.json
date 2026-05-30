@@ -24,7 +24,10 @@
       "mcp__m365__folder_get_tree",
       "Bash(ast-grep:*)",
       "Bash(uvx ruff format:*)",
-      "Bash(uvx ruff check:*)"
+      "Bash(uvx ruff check:*)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Write-Output \"test123\"; $items = Get-ChildItem C:\\\\projects\\\\m365-mcp -Force; Write-Output \"Count: $\\($items.Count\\)\"; $items.Name -join \", \")",
+      "PowerShell(\"ping-test\")"
     ],
     "deny": [],
     "ask": []

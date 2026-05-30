@@ -4,8 +4,9 @@ Tests validation, error handling, and API calls for email_forward.
 """
 
 from typing import Any
-from unittest.mock import MagicMock
+
 import pytest
+
 from src.m365_mcp.tools import email as email_tools
 
 

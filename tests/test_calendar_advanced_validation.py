@@ -52,7 +52,7 @@ class TestCalendarGetFreeBusy:
 
     def test_get_free_busy_requires_attendees(self):
         """calendar_get_free_busy should require at least one attendee."""
-        with pytest.raises((ValidationError, ValueError)) as exc_info:
+        with pytest.raises((ValidationError, ValueError)):
             calendar_tools.calendar_get_free_busy.fn(
                 account_id="test",
                 attendees=[],

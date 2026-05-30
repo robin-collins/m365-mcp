@@ -27,9 +27,11 @@ def test_cache_manager_close_releases_database_for_deletion(
     """Document the expected Windows-safe teardown behavior."""
     db_path = tmp_path / "cache.db"
     manager = CacheManager(db_path=str(db_path), encryption_enabled=False)
+    close = getattr(manager, "close", None)
+    assert callable(close)
 
     manager.set_cached("account-1", "email_list", {}, {"emails": []})
-    manager.close()
+    close()
     db_path.unlink()
 
     assert not db_path.exists()

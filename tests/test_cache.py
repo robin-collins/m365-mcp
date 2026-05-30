@@ -104,6 +104,61 @@ class TestCacheBasics:
         assert key1 == key2
         assert key1 != key3
 
+    def test_remove_account_cache_deletes_only_target_account(
+        self, cache_manager_no_encryption
+    ):
+        """Account removal should purge only that account's cache rows."""
+        target_account = "target-account"
+        other_account = "other-account"
+
+        cache_manager_no_encryption.set_cached(
+            target_account, "email_list", {"folder": "inbox"}, [{"id": "1"}]
+        )
+        cache_manager_no_encryption.set_cached(
+            other_account, "email_list", {"folder": "inbox"}, [{"id": "2"}]
+        )
+        with cache_manager_no_encryption._db() as conn:
+            conn.execute(
+                """
+                INSERT INTO cache_tasks (
+                    task_id, account_id, operation, parameters_json,
+                    priority, status, retry_count, created_at
+                )
+                VALUES ('task-1', ?, 'email_list', '{}', 5, 'queued', 0, ?)
+                """,
+                (target_account, time.time()),
+            )
+            conn.execute(
+                """
+                INSERT INTO cache_invalidation (
+                    account_id, pattern, reason, invalidated_at,
+                    entries_invalidated
+                )
+                VALUES (?, 'email_list:*', 'test', ?, 1)
+                """,
+                (target_account, time.time()),
+            )
+
+        result = cache_manager_no_encryption.remove_account_cache(target_account)
+
+        assert result == {
+            "cache_entries": 1,
+            "cache_tasks": 1,
+            "cache_invalidation": 1,
+        }
+        assert (
+            cache_manager_no_encryption.get_cached(
+                target_account, "email_list", {"folder": "inbox"}
+            )
+            is None
+        )
+        assert (
+            cache_manager_no_encryption.get_cached(
+                other_account, "email_list", {"folder": "inbox"}
+            )
+            is not None
+        )
+
     def test_cache_operations_across_threads(self, tmp_path):
         """Connections reused from the pool should work across worker threads."""
         manager = CacheManager(

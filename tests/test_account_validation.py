@@ -70,6 +70,12 @@ def test_account_authenticate_returns_flow_details(
     assert fake_app.scopes == account_tools.auth.DEVICE_FLOW_SCOPES
 
 
+def test_device_flow_scopes_request_offline_access() -> None:
+    """Device flow must request refresh tokens for silent renewal."""
+
+    assert "offline_access" in account_tools.auth.DEVICE_FLOW_SCOPES
+
+
 def test_account_authenticate_raises_when_flow_missing_user_code(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -78,9 +84,6 @@ def test_account_authenticate_raises_when_flow_missing_user_code(
     class FakeApp:
         pass
 
-<<<<<<< HEAD
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (FakeApp(), "common"))
-=======
     fake_app = FakeApp()
 
     def fake_initiate_device_flow(
@@ -97,7 +100,6 @@ def test_account_authenticate_raises_when_flow_missing_user_code(
         "_initiate_device_flow",
         fake_initiate_device_flow,
     )
->>>>>>> 79fb2e76353245923732a64cd4c63732d7c8155e
 
     with pytest.raises(Exception, match="Failed to get device code"):
         account_tools.account_authenticate.fn()
@@ -286,6 +288,129 @@ def test_get_token_allows_device_flow_when_interactive_auth_enabled(
     assert calls == ["device_flow"]
 
 
+def test_reauthenticate_account_force_refreshes_and_writes_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--re-auth should exercise MSAL refresh-token renewal."""
+
+    class FakeCacheBase:
+        has_state_changed = True
+
+        def serialize(self) -> str:
+            return "cache"
+
+    class FakeApp:
+        def __init__(self) -> None:
+            self.token_cache = FakeCacheBase()
+
+        def get_accounts(self) -> list[dict[str, str]]:
+            return [{"username": "ada@example.com", "home_account_id": "acc-1"}]
+
+        def acquire_token_silent_with_error(
+            self,
+            scopes: list[str],
+            account: dict[str, str],
+            force_refresh: bool = False,
+        ) -> dict[str, Any]:
+            captured["scopes"] = scopes
+            captured["account"] = account
+            captured["force_refresh"] = force_refresh
+            return {"access_token": "new-token", "expires_in": 3600}
+
+    captured: dict[str, Any] = {}
+    writes: list[str] = []
+
+    monkeypatch.setattr(
+        account_tools.auth.msal,
+        "SerializableTokenCache",
+        FakeCacheBase,
+    )
+    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (FakeApp(), "common"))
+    monkeypatch.setattr(account_tools.auth, "_write_cache", writes.append)
+    monkeypatch.setattr(
+        account_tools.auth,
+        "_get_account_type",
+        lambda account_id, username: "work_school",
+    )
+
+    result = account_tools.auth.reauthenticate_account("acc-1")
+
+    assert captured["scopes"] == account_tools.auth.SCOPES
+    assert captured["account"]["home_account_id"] == "acc-1"
+    assert captured["force_refresh"] is True
+    assert writes == ["cache"]
+    assert result.expires_in == 3600
+    assert result.account.account_id == "acc-1"
+    assert result.account.account_type == "work_school"
+
+
+def test_remove_account_clears_tokens_metadata_and_database_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Removing an account should clear every local cache layer."""
+
+    class FakeCacheBase:
+        has_state_changed = True
+
+        def serialize(self) -> str:
+            return "cache"
+
+    class FakeApp:
+        def __init__(self) -> None:
+            self.token_cache = FakeCacheBase()
+
+        def get_accounts(self) -> list[dict[str, str]]:
+            return [
+                {"username": "ada@example.com", "home_account_id": "acc-1"},
+                {"username": "grace@example.com", "home_account_id": "acc-2"},
+            ]
+
+        def remove_account(self, account: dict[str, str]) -> None:
+            removed_accounts.append(account)
+
+    removed_accounts: list[dict[str, str]] = []
+    writes: list[str] = []
+    metadata_writes: list[dict[str, dict[str, str]]] = []
+    metadata = {
+        "acc-1": {"account_type": "personal"},
+        "acc-2": {"account_type": "work_school"},
+    }
+    database_counts = {
+        "cache_entries": 2,
+        "cache_tasks": 1,
+        "cache_invalidation": 1,
+    }
+
+    monkeypatch.setattr(
+        account_tools.auth.msal,
+        "SerializableTokenCache",
+        FakeCacheBase,
+    )
+    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (FakeApp(), "common"))
+    monkeypatch.setattr(account_tools.auth, "_write_cache", writes.append)
+    monkeypatch.setattr(account_tools.auth, "_read_metadata", lambda: metadata.copy())
+    monkeypatch.setattr(account_tools.auth, "_write_metadata", metadata_writes.append)
+    monkeypatch.setattr(
+        account_tools.auth,
+        "_remove_account_database_cache",
+        lambda account_id: database_counts,
+    )
+
+    result = account_tools.auth.remove_account("ada@example.com")
+
+    assert removed_accounts == [
+        {"username": "ada@example.com", "home_account_id": "acc-1"}
+    ]
+    assert writes == ["cache"]
+    assert metadata_writes == [{"acc-2": {"account_type": "work_school"}}]
+    assert result.account.username == "ada@example.com"
+    assert result.account.account_id == "acc-1"
+    assert result.account.account_type == "personal"
+    assert result.token_cache_removed is True
+    assert result.metadata_removed is True
+    assert result.database_cache_removed == database_counts
+
+
 def test_authenticate_script_enables_interactive_auth(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -314,3 +439,98 @@ def test_authenticate_script_enables_interactive_auth(
     monkeypatch.setattr("builtins.input", lambda prompt: "n")
 
     authenticate.main()
+
+
+def test_authenticate_script_reauth_option(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The standalone script should route --re-auth to the refresh helper."""
+    import authenticate
+
+    account = SimpleNamespace(
+        username="ada@example.com",
+        account_id="acc-1",
+        account_type="personal",
+    )
+    refresh_result = SimpleNamespace(account=account, expires_in=3600)
+    calls: list[str] = []
+
+    fake_auth = ModuleType("m365_mcp.auth")
+    fake_auth.list_accounts = lambda: [account]  # type: ignore[attr-defined]
+
+    def fake_reauthenticate_account(account_id: str) -> Any:
+        calls.append(account_id)
+        return refresh_result
+
+    fake_auth.reauthenticate_account = fake_reauthenticate_account  # type: ignore[attr-defined]
+    fake_package = ModuleType("m365_mcp")
+    fake_package.auth = fake_auth  # type: ignore[attr-defined]
+
+    monkeypatch.setenv("M365_MCP_CLIENT_ID", "client-id")
+    monkeypatch.setitem(sys.modules, "m365_mcp", fake_package)
+    monkeypatch.setitem(sys.modules, "m365_mcp.auth", fake_auth)
+    monkeypatch.setattr(
+        authenticate,
+        "_parse_arguments",
+        lambda: SimpleNamespace(
+            env_file=Path("__missing_env__"),
+            re_auth="acc-1",
+            remove=None,
+            yes=False,
+        ),
+    )
+
+    assert authenticate.main() == 0
+    assert calls == ["acc-1"]
+
+
+def test_authenticate_script_remove_option(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The standalone script should route --remove to account removal."""
+    import authenticate
+
+    account = SimpleNamespace(
+        username="ada@example.com",
+        account_id="acc-1",
+        account_type="personal",
+    )
+    remove_result = SimpleNamespace(
+        account=account,
+        token_cache_removed=True,
+        metadata_removed=True,
+        database_cache_removed={
+            "cache_entries": 3,
+            "cache_tasks": 1,
+            "cache_invalidation": 1,
+        },
+    )
+    calls: list[str] = []
+
+    fake_auth = ModuleType("m365_mcp.auth")
+    fake_auth.list_accounts = lambda: [account]  # type: ignore[attr-defined]
+
+    def fake_remove_account(account_id: str) -> Any:
+        calls.append(account_id)
+        return remove_result
+
+    fake_auth.remove_account = fake_remove_account  # type: ignore[attr-defined]
+    fake_package = ModuleType("m365_mcp")
+    fake_package.auth = fake_auth  # type: ignore[attr-defined]
+
+    monkeypatch.setenv("M365_MCP_CLIENT_ID", "client-id")
+    monkeypatch.setitem(sys.modules, "m365_mcp", fake_package)
+    monkeypatch.setitem(sys.modules, "m365_mcp.auth", fake_auth)
+    monkeypatch.setattr(
+        authenticate,
+        "_parse_arguments",
+        lambda: SimpleNamespace(
+            env_file=Path("__missing_env__"),
+            re_auth=None,
+            remove="acc-1",
+            yes=True,
+        ),
+    )
+
+    assert authenticate.main() == 0
+    assert calls == ["acc-1"]

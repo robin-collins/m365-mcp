@@ -126,7 +126,7 @@ def test_account_complete_auth_returns_pending_status(
         def get_accounts(self) -> list[dict[str, str]]:
             return []
 
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: FakeApp())
+    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (FakeApp(), "common"))
 
     result = account_tools.account_complete_auth.fn(str(flow_cache))
 
@@ -182,7 +182,7 @@ def test_account_complete_auth_returns_success_and_writes_cache(
     def fake_get_account_type(account_id: str, username: str) -> str:
         return "work_school"
 
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: FakeApp())
+    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (FakeApp(), "common"))
     monkeypatch.setattr(account_tools.auth, "_write_cache", fake_write_cache)
     monkeypatch.setattr(account_tools.auth, "_get_account_type", fake_get_account_type)
 

@@ -132,7 +132,7 @@ def account_complete_auth(flow_cache: str) -> dict[str, str]:
     except (ValueError, SyntaxError):
         raise ValueError("Invalid flow cache data")
 
-    app = auth.get_app()
+    app, _tenant_id = auth.get_app()
     result = app.acquire_token_by_device_flow(flow)
 
     if "error" in result:

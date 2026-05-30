@@ -29,6 +29,7 @@ from .cache_config import (
     CONNECTION_POOL_SIZE,
     CONNECTION_TIMEOUT,
     CacheState,
+    CACHE_WARMING_ENABLED,
     SQLCIPHER_SETTINGS,
     generate_cache_key,
 )
@@ -300,6 +301,9 @@ class CacheManager:
                 (time.time(), cache_key),
             )
 
+            if state == CacheState.STALE:
+                self._enqueue_refresh_task(conn, account_id, resource_type, params)
+
             return (data, state)
 
     def set_cached(
@@ -520,6 +524,58 @@ class CacheManager:
 
         return count
 
+    @staticmethod
+    def _serialize_task_parameters(parameters: dict[str, Any]) -> str:
+        """Serialize task parameters deterministically for duplicate checks."""
+        return json.dumps(parameters, sort_keys=True, separators=(",", ":"))
+
+    def _enqueue_refresh_task(
+        self,
+        conn,
+        account_id: str,
+        operation: str,
+        parameters: dict[str, Any],
+    ) -> None:
+        """Enqueue a background refresh task unless one is already pending."""
+        if not CACHE_WARMING_ENABLED:
+            return
+
+        import uuid
+
+        parameters_json = self._serialize_task_parameters(parameters)
+        existing = conn.execute(
+            """
+            SELECT 1
+            FROM cache_tasks
+            WHERE account_id = ?
+              AND operation = ?
+              AND parameters_json = ?
+              AND status IN ('queued', 'running')
+            LIMIT 1
+            """,
+            (account_id, operation, parameters_json),
+        ).fetchone()
+
+        if existing:
+            return
+
+        conn.execute(
+            """
+            INSERT INTO cache_tasks (
+                task_id, account_id, operation, parameters_json,
+                priority, status, retry_count, created_at
+            )
+            VALUES (?, ?, ?, ?, 5, 'queued', 0, ?)
+            """,
+            (
+                str(uuid.uuid4()),
+                account_id,
+                operation,
+                parameters_json,
+                time.time(),
+            ),
+        )
+
     def get_stats(self) -> dict[str, Any]:
         """
         Get cache statistics.
@@ -617,7 +673,7 @@ class CacheManager:
                     task_id,
                     account_id,
                     operation,
-                    json.dumps(parameters),
+                    self._serialize_task_parameters(parameters),
                     priority,
                     time.time(),
                 ),

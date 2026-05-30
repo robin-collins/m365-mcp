@@ -3,8 +3,13 @@ import sys
 import signal
 import atexit
 import argparse
+import asyncio
+import inspect
 import logging
 from pathlib import Path
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from typing import Any
 from dotenv import load_dotenv
 from importlib.metadata import version, PackageNotFoundError
 
@@ -70,6 +75,142 @@ def _log_startup_info() -> None:
             value = f"{value[:8]}...{value[-4:]}"
         logger.info(f"  {key}: {value}")
     logger.info("=" * 80)
+
+
+@dataclass
+class CacheRuntime:
+    """Owns cache background services for the running server."""
+
+    cache_manager: Any
+    worker: Any
+    warmer: Any
+
+    async def stop(self) -> None:
+        """Stop background services and release cache handles."""
+        from .tools import cache_tools
+
+        active_logger = logger or logging.getLogger(__name__)
+        try:
+            await self.warmer.stop()
+        finally:
+            await self.worker.stop()
+            cache_tools.set_warming_status_provider(None)
+            self.cache_manager.close()
+            active_logger.info("Cache runtime stopped")
+
+
+def _get_cache_warming_accounts() -> list[dict[str, str]]:
+    """Return authenticated accounts in the shape expected by CacheWarmer."""
+    from . import auth
+
+    return [
+        {"account_id": account.account_id, "username": account.username}
+        for account in auth.list_accounts()
+    ]
+
+
+async def _execute_cache_refresh_tool(
+    account_id: str,
+    operation: str,
+    parameters: dict[str, Any],
+) -> Any:
+    """Execute a cacheable tool operation for warming or stale refresh."""
+    from .tools import contact, email, file, folder
+
+    tool_functions = {
+        "contact_list": contact.contact_list.fn,
+        "email_list": email.email_list.fn,
+        "file_list": file.file_list.fn,
+        "folder_get_tree": folder.folder_get_tree.fn,
+    }
+    tool_function = tool_functions.get(operation)
+    if tool_function is None:
+        raise ValueError(f"Unsupported cache refresh operation: {operation}")
+
+    call_parameters = dict(parameters)
+    call_parameters["account_id"] = account_id
+    signature = inspect.signature(tool_function)
+    if "force_refresh" in signature.parameters:
+        call_parameters["force_refresh"] = True
+    if "use_cache" in signature.parameters:
+        call_parameters.setdefault("use_cache", True)
+
+    result = tool_function(**call_parameters)
+    if asyncio.iscoroutine(result):
+        return await result
+    return result
+
+
+async def _execute_background_refresh(
+    operation: str,
+    parameters: dict[str, Any],
+) -> Any:
+    """Execute a queued stale-cache refresh operation."""
+    call_parameters = dict(parameters)
+    account_id = call_parameters.pop("account_id", None)
+    if not account_id:
+        raise ValueError("Background refresh task is missing account_id")
+    return await _execute_cache_refresh_tool(account_id, operation, call_parameters)
+
+
+async def _execute_warming_operation(
+    account_id: str,
+    operation: str,
+    parameters: dict[str, Any],
+) -> Any:
+    """Execute a startup cache warming operation."""
+    return await _execute_cache_refresh_tool(account_id, operation, parameters)
+
+
+async def _start_cache_runtime() -> CacheRuntime | None:
+    """Start cache warming/background refresh services when enabled."""
+    from .background_worker import BackgroundWorker
+    from .cache_config import CACHE_WARMING_ENABLED
+    from .cache_warming import CacheWarmer
+    from .tools import cache_tools
+
+    active_logger = logger or logging.getLogger(__name__)
+    if not CACHE_WARMING_ENABLED:
+        cache_tools.set_warming_status_provider(None)
+        active_logger.info("Cache warming/background refresh disabled")
+        return None
+
+    cache_manager = cache_tools.get_cache_manager()
+    worker = BackgroundWorker(cache_manager, _execute_background_refresh)
+    accounts = _get_cache_warming_accounts()
+    warmer = CacheWarmer(cache_manager, _execute_warming_operation, accounts)
+    worker.set_cache_warmer(warmer)
+    cache_tools.set_background_worker(worker)
+
+    try:
+        await worker.start()
+        await warmer.start_warming()
+    except Exception:
+        await worker.stop()
+        cache_tools.set_warming_status_provider(None)
+        cache_manager.close()
+        active_logger.exception("Failed to start cache runtime")
+        raise
+
+    active_logger.info(
+        "Cache runtime started",
+        extra={"account_count": len(accounts), "warming_enabled": True},
+    )
+    return CacheRuntime(cache_manager=cache_manager, worker=worker, warmer=warmer)
+
+
+async def _run_mcp_with_cache_lifecycle(
+    mcp,
+    transport: str | None = None,
+    **transport_kwargs: Any,
+) -> None:
+    """Run FastMCP with cache runtime startup and shutdown."""
+    runtime = await _start_cache_runtime()
+    try:
+        await mcp.run_async(transport=transport, **transport_kwargs)
+    finally:
+        if runtime is not None:
+            await runtime.stop()
 
 
 def main() -> None:
@@ -182,11 +323,28 @@ def main() -> None:
             elif auth_method == "oauth":
                 logger.info("Using FastMCP built-in OAuth authentication")
                 # Use FastMCP built-in OAuth (requires FastMCP 2.0+)
-                mcp.run(transport="http", host=host, port=port, path=path, auth="oauth")
+                asyncio.run(
+                    _run_mcp_with_cache_lifecycle(
+                        mcp,
+                        transport="http",
+                        host=host,
+                        port=port,
+                        path=path,
+                        auth="oauth",
+                    )
+                )
             else:
                 logger.warning("Running in insecure mode (no authentication)")
                 # No auth (insecure mode - requires MCP_ALLOW_INSECURE=true)
-                mcp.run(transport="http", host=host, port=port, path=path)
+                asyncio.run(
+                    _run_mcp_with_cache_lifecycle(
+                        mcp,
+                        transport="http",
+                        host=host,
+                        port=port,
+                        path=path,
+                    )
+                )
         except Exception as e:
             logger.critical(f"Failed to start HTTP server: {e}", exc_info=True)
             raise
@@ -194,7 +352,7 @@ def main() -> None:
     elif transport == "stdio":
         logger.info("Starting stdio transport")
         try:
-            mcp.run()
+            asyncio.run(_run_mcp_with_cache_lifecycle(mcp))
         except Exception as e:
             logger.critical(f"Failed to start stdio server: {e}", exc_info=True)
             raise
@@ -238,7 +396,28 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
             file=sys.stderr,
         )
 
-    app = FastAPI()
+    # Get the Streamable HTTP app from FastMCP and mount it.
+    # Note: http_app() already includes routes at the configured path (e.g., /mcp)
+    # so we mount it at root "/" to avoid double-pathing (e.g., /mcp/mcp).
+    http_app = mcp.http_app()
+    http_lifespan = None
+    if hasattr(http_app, "router") and hasattr(http_app.router, "lifespan_context"):
+        http_lifespan = http_app.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(app):
+        runtime = await _start_cache_runtime()
+        try:
+            if http_lifespan is not None:
+                async with http_lifespan(app):
+                    yield
+            else:
+                yield
+        finally:
+            if runtime is not None:
+                await runtime.stop()
+
+    app = FastAPI(lifespan=lifespan)
 
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
@@ -313,16 +492,6 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
     async def health_check():
         """Health check endpoint (no auth required)"""
         return {"status": "ok", "transport": "http", "auth": "bearer"}
-
-    # Get the Streamable HTTP app from FastMCP and mount it
-    # Note: http_app() already includes routes at the configured path (e.g., /mcp)
-    # so we mount it at root "/" to avoid double-pathing (e.g., /mcp/mcp)
-    http_app = mcp.http_app()
-
-    # Important: Pass the lifespan context from the MCP app to the FastAPI app
-    # This ensures FastMCP's session manager is properly initialized
-    if hasattr(http_app, "router") and hasattr(http_app.router, "lifespan_context"):
-        app.router.lifespan_context = http_app.router.lifespan_context
 
     # Mount at root since http_app already has path-prefixed routes
     app.mount("/", http_app)

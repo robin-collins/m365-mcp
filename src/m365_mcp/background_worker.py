@@ -172,7 +172,8 @@ class BackgroundWorker:
 
         task_id = task["task_id"]
         operation = task["operation"]
-        params = task.get("parameters", {})
+        params = dict(task.get("parameters", {}))
+        params.setdefault("account_id", task["account_id"])
 
         logger.info(
             f"Processing task {task_id}",

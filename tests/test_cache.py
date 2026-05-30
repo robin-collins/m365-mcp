@@ -202,6 +202,73 @@ class TestCacheBasics:
         finally:
             recovered_manager.close()
 
+    def test_stale_cache_entry_enqueues_background_refresh(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Stale reads should enqueue one refresh task when warming is enabled."""
+        monkeypatch.setattr(cache_module, "CACHE_WARMING_ENABLED", True)
+        manager = CacheManager(
+            db_path=str(tmp_path / "stale_refresh.db"),
+            encryption_enabled=False,
+        )
+        params = {"folder_id": "inbox"}
+
+        try:
+            manager.set_cached("account-1", "email_list", params, {"emails": []})
+            cache_key = generate_cache_key("account-1", "email_list", params)
+            with manager._db() as conn:
+                conn.execute(
+                    "UPDATE cache_entries SET created_at = ? WHERE cache_key = ?",
+                    (time.time() - 180, cache_key),
+                )
+
+            result = manager.get_cached("account-1", "email_list", params)
+            assert result is not None
+            _, state = result
+            assert state == CacheState.STALE
+
+            # A second stale read should not duplicate an existing queued refresh.
+            manager.get_cached("account-1", "email_list", params)
+
+            tasks = manager.list_tasks(account_id="account-1", status="queued")
+            assert len(tasks) == 1
+            assert tasks[0]["operation"] == "email_list"
+            assert tasks[0]["parameters"] == params
+        finally:
+            manager.close()
+
+    def test_stale_cache_entry_does_not_enqueue_when_disabled(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """The default disabled flag should leave stale cache reads unchanged."""
+        monkeypatch.setattr(cache_module, "CACHE_WARMING_ENABLED", False)
+        manager = CacheManager(
+            db_path=str(tmp_path / "stale_no_refresh.db"),
+            encryption_enabled=False,
+        )
+        params = {"folder_id": "inbox"}
+
+        try:
+            manager.set_cached("account-1", "email_list", params, {"emails": []})
+            cache_key = generate_cache_key("account-1", "email_list", params)
+            with manager._db() as conn:
+                conn.execute(
+                    "UPDATE cache_entries SET created_at = ? WHERE cache_key = ?",
+                    (time.time() - 180, cache_key),
+                )
+
+            result = manager.get_cached("account-1", "email_list", params)
+            assert result is not None
+            _, state = result
+            assert state == CacheState.STALE
+            assert manager.list_tasks(account_id="account-1") == []
+        finally:
+            manager.close()
+
 
 class TestCacheCompression:
     """Test compression functionality."""

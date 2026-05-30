@@ -168,7 +168,7 @@ CACHE_LIMITS = CacheLimits()
 # CACHE WARMING
 # ============================================================================
 
-# Automatic startup warming is disabled until worker lifecycle hardening is wired.
+# Automatic startup warming is wired but disabled by default.
 CACHE_WARMING_ENABLED = (
     os.environ.get("M365_MCP_CACHE_WARMING", "false").lower() == "true"
 )

@@ -6,6 +6,7 @@ import pytest
 import tempfile
 from pathlib import Path
 import time
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 from src.m365_mcp import cache as cache_module
@@ -96,6 +97,29 @@ class TestCacheBasics:
 
         assert key1 == key2
         assert key1 != key3
+
+    def test_cache_operations_across_threads(self, tmp_path):
+        """Connections reused from the pool should work across worker threads."""
+        manager = CacheManager(
+            db_path=str(tmp_path / "threaded.db"),
+            encryption_enabled=False,
+            max_connections=2,
+        )
+
+        def round_trip(index: int) -> dict[str, int]:
+            params = {"index": index}
+            data = {"value": index}
+            manager.set_cached("thread-account", "email_list", params, data)
+            result = manager.get_cached("thread-account", "email_list", params)
+            assert result is not None
+            cached_data, state = result
+            assert state == CacheState.FRESH
+            return cached_data
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            results = list(executor.map(round_trip, range(24)))
+
+        assert results == [{"value": index} for index in range(24)]
 
 
 class TestCacheCompression:
@@ -391,7 +415,10 @@ class TestCacheEncryption:
 
         assert isinstance(conn, FakeConnection)
         assert captured["path"] == str(manager.db_path)
-        assert captured["kwargs"] == {"timeout": CONNECTION_TIMEOUT}
+        assert captured["kwargs"] == {
+            "timeout": CONNECTION_TIMEOUT,
+            "check_same_thread": False,
+        }
         assert "PRAGMA key = 'test-key'" in statements
         for setting, value in SQLCIPHER_SETTINGS.items():
             pragma_value = int(value) if isinstance(value, bool) else value

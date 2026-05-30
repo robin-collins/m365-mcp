@@ -9,6 +9,7 @@ import json
 import gzip
 import logging
 import time
+import threading
 from pathlib import Path
 from contextlib import contextmanager
 from typing import Any, Optional
@@ -65,6 +66,7 @@ class CacheManager:
         self.encryption_enabled = encryption_enabled
         self.max_connections = max_connections
         self._connection_pool = []
+        self._pool_lock = threading.Lock()
 
         # Get encryption key if enabled
         self.encryption_key = None
@@ -93,6 +95,7 @@ class CacheManager:
         conn = sqlite3.connect(  # type: ignore[attr-defined]
             str(self.db_path),
             timeout=CONNECTION_TIMEOUT,
+            check_same_thread=False,
         )
 
         if self.encryption_enabled and self.encryption_key:
@@ -121,9 +124,12 @@ class CacheManager:
             Database connection from pool or newly created.
         """
         # Get connection from pool or create new
-        if self._connection_pool:
-            conn = self._connection_pool.pop()
-        else:
+        conn = None
+        with self._pool_lock:
+            if self._connection_pool:
+                conn = self._connection_pool.pop()
+
+        if conn is None:
             conn = self._create_connection()
 
         try:
@@ -135,9 +141,10 @@ class CacheManager:
             raise
         finally:
             # Return to pool if under limit
-            if len(self._connection_pool) < self.max_connections:
-                self._connection_pool.append(conn)
-            else:
+            with self._pool_lock:
+                if len(self._connection_pool) < self.max_connections:
+                    self._connection_pool.append(conn)
+                    return
                 conn.close()
 
     def _init_database(self) -> None:

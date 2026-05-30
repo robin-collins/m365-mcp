@@ -336,26 +336,10 @@ def test_cache_warming_status_not_initialized():
     # Reset background worker
     cache_tools._background_worker = None
 
-    # Call the actual function (need to import and use the real implementation)
-    # Since it's decorated, we need to access it differently
-
-    # The tool is a FastMCP FunctionTool, we can't call it directly in tests
-    # Instead, test the logic through the module function
-    from src.m365_mcp.tools import cache_tools
-
-    # Manually call the logic
-    if cache_tools._background_worker is None:
-        result = {
-            "is_warming": False,
-            "status": "Background worker not initialized",
-            "total_operations": 0,
-            "completed_operations": 0,
-            "failed_operations": 0,
-            "progress_percentage": 0.0,
-        }
+    result = cache_tools.cache_warming_status.fn()
 
     assert result["is_warming"] is False
-    assert result["status"] == "Background worker not initialized"
+    assert result["status"].startswith("Cache warming disabled")
 
 
 # Test 13: Test cache_warming_status with mock worker

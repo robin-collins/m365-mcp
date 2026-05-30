@@ -118,7 +118,7 @@ claude
 ### Cache Management Tools
 - **`cache_get_stats`** - View cache statistics (size, entries, hit rate)
 - **`cache_invalidate`** - Manually invalidate cache entries by pattern
-- **`cache_task_enqueue`** - Queue background cache warming tasks
+- **`cache_task_enqueue`** - Queue background cache tasks
 - **`cache_task_status`** - Check status of queued cache tasks
 - **`cache_task_list`** - List all cache tasks by account or status
 
@@ -132,7 +132,8 @@ M365 MCP includes an intelligent caching system that dramatically improves perfo
 - **⚡ 300x Performance Boost**: Common operations like `folder_get_tree` go from 30s → <100ms
 - **🧠 Intelligent TTL**: Three-state cache (Fresh/Stale/Expired) with automatic refresh
 - **📦 Automatic Compression**: Large entries (≥50KB) automatically compressed (70-80% size reduction)
-- **🔄 Cache Warming**: Background pre-population on startup for instant responses
+- **🔄 Cache Warming Ready**: Warming components exist, but automatic startup
+  warming is disabled until worker lifecycle hardening is complete
 - **🎯 Smart Invalidation**: Write operations automatically invalidate related caches
 - **🌐 Multi-Account**: Complete isolation between different accounts
 - **✅ Compliance Ready**: GDPR and HIPAA compliant data protection
@@ -402,7 +403,7 @@ create_event(
 - **Missing permissions**: Ensure all required API permissions are granted in Azure
 - **Token errors**: Delete `~/.m365_mcp_token_cache.json` and re-authenticate
 - **Cache issues**: Delete `~/.m365_mcp_cache.db` to reset cache (encryption key will regenerate)
-- **Slow first requests**: Normal - cache warming runs in background, subsequent requests are fast
+- **Slow first requests**: Normal on a cold cache. Automatic startup warming is currently disabled; subsequent cached requests are fast
 
 ## License
 

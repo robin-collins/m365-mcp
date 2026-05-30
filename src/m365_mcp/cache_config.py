@@ -168,9 +168,9 @@ CACHE_LIMITS = CacheLimits()
 # CACHE WARMING
 # ============================================================================
 
-# Enable cache warming on server startup
+# Automatic startup warming is disabled until worker lifecycle hardening is wired.
 CACHE_WARMING_ENABLED = (
-    os.environ.get("M365_MCP_CACHE_WARMING", "true").lower() == "true"
+    os.environ.get("M365_MCP_CACHE_WARMING", "false").lower() == "true"
 )
 
 # Operations to warm cache with on startup

@@ -306,7 +306,11 @@ def cache_warming_status() -> dict[str, Any]:
     if _background_worker is None:
         return {
             "is_warming": False,
-            "status": "Background worker not initialized",
+            "status": (
+                "Cache warming disabled: startup worker not initialized. "
+                "Automatic warming will remain off until worker lifecycle "
+                "hardening is complete."
+            ),
             "total_operations": 0,
             "completed_operations": 0,
             "failed_operations": 0,

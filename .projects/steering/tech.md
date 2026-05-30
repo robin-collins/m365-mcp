@@ -146,7 +146,8 @@ print(result)
 - **Smart Invalidation** - Pattern-based cache invalidation on write operations
 - **Connection Pooling** - Pool of 5 SQLite connections for concurrent access
 - **Automatic Cleanup** - Triggers at 80% of 2GB limit, reduces to 60% target
-- **Cache Warming** - Background pre-population on server startup (non-blocking)
+- **Cache Warming** - Implementation exists, but background pre-population on
+  server startup is currently disabled until worker lifecycle hardening is wired
 - **Performance Impact** - 300x faster for folder_get_tree, 40-100x for email_list/file_list
 - **Encryption Key Management** - System keyring integration with environment fallback
 

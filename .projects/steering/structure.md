@@ -16,7 +16,7 @@ m365-mcp/
 │   ├── tools.py               # MCP tool definitions (51+ tools)
 │   ├── cache.py               # Encrypted SQLite cache manager (AES-256)
 │   ├── cache_config.py        # Cache configuration, TTL policies, key generation
-│   ├── cache_warming.py       # Automatic background cache warming
+│   ├── cache_warming.py       # Cache warming implementation (startup wiring deferred)
 │   ├── cache_migration.py     # Database migration utilities
 │   ├── background_worker.py   # Async task queue for cache operations
 │   └── encryption.py          # Encryption key management (keyring integration)
@@ -75,7 +75,8 @@ m365-mcp/
 
 ### Background Processing (`background_worker.py`, `cache_warming.py`)
 - **Async task queue** - Priority-based task scheduling and execution
-- **Cache warming** - Non-blocking pre-population on server startup
+- **Cache warming** - Implementation exists, but automatic startup warming is
+  currently disabled until worker lifecycle hardening is complete
 - **Retry logic** - Automatic retry with exponential backoff for failed tasks
 - **Status tracking** - Real-time task status and completion monitoring
 

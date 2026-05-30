@@ -509,16 +509,20 @@ def sync_accounts(accounts):
 
 **Performance**: Processes 10 accounts in ~500ms (vs. 20-50s without cache)
 
-### Workflow 4: Cache Warming on Startup
+### Workflow 4: Manual Cache Warming Pattern
+
+Automatic startup warming is currently disabled until the cache worker lifecycle
+is hardened. The pattern below is illustrative for future wiring or controlled
+manual experiments.
 
 ```python
-# Warm cache on application startup
+# Warm cache manually in a controlled maintenance command
 import asyncio
 
 async def warm_cache_on_startup(accounts):
     """Pre-populate cache for all accounts on startup."""
 
-    print("Starting cache warming...")
+    print("Starting manual cache warming...")
 
     tasks = []
     for account in accounts:
@@ -533,7 +537,7 @@ async def warm_cache_on_startup(accounts):
         await asyncio.gather(*batch)
         await asyncio.sleep(0.5)  # Throttle
 
-    print(f"Cache warming complete for {len(accounts)} accounts")
+    print(f"Manual cache warming complete for {len(accounts)} accounts")
 
 async def warm_account_cache(account_id):
     """Warm cache for single account."""
@@ -602,7 +606,8 @@ def daily_cache_maintenance():
 1. **Batch operations**: Process multiple items in one loop
 2. **Lazy load**: Only fetch data when needed
 3. **Progressive enhancement**: Show cached data first, refresh background
-4. **Cache warming**: Pre-populate on startup for instant responses
+4. **Cache warming**: Disabled on startup for now; use controlled manual
+   warming only after worker lifecycle hardening
 5. **Monitor metrics**: Track hit rate and adjust patterns
 
 ---

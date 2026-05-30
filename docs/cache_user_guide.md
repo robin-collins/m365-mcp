@@ -57,13 +57,13 @@ result = folder_get_tree(account_id, path="/Documents")
 On first server startup:
 
 1. Cache is empty (no cached data)
-2. Cache warming begins in background (non-blocking)
+2. Automatic startup warming is currently disabled
 3. First requests may be slower (cache miss)
 4. Subsequent requests are fast (cache hit)
 
 **Expected Timeline**:
 - Server startup: Instant
-- Cache warming: 30-60 seconds (background)
+- Cache warming: Disabled until worker lifecycle hardening is complete
 - First request: Normal API speed
 - Second+ request: 40-300x faster
 
@@ -210,16 +210,20 @@ The cache automatically invalidates on write operations:
 
 ### What is Cache Warming?
 
-Cache warming pre-populates the cache in the background on server startup:
+Cache warming is designed to pre-populate the cache in the background. The
+implementation exists, but automatic startup warming is currently disabled until
+worker lifecycle and concurrency hardening is complete.
 
-1. Server starts (instant, non-blocking)
-2. Warming begins in background
-3. Common operations cached automatically
-4. Your requests are fast from the start
+Current behavior:
+
+1. Server starts without a warming worker
+2. The cache fills on demand as tools are called
+3. Subsequent reads use cached data until TTL expiry or invalidation
 
 ### Monitor Cache Warming
 
-Check warming status (not yet implemented in current release)
+`cache_warming_status` reports that automatic warming is disabled when no worker
+has been initialized.
 
 ### Priority Order
 

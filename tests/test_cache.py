@@ -27,13 +27,17 @@ def temp_cache_db():
 @pytest.fixture
 def cache_manager(temp_cache_db):
     """Create cache manager instance for testing."""
-    return CacheManager(db_path=temp_cache_db, encryption_enabled=True)
+    manager = CacheManager(db_path=temp_cache_db, encryption_enabled=True)
+    yield manager
+    manager.close()
 
 
 @pytest.fixture
 def cache_manager_no_encryption(temp_cache_db):
     """Create cache manager without encryption for testing."""
-    return CacheManager(db_path=temp_cache_db, encryption_enabled=False)
+    manager = CacheManager(db_path=temp_cache_db, encryption_enabled=False)
+    yield manager
+    manager.close()
 
 
 class TestCacheBasics:

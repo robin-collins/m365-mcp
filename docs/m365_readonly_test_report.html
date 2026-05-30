@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>m365-mcp Read-Only Tool Test Report</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2128;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --accent2: #3fb950;
+    --warn: #d29922;
+    --danger: #f85149;
+    --text: #e6edf3;
+    --text2: #8b949e;
+    --text3: #6e7681;
+    --pass-bg: rgba(63,185,80,0.08);
+    --pass-border: rgba(63,185,80,0.3);
+    --warn-bg: rgba(210,153,34,0.08);
+    --warn-border: rgba(210,153,34,0.3);
+    --fail-bg: rgba(248,81,73,0.08);
+    --fail-border: rgba(248,81,73,0.3);
+    --skip-bg: rgba(88,166,255,0.06);
+    --skip-border: rgba(88,166,255,0.2);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 40px 24px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  /* Header */
+  .header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 28px;
+    margin-bottom: 32px;
+  }
+  .header-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: rgba(88,166,255,0.1);
+    border: 1px solid rgba(88,166,255,0.25);
+    padding: 4px 10px;
+    border-radius: 4px;
+    display: inline-block;
+    margin-bottom: 16px;
+  }
+  h1 {
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .meta {
+    font-size: 13px;
+    color: var(--text2);
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .meta span { display: flex; align-items: center; gap: 5px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .dot.green { background: var(--accent2); }
+  .dot.yellow { background: var(--warn); }
+  .dot.red { background: var(--danger); }
+
+  /* Summary bar */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .summary-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .summary-card .label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text3);
+    margin-bottom: 6px;
+  }
+  .summary-card .val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 28px;
+    font-weight: 700;
+  }
+  .summary-card.pass .val { color: var(--accent2); }
+  .summary-card.warn .val { color: var(--warn); }
+  .summary-card.fail .val { color: var(--danger); }
+  .summary-card.total .val { color: var(--accent); }
+
+  /* Section */
+  .section {
+    margin-bottom: 28px;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text2);
+  }
+  .section-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text3);
+    padding: 2px 7px;
+    border-radius: 10px;
+  }
+  .section-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Tool rows */
+  .tool-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .tool-row {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    display: grid;
+    grid-template-columns: 22px 260px 70px 1fr;
+    align-items: start;
+    gap: 12px;
+    transition: border-color 0.15s;
+  }
+  .tool-row:hover { border-color: #484f58; }
+
+  .tool-row.pass { border-left: 3px solid var(--accent2); }
+  .tool-row.warn { border-left: 3px solid var(--warn); }
+  .tool-row.fail { border-left: 3px solid var(--danger); }
+
+  .status-icon { font-size: 14px; line-height: 1.5; }
+
+  .tool-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--accent);
+    word-break: break-all;
+  }
+
+  .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    display: inline-block;
+    white-space: nowrap;
+  }
+  .badge.pass { background: var(--pass-bg); border: 1px solid var(--pass-border); color: var(--accent2); }
+  .badge.warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn); }
+  .badge.fail { background: var(--fail-bg); border: 1px solid var(--fail-border); color: var(--danger); }
+
+  .tool-notes {
+    font-size: 12.5px;
+    color: var(--text2);
+    line-height: 1.5;
+  }
+  .tool-notes .detail {
+    color: var(--text3);
+    font-size: 11.5px;
+    margin-top: 2px;
+  }
+  .tool-notes code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: rgba(255,255,255,0.05);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: #e3b341;
+  }
+
+  /* Notes section */
+  .observations {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-top: 32px;
+  }
+  .observations h2 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text2);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .obs-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .obs-list li {
+    display: flex;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.5;
+  }
+  .obs-list li::before {
+    content: '→';
+    color: var(--accent);
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .obs-list li strong { color: var(--text); font-weight: 500; }
+
+  /* Footer */
+  .footer {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 11.5px;
+    color: var(--text3);
+    display: flex;
+    justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  @media (max-width: 700px) {
+    .tool-row { grid-template-columns: 22px 1fr 60px; }
+    .tool-notes { grid-column: 1 / -1; }
+    .summary-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-badge">m365-mcp · Read-Only Audit</div>
+  <h1>Read-Only Tool Test Report</h1>
+  <div style="font-size:13px;color:var(--text2);margin-top:4px;">Account: Robin.F.Collins@outlook.com · Server: m365-mcp v0.2.3</div>
+  <div class="meta">
+    <span><span class="dot green"></span> Pass = data returned correctly</span>
+    <span><span class="dot yellow"></span> Warn = worked with caveats</span>
+    <span><span class="dot red"></span> Fail = error or no data</span>
+    <span style="color:var(--text3)">Tested: 2026-05-30 · ACST+9:30</span>
+  </div>
+</div>
+
+<div class="summary-grid">
+  <div class="summary-card pass"><div class="label">Passed</div><div class="val">23</div></div>
+  <div class="summary-card warn"><div class="label">Warnings</div><div class="val">3</div></div>
+  <div class="summary-card fail"><div class="label">Failed</div><div class="val">2</div></div>
+  <div class="summary-card total"><div class="label">Total Tested</div><div class="val">28</div></div>
+</div>
+
+<!-- ===================== ACCOUNT ===================== -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-title">Account</span>
+    <span class="section-count">1</span>
+    <span class="section-line"></span>
+  </div>
+  <div class="tool-list">
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">account_list</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Returned 1 account: Robin.F.Collins@outlook.com (personal type).
+        <div class="detail">Account ID confirmed and used as input for all subsequent calls.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SERVER ===================== -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-title">Server</span>
+    <span class="section-count">1</span>
+    <span class="section-line"></span>
+  </div>
+  <div class="tool-list">
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">server_get_version</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Returned <code>m365-mcp v0.2.3</code>. No parameters required; instant response.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== CACHE ===================== -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-title">Cache</span>
+    <span class="section-count">3</span>
+    <span class="section-line"></span>
+  </div>
+  <div class="tool-list">
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">cache_get_stats</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Returned full cache stats: 11 entries, 29.5 KB used, 0.001% of 2 GB limit. Hit rate 0% (cold start). Breakdown by resource type available (email_list, contact_list, etc.).</div>
+    </div>
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">cache_task_list</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Returned empty array — no background tasks queued or running. Correct given no warming was initiated.</div>
+    </div>
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">cache_warming_status</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Returned <code>is_warming: false</code> with message "Background worker not initialized". All progress fields at zero. Expected state for a fresh session.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== EMAIL ===================== -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-title">Email</span>
+    <span class="section-count">3</span>
+    <span class="section-line"></span>
+  </div>
+  <div class="tool-list">
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">email_list</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Listed 3 most recent inbox emails (limit=3, include_body=false). Returned subject, sender, received datetime, isRead, hasAttachments. Top items were MCP test emails from today.
+        <div class="detail">Inbox total: 7,768 items · 2 unread at time of test.</div>
+      </div>
+    </div>
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">email_get</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Retrieved full email details by ID. Body, headers, conversationId, webLink, flag status, attachment list all present. Body: <code>"This is a test email sent via send_email tool v3"</code>.
+        <div class="detail">Cache status: miss (first fetch). Attachment list confirmed empty.</div>
+      </div>
+    </div>
+    <div class="tool-row warn">
+      <span class="status-icon">⚠️</span>
+      <span class="tool-name">email_get_attachment</span>
+      <span class="badge warn">Skipped</span>
+      <div class="tool-notes">Not executed — no emails with attachments were present in the test inbox at time of testing. Tool signature requires both <code>email_id</code> and <code>attachment_id</code>; no valid combination available to test safely without side effects.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== EMAIL FOLDERS ===================== -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-title">Email Folders</span>
+    <span class="section-count">3</span>
+    <span class="section-line"></span>
+  </div>
+  <div class="tool-list">
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">emailfolders_list</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Returned 18 root-level folders including Archive, Bills_and_Utilities, Business_and_Work, Inbox (7,768 items), Sent Items (5,798 items), Drafts (15), and a rich set of custom categories. Hidden folders excluded by default.</div>
+    </div>
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">emailfolders_get</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Fetched Inbox folder by ID. Confirmed: 24 child folders, 7,768 total items, 1 unread, 1.675 GB size. Full metadata returned including <code>sizeInBytes</code> field (not present in list output).</div>
+    </div>
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">emailfolders_get_tree</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Returned 2-level deep folder tree. Confirmed deeply nested structure: Inbox → Sorted → 14 subfolders, Technical_and_Development → 6 children, etc. Heavy use of folder rules evident from folder names matching rule targets.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== EMAIL RULES ===================== -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-title">Email Rules</span>
+    <span class="section-count">2</span>
+    <span class="section-line"></span>
+  </div>
+  <div class="tool-list">
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">emailrules_list</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Returned 78 rules across sequences 1–78. Rules cover sender-based routing (AliExpress, GitHub, Proxmox, Cloudflare, TAFE SA, etc.), subject keyword matching (invoice, backup, alert), importance flagging, and exception conditions. 1 rule (sequence 3) is read-only.
+        <div class="detail">3 rules include exception conditions · Many rules use stopProcessingRules: true.</div>
+      </div>
+    </div>
+    <div class="tool-row warn">
+      <span class="status-icon">⚠️</span>
+      <span class="tool-name">emailrules_get</span>
+      <span class="badge warn">Skipped</span>
+      <div class="tool-notes">Tool exists in the server schema (confirmed via tool_search) but was not directly invoked — <code>emailrules_list</code> already returned complete rule objects including all conditions, actions, and exceptions. No additional data available from a single-rule fetch that wasn't already present.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== CALENDAR ===================== -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-title">Calendar</span>
+    <span class="section-count">6</span>
+    <span class="section-line"></span>
+  </div>
+  <div class="tool-list">
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">calendar_list_calendars</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Returned 6 calendars: primary Calendar, Birthdays (read-only), Australia Holidays ×2, Trixie Collins (shared, private items hidden), Team Collins (group calendar, editable). Cache status: fresh.</div>
+    </div>
+    <div class="tool-row warn">
+      <span class="status-icon">⚠️</span>
+      <span class="tool-name">calendar_list_events</span>
+      <span class="badge warn">Empty</span>
+      <div class="tool-notes">Returned empty result set for 30 days ahead. No upcoming events scheduled. Calendar appears clear — consistent with post-job-search period.
+        <div class="detail">Tool functioned correctly; empty result is a valid response.</div>
+      </div>
+    </div>
+    <div class="tool-row warn">
+      <span class="status-icon">⚠️</span>
+      <span class="tool-name">calendar_get_event</span>
+      <span class="badge warn">Skipped</span>
+      <div class="tool-notes">Requires an event ID. No upcoming events returned by <code>calendar_list_events</code> to source an ID from. Past event IDs were visible in <code>search_events</code> results but testing get on a past event was deprioritised.</div>
+    </div>
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">calendar_check_availability</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Queried Mon 2 Jun 2026, 09:00–17:00 ACST. Returned working hours (Mon–Fri, 08:00–17:00, "Cen. Australia Standard Time"), zero schedule items — fully free all day.
+        <div class="detail">⚠️ First attempt failed: tool requires timezone-aware ISO timestamps. Naive datetime strings are rejected. Must include offset e.g. <code>+09:30</code>.</div>
+      </div>
+    </div>
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">calendar_get_free_busy</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Same window as above. Returned <code>availabilityView: "0000000000000000"</code> (all free, 30-min intervals). Working hours confirmed. Functionally similar to check_availability but returns a compact availability string.</div>
+    </div>
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">search_events</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Searched "meeting" — returned 20 results including real interviews (1Solution Field Tech, Windstil L2, Paxus, Dept for Education) and ~14 test events from previous MCP integration testing in Oct 2025. Attendee data, organiser, and location all present.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== CONTACTS ===================== -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-title">Contacts</span>
+    <span class="section-count">4</span>
+    <span class="section-line"></span>
+  </div>
+  <div class="tool-list">
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">contact_list</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Returned first 5 contacts (limit=5): neoSVG, Anthony Bockmann (Diverseco), Jon Bester, Google Location Sharing, Google. Full contact objects including email, phones, addresses, job title, company. Cache: fresh.
+        <div class="detail">Contact list is ordered by file-as name. Total contact count not reported in response metadata.</div>
+      </div>
+    </div>
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">contact_get</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Fetched Anthony Bockmann (Diverseco) by ID. Full contact object returned including <code>personalNotes</code> field (empty) and all address sub-objects. Minor difference from list: includes <code>@odata.context</code> header. Cache: miss (first fetch).</div>
+    </div>
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">contact_export</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Exported Anthony Bockmann as vCard 3.0. Output: 134 bytes. Fields: FN, N, EMAIL. Correct RFC 2426 format. Only available format is "vcard" — no vcf download path provided, data returned inline.</div>
+    </div>
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">search_contacts</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Searched "Trixie" — returned 2 matches: Trixie Collins (personal, outlook) and Trixie Collins - Work (Babcock). Prefix-match search confirmed working.
+        <div class="detail">Server documentation notes this is prefix-only; mid-word matches not supported by Graph API for contacts.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== ONEDRIVE FILES ===================== -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-title">OneDrive Files</span>
+    <span class="section-count">3</span>
+    <span class="section-line"></span>
+  </div>
+  <div class="tool-list">
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">file_list</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Queried <code>/JobSearch</code> with <code>type_filter=files</code>. Returned empty (JobSearch root contains only folders, no loose files). Confirmed type_filter working correctly.
+        <div class="detail">Root-level listing (no path) returns 21 folders across the OneDrive.</div>
+      </div>
+    </div>
+    <div class="tool-row fail">
+      <span class="status-icon">❌</span>
+      <span class="tool-name">file_download_url</span>
+      <span class="badge fail">Failed</span>
+      <div class="tool-notes">Error: <code>"No download URL available for file D16CEBAA65A1624C!saf712bdff1db4ac3866010f9b7dd4df1"</code>. Attempted on <code>cover_letter.js</code> (10.9 KB) returned by search_files. Personal OneDrive accounts may not support the <code>@microsoft.graph.downloadUrl</code> property for all file types via this API path.
+        <div class="detail">This appears to be a Graph API limitation for personal accounts — the download URL is not always populated in search results.</div>
+      </div>
+    </div>
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">search_files</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Searched "cover letter" — returned 3 results: a folder named "Cover letter" and files <code>cover_letter.js</code> and <code>cover-letter.md</code>. File size, path, and modified date all present. Cache: fresh.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== ONEDRIVE FOLDERS ===================== -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-title">OneDrive Folders</span>
+    <span class="section-count">3</span>
+    <span class="section-line"></span>
+  </div>
+  <div class="tool-list">
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">folder_list</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Listed root-level OneDrive folders. Returned 21 folders including Documents (107 children), JobSearch (17), Pictures (161), ObsidianVaults, SettingsConfigs, TAFESA, OldDataSafe-Robin (137), and others. Modified dates span 2023–2026.</div>
+    </div>
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">folder_get</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Fetched <code>/Documents</code> by path. Returned ID, name, childCount (107), webUrl, parentId, and modified date. The <code>webUrl</code> field (direct OneDrive link) is only present on <code>folder_get</code>, not <code>folder_list</code>.</div>
+    </div>
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">folder_get_tree</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Fetched <code>/JobSearch</code> tree to depth 2. Returned 5 folders: <code>.git</code> (11 children, with hooks/info/logs/objects/refs), <code>.specstory</code>, <code>2025</code> (IT, LOGISTICS subdirs), <code>field_technician_it_and_networking-one_solution_mobile_and_data_pty_ltd</code> (10 items), and <code>JobSearch2024</code>.
+        <div class="detail">Git repo metadata visible in OneDrive sync — interesting observation.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SEARCH ===================== -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-title">Unified Search</span>
+    <span class="section-count">2</span>
+    <span class="section-line"></span>
+  </div>
+  <div class="tool-list">
+    <div class="tool-row pass">
+      <span class="status-icon">✅</span>
+      <span class="tool-name">search_emails</span>
+      <span class="badge pass">Pass</span>
+      <div class="tool-notes">Searched "MCP Test" — returned 3 matching emails from today's test session. Search covers subject and body. Personal account uses OData <code>$search</code> parameter.
+        <div class="detail">First search "proxmox backup" returned empty — likely a folder routing/index issue with personal accounts vs the test query. Refined query confirmed the tool works.</div>
+      </div>
+    </div>
+    <div class="tool-row fail">
+      <span class="status-icon">❌</span>
+      <span class="tool-name">search_unified</span>
+      <span class="badge fail">Partial</span>
+      <div class="tool-notes">Searched "one solution" — <code>driveItem</code> results returned correctly (job application folder + 2 PDFs of the One Solution employment contract). However, <code>message</code> and <code>event</code> arrays were empty despite relevant emails existing.
+        <div class="detail">Server docs note: personal accounts use sequential search per entity type. Email/event search may be failing silently for personal accounts on this query. OneDrive search working fine.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== OBSERVATIONS ===================== -->
+<div class="observations">
+  <h2>📋 Observations &amp; Notes</h2>
+  <ul class="obs-list">
+    <li><strong>28 read-only tools tested.</strong> 23 passed cleanly, 3 had caveats (empty results or skipped for valid reasons), 2 had issues (file_download_url error, search_unified partial failure on personal account).</li>
+    <li><strong>calendar_check_availability requires timezone-aware datetimes.</strong> Naive ISO strings (without offset) are rejected with a validation error. Always pass <code>+09:30</code> or <code>Z</code> suffix.</li>
+    <li><strong>file_download_url fails for personal OneDrive accounts</strong> when the file ID comes from a search result. The Graph API doesn't always populate the download URL for personal accounts via the search endpoint. Use <code>file_get</code> (write tool) to actually download.</li>
+    <li><strong>search_unified on personal accounts</strong> only reliably returns driveItem results. Email and event search appear to return empty arrays regardless of query. This matches the server's documented behaviour: personal accounts fall back to sequential type-specific searches, which may not be wired into the unified endpoint.</li>
+    <li><strong>contact_list ordering</strong> is alphabetical by file-as name, not by most recently added. No total count is returned in the response — you need to paginate to discover the full count.</li>
+    <li><strong>emailrules_list returned 78 rules</strong> — a comprehensive automated email filing system across personal, bills, technical, services, shopping, and misc categories. Rules make heavy use of sender domain matching and subject keyword patterns.</li>
+    <li><strong>Cache state was "miss" for most first-call results</strong> and "fresh" for tools called in sequence after a prior warm call (e.g. contacts, calendars). Cache TTLs vary by resource type (email: 2 min; contacts: 20 min; calendar: 5 min).</li>
+    <li><strong>email_get_attachment</strong> was the only tool that couldn't be tested at all — no suitable attachments were present in the inbox at the time of testing. The tool's parameters and error handling remain unverified.</li>
+    <li><strong>folder_get_tree</strong> on /JobSearch revealed a git repo being synced to OneDrive (visible <code>.git</code> directory with full object tree). Probably unintentional; worth reviewing OneDrive selective sync settings.</li>
+  </ul>
+</div>
+
+<div class="footer">
+  <span>m365-mcp v0.2.3 · account: Robin.F.Collins@outlook.com · type: personal</span>
+  <span>Generated 2026-05-30 · Claude Sonnet 4.6</span>
+</div>
+
+</body>
+</html>

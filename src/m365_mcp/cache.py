@@ -74,6 +74,18 @@ class CacheManager:
         self._init_database()
         logger.info(f"Cache manager initialized at {self.db_path}")
 
+    def close(self) -> None:
+        """Close all connections in the connection pool."""
+        while self._connection_pool:
+            conn = self._connection_pool.pop()
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def __del__(self) -> None:
+        self.close()
+
     def _create_connection(self) -> sqlite3.Connection:  # type: ignore[name-defined]
         """
         Create a new database connection with encryption.

@@ -4,6 +4,7 @@ Uses the original working pattern with per-test sessions.
 """
 
 import os
+import sys
 import json
 import pytest
 from mcp import ClientSession, StdioServerParameters
@@ -38,8 +39,8 @@ def parse_result(result, tool_name=None):
 async def get_session():
     """Create a new MCP session for testing"""
     server_params = StdioServerParameters(
-        command="uv",
-        args=["run", "m365-mcp"],
+        command=sys.executable,
+        args=["-m", "m365_mcp.server"],
         env={
             "M365_MCP_CLIENT_ID": os.getenv("M365_MCP_CLIENT_ID", ""),
             "M365_MCP_TENANT_ID": os.getenv("M365_MCP_TENANT_ID", "common"),

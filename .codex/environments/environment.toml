@@ -6,6 +6,5 @@ name = "m365-mcp"
 script = '''
 cd "$CODEX_WORKTREE_PATH"
 uv sync
-./venv/bin/activate
-
+.\.venv\Scripts\activate.ps1
 '''

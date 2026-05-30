@@ -707,7 +707,7 @@ def ensure_safe_path(
 
     if os.name == "nt":
         for part in resolved.parts:
-            if part == resolved.drive:
+            if part == resolved.drive or (resolved.drive and part.startswith(resolved.drive)):
                 continue
             if ":" in part:
                 reason = "alternate data streams are not allowed"

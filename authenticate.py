@@ -4,10 +4,11 @@ Authenticate Microsoft accounts for use with M365 MCP.
 Run this script to sign in to one or more Microsoft accounts.
 """
 
+import argparse
 import os
 import sys
-import argparse
 from pathlib import Path
+from typing import Any
 
 # Add src to path so we can import our modules
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -26,10 +27,141 @@ def _parse_arguments() -> argparse.Namespace:
         default=Path(".env"),
         help="Path to .env file (default: .env)",
     )
+    account_group = parser.add_mutually_exclusive_group()
+    account_group.add_argument(
+        "--re-auth",
+        nargs="?",
+        const="",
+        metavar="ACCOUNT",
+        help=(
+            "Force-refresh an existing account's Graph token. ACCOUNT can be "
+            "an account ID or username; omit it to select interactively."
+        ),
+    )
+    account_group.add_argument(
+        "--remove",
+        nargs="?",
+        const="",
+        metavar="ACCOUNT",
+        help=(
+            "Remove a configured account, its cached tokens, and its database "
+            "cache rows. ACCOUNT can be an account ID or username; omit it to "
+            "select interactively."
+        ),
+    )
+    parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Skip confirmation prompts for --remove.",
+    )
     return parser.parse_args()
 
 
-def main():
+def _print_accounts(accounts: list[Any]) -> None:
+    """Print configured accounts for the CLI."""
+    if accounts:
+        print("Currently authenticated accounts:")
+        for i, account in enumerate(accounts, 1):
+            print(f"{i}. {account.username} (ID: {account.account_id})")
+        print()
+    else:
+        print("No accounts currently authenticated.\n")
+
+
+def _match_account(accounts: list[Any], selector: str) -> Any | None:
+    """Find an account by exact account ID or username."""
+    selector_normalized = selector.lower()
+    for account in accounts:
+        if account.account_id.lower() == selector_normalized:
+            return account
+        if account.username.lower() == selector_normalized:
+            return account
+    return None
+
+
+def _select_account(auth_module: Any, selector: str, action: str) -> Any | None:
+    """Select a configured account for an account-specific CLI action."""
+    accounts = auth_module.list_accounts()
+    if not accounts:
+        print("No accounts are configured.")
+        return None
+
+    if selector:
+        account = _match_account(accounts, selector)
+        if not account:
+            print(f"No account matched: {selector}")
+            return None
+        return account
+
+    if len(accounts) == 1:
+        return accounts[0]
+
+    print(f"Select an account to {action}:")
+    for i, account in enumerate(accounts, 1):
+        print(f"{i}. {account.username} (ID: {account.account_id})")
+
+    while True:
+        choice = input("Enter number, account ID, or username: ").strip()
+        if not choice:
+            print("Please enter a selection.")
+            continue
+        if choice.isdigit():
+            index = int(choice)
+            if 1 <= index <= len(accounts):
+                return accounts[index - 1]
+        account = _match_account(accounts, choice)
+        if account:
+            return account
+        print("Selection did not match a configured account.")
+
+
+def _handle_re_auth(auth_module: Any, selector: str) -> int:
+    """Handle the --re-auth command."""
+    account = _select_account(auth_module, selector, "re-authenticate")
+    if not account:
+        return 1
+
+    print(f"Force-refreshing token for {account.username}...")
+    result = auth_module.reauthenticate_account(account.account_id)
+    print("\nAuthentication refresh successful!")
+    print(f"Account: {result.account.username}")
+    print(f"Account ID: {result.account.account_id}")
+    if result.expires_in is not None:
+        print(f"New token lifetime: {result.expires_in} seconds")
+    return 0
+
+
+def _handle_remove(auth_module: Any, selector: str, skip_confirmation: bool) -> int:
+    """Handle the --remove command."""
+    account = _select_account(auth_module, selector, "remove")
+    if not account:
+        return 1
+
+    if not skip_confirmation:
+        confirmation = input(
+            f"Remove {account.username} and its cached tokens/data? (y/n): "
+        ).lower()
+        if confirmation != "y":
+            print("Account removal cancelled.")
+            return 0
+
+    result = auth_module.remove_account(account.account_id)
+    print("\nAccount removed.")
+    print(f"Account: {result.account.username}")
+    print(f"Account ID: {result.account.account_id}")
+    print(f"Token cache updated: {'yes' if result.token_cache_removed else 'no'}")
+    print(f"Metadata removed: {'yes' if result.metadata_removed else 'no'}")
+    cache_counts = result.database_cache_removed
+    print(
+        "Database cache rows removed: "
+        f"{sum(cache_counts.values())} "
+        f"({', '.join(f'{key}={value}' for key, value in cache_counts.items())})"
+    )
+    return 0
+
+
+def main() -> int:
     # Parse arguments first to get env file path
     args = _parse_arguments()
 
@@ -58,13 +190,17 @@ def main():
 
     # List current accounts
     accounts = auth.list_accounts()
-    if accounts:
-        print("Currently authenticated accounts:")
-        for i, account in enumerate(accounts, 1):
-            print(f"{i}. {account.username} (ID: {account.account_id})")
-        print()
-    else:
-        print("No accounts currently authenticated.\n")
+    _print_accounts(accounts)
+
+    re_auth_selector = getattr(args, "re_auth", None)
+    remove_selector = getattr(args, "remove", None)
+    skip_confirmation = getattr(args, "yes", False)
+
+    if re_auth_selector is not None:
+        return _handle_re_auth(auth, re_auth_selector)
+
+    if remove_selector is not None:
+        return _handle_remove(auth, remove_selector, skip_confirmation)
 
     # Authenticate new account
     while True:
@@ -109,7 +245,8 @@ def main():
         print("\nNo accounts authenticated.")
 
     print("\nAuthentication complete!")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

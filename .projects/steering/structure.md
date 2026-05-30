@@ -18,7 +18,6 @@ m365-mcp/
 │   ├── cache.py               # Encrypted SQLite cache manager (AES-256)
 │   ├── cache_config.py        # Cache configuration, TTL policies, key generation
 │   ├── cache_warming.py       # Cache warming implementation (startup wiring deferred)
-│   ├── cache_migration.py     # Database migration utilities
 │   ├── background_worker.py   # Async task queue for cache operations
 │   └── encryption.py          # Encryption key management (keyring integration)
 ├── tests/                     # Test suite

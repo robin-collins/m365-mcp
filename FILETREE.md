@@ -62,10 +62,6 @@ m365-mcp/
 │       │                                   #   - Pattern-based cache invalidation with wildcards
 │       │                                   #   - Automatic cleanup at 80% capacity
 │       │                                   #   - LRU eviction and statistics tracking
-│       ├── cache_migration.py              # **NEW** Cache migration utilities (121 lines)
-│       │                                   #   - Migrate from unencrypted to encrypted cache
-│       │                                   #   - Automatic detection and migration on startup
-│       │                                   #   - Backup creation for safety
 │       ├── cache_warming.py                # **NEW** Cache warming implementation (startup wiring deferred)
 │       │                                   #   - CacheWarmer class for pre-populating cache
 │       │                                   #   - Startup wiring currently disabled until worker hardening
@@ -534,7 +530,6 @@ Tools with `confirm=True` parameter (10 tools):
 - `src/m365_mcp/cache_warming.py` - Background cache warming (250 lines)
 - `src/m365_mcp/background_worker.py` - Async task queue (200 lines)
 - `src/m365_mcp/encryption.py` - Encryption key management (273 lines)
-- `src/m365_mcp/cache_migration.py` - Database migrations (121 lines)
 - `src/m365_mcp/tools/cache.py` - **NEW** 5 cache management tools
 - `docs/cache_user_guide.md` - Complete user guide (389 lines)
 - `docs/cache_security.md` - Security and compliance guide (486 lines)

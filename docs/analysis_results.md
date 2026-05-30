@@ -1,10 +1,11 @@
 # Codebase Analysis Report: M365 MCP Server
 
 An in-depth technical analysis of the M365 MCP Server codebase was conducted. The
-original report's findings were independently re-verified against the current
+original report's findings were independently re-verified against the then-current
 `src/` tree (commit `3ec38f0`), with each claim either **confirmed**, **partially
-confirmed (mechanism corrected)**, or **refuted** with supporting evidence. New
-findings discovered during verification are listed in a dedicated section.
+confirmed (mechanism corrected)**, or **refuted** with supporting evidence. A
+follow-up audit on 2026-05-30 rechecked the current `src/` tree (commit
+`19235ed`) and added findings N9-N15.
 
 > **Verification environment:** Windows 11, CPython 3.12 (`requires-python
 > >=3.11`). Import-precedence and `pathlib` behaviours below were tested
@@ -16,7 +17,7 @@ findings discovered during verification are listed in a dedicated section.
 
 | # | Original Finding | Status | Notes |
 | :-- | :--- | :--- | :--- |
-| 1 | Zero registered tools on startup | ❌ **REFUTED** | Package `tools/` shadows module `tools.py`; `from .tools import mcp` loads the package `__init__.py`, which **does** import every submodule. Tools register correctly. |
+| 1 | Zero registered tools on startup | ❌ **REFUTED** | Package `tools/` shadows module `tools.py`; `from .tools import mcp` loads the package `__init__.py`, which **does** import every submodule. Tools register correctly; current runtime introspection reports 85 registered tools. |
 | 2 | Broken ADS path validation on Windows | ✅ **CONFIRMED (Critical)** | `parts[0]` is `'C:\\'`, `drive` is `'C:'` → every absolute Windows path raises. Breaks all local file I/O. |
 | 3 | Missing `tzdata` dependency | ✅ **CONFIRMED (High)** | Not in `pyproject.toml`; `zoneinfo` is used and has no embedded DB on Windows. |
 | 4 | Ephemeral key crash on restart | ⚠️ **CONFIRMED, mechanism corrected** | Real crash is in `cache.py::_init_database` (executescript with wrong key), **not** `detect_and_migrate` (which is dead code, never called). Only triggers when keyring is unavailable **and** env key unset. |
@@ -29,7 +30,8 @@ findings discovered during verification are listed in a dedicated section.
 | 11 | `tools.py` vs `tools/` namespace collision | ✅ **CONFIRMED (Low)** | This is the *real* issue behind Finding 1: `tools.py` is dead, shadowed code. |
 | 12 | Windows test-teardown `PermissionError` | ➖ **PLAUSIBLE (not re-verified)** | Pattern is consistent with a real Windows file-lock issue; not re-run in this pass. |
 
-**New findings (this pass):** N1–N8 below.
+**New findings:** N1-N8 from the original verification pass, plus N9-N15 from
+the 2026-05-30 follow-up audit.
 
 ---
 
@@ -53,7 +55,8 @@ RESOLVED: FROM_PACKAGE_tools_init
 `server.py:90` does `from .tools import mcp`, which therefore loads
 [tools/__init__.py](src/m365_mcp/tools/__init__.py) — and that file imports every
 submodule (`account`, `calendar`, `email`, …), triggering all `@mcp.tool`
-decorators. **Tools register correctly.**
+decorators. **Tools register correctly.** The follow-up audit confirmed this by
+calling `await mcp.get_tools()`, which returned 85 tool names.
 
 The genuine problem is that [tools.py](src/m365_mcp/tools.py) is **dead, shadowed
 code** that can never execute, while its docstring claims to be "the central
@@ -359,21 +362,188 @@ drive-letter case anyway. No change required.
 
 ---
 
+## Follow-up Findings (2026-05-30 `src/` audit)
+
+### N9. Account authentication tools crash before starting device flow — High
+* **Files:** [account.py:77-78](src/m365_mcp/tools/account.py),
+  [account.py:135-154](src/m365_mcp/tools/account.py),
+  [auth.py:209-212](src/m365_mcp/auth.py)
+* `auth.get_app()` returns `(app, tenant_id)`, but `account_authenticate` and
+  `account_complete_auth` treat the tuple as the MSAL application. Runtime
+  reproduction with a dummy `M365_MCP_CLIENT_ID`:
+  ```text
+  AttributeError: 'tuple' object has no attribute 'initiate_device_flow'
+  ```
+* `uv run pyright` independently confirms the defect with four
+  `reportAttributeAccessIssue` errors in `tools/account.py`.
+* The existing `tests/test_account_validation.py` suite passes only because it
+  monkeypatches `auth.get_app` to return a fake app instead of the real tuple.
+* **Remediation:**
+  ```python
+  app, tenant_id = auth.get_app()
+  app, flow = auth._initiate_device_flow(app, tenant_id)
+  ```
+  and in `account_complete_auth`:
+  ```python
+  app, _tenant_id = auth.get_app()
+  result = app.acquire_token_by_device_flow(flow)
+  ```
+  Update tests so `auth.get_app` is mocked with the real tuple shape.
+
+### N10. Mutation cache invalidation is mostly ineffective — High
+* **Files:** [cache.py:316-318](src/m365_mcp/cache.py),
+  [email.py:649](src/m365_mcp/tools/email.py),
+  [email.py:840-890](src/m365_mcp/tools/email.py),
+  [file.py:397-401](src/m365_mcp/tools/file.py),
+  [file.py:453-496](src/m365_mcp/tools/file.py),
+  [cache_config.py:225-235](src/m365_mcp/cache_config.py)
+* Many write tools call `invalidate_pattern(account, "email_list:*")`, but the
+  method signature is `invalidate_pattern(pattern, account_id=None, reason=...)`.
+  This silently searches for cache keys like the account ID and filters by an
+  account ID like `"email_list:*"`, so it deletes nothing.
+* Direct reproduction:
+  ```text
+  wrong_order_deleted 0
+  still_present_after_wrong True
+  correct_order_deleted 1
+  ```
+* A second problem remains even after argument order is fixed: cache keys are
+  `resource_type:account_id:param_hash`, so patterns such as
+  `email_get:*email_id=<id>*` and `file_list:*folder_id=<id>*` can never match
+  because raw parameter names are not stored in the key.
+* **Remediation:**
+  ```python
+  cache_manager.invalidate_pattern("email_list:*", account_id=account)
+  cache_manager.invalidate_pattern("folder_get_tree:*", account_id=account)
+  ```
+  For targeted invalidation, either store `resource_id`/parameter dimensions in
+  `cache_entries` and query them directly, or deliberately broaden invalidation
+  to `email_get:*` / `file_list:*` for the affected account.
+
+### N11. Outgoing email attachments bypass filesystem safety validation — High
+* **Files:** [email.py:467-469](src/m365_mcp/tools/email.py),
+  [email.py:617-619](src/m365_mcp/tools/email.py),
+  [validators.py:672-819](src/m365_mcp/validators.py)
+* `email_create_draft` and `email_send` read attachment paths directly with
+  `Path(...).resolve().read_bytes()`. They bypass `ensure_safe_path`, allowed
+  root checks, attachment count limits, and request-size validation. This makes
+  the high-value send path inconsistent with the safer download/upload helpers
+  and allows any process-readable local file to be attached if the tool is
+  invoked with that path.
+* `email_create_draft` also bypasses recipient validation entirely, unlike
+  `email_send`, by building `toRecipients` and `ccRecipients` from raw values.
+* **Remediation requirement:** centralise outbound attachment preparation:
+  ```python
+  validated_paths = [
+      ensure_safe_path(path, must_exist=True, allow_overwrite=True)
+      for path in attachment_paths
+  ]
+  for path in validated_paths:
+      validate_request_size(path.stat().st_size, MAX_MAIL_ATTACHMENT_BYTES,
+                            "attachment_size")
+  ```
+  Then apply `normalize_recipients` to draft recipients and reuse the same
+  dedupe/limit logic as `email_send`.
+
+### N12. Contact search builds an unsafe OData filter from raw query text — Medium
+* **File:** [search_router.py:506-514](src/m365_mcp/search_router.py)
+* `_search_contacts_filter` interpolates `query` directly inside OData string
+  literals. A normal name such as `O'Hara` generates malformed syntax:
+  ```text
+  startswith(displayName,'O'Hara') or startswith(givenName,'O'Hara') ...
+  ```
+  Deliberately crafted input can alter the `$filter` expression.
+* **Remediation:**
+  ```python
+  def _odata_string(value: str) -> str:
+      return "'" + value.replace("'", "''") + "'"
+
+  safe_query = _odata_string(query)
+  filter_parts = [
+      f"startswith(displayName,{safe_query})",
+      f"startswith(givenName,{safe_query})",
+      f"startswith(surname,{safe_query})",
+  ]
+  ```
+  Add regression tests for apostrophes and hostile filter fragments.
+
+### N13. `emailrules_create` skips the validators used by `emailrules_update` — Medium
+* **Files:** [email_rules.py:412-463](src/m365_mcp/tools/email_rules.py),
+  [email_rules.py:536-567](src/m365_mcp/tools/email_rules.py)
+* `emailrules_update` validates predicates, actions, sequence, booleans, and
+  display names. `emailrules_create` passes raw `conditions`, `actions`,
+  `sequence`, and `is_enabled` directly to Graph, so invalid payloads are caught
+  late by Graph or may create surprising rules.
+* **Remediation:**
+  ```python
+  display_name = display_name.strip()
+  if not display_name:
+      raise ValidationError(...)
+  rule_data = {
+      "displayName": display_name,
+      "sequence": validate_positive_int(sequence, "sequence"),
+      "isEnabled": _validate_bool(is_enabled, "is_enabled"),
+      "conditions": _validate_rule_predicates(conditions, "conditions"),
+      "actions": _validate_rule_actions(actions, "actions"),
+  }
+  if exceptions is not None:
+      rule_data["exceptions"] = _validate_rule_predicates(exceptions, "exceptions")
+  ```
+
+### N14. Tool export/docs drift hides part of the real tool surface — Low
+* **Files:** [tools/__init__.py:14-103](src/m365_mcp/tools/__init__.py),
+  [tools.py](src/m365_mcp/tools.py),
+  [.projects/steering/structure.md](.projects/steering/structure.md)
+* Runtime registration currently exposes 85 MCP tools, but `tools/__init__.py`
+  imports/exports only a subset for direct Python imports, while the shadowed
+  root `tools.py` and steering docs still describe an older central-registry
+  layout and lower tool counts.
+* **Impact:** MCP runtime is fine, but contributor guidance and direct imports
+  are misleading. New tools can be registered yet absent from `__all__`, tests,
+  or docs.
+* **Remediation:** delete the shadowed `tools.py`, update steering/docs to the
+  package layout, and add a lightweight test that compares `await mcp.get_tools()`
+  with the documented/exported public tool list.
+
+### N15. Forty-seven MCP tool signatures violate the account-id-first standard — Low
+* **Files:** multiple files under [tools/](src/m365_mcp/tools/)
+* The steering rule requires `account_id: str` as the first parameter for all
+  account-scoped tools. An AST scan found 47 registered tools where `account_id`
+  exists but is not first, including `email_get`, `email_delete`, `file_get`,
+  `search_files`, `calendar_get_event`, and `contact_get`.
+* **Impact:** mostly API consistency and client ergonomics, not an immediate
+  runtime crash. It still matters for generated clients and tool-call planning:
+  the same account-scoped concept appears in different positions depending on
+  tool family.
+* **Remediation:** decide whether to preserve backward compatibility or enforce
+  the standard in a major/minor migration. If changing signatures, add shim
+  tests and a changelog entry; otherwise update steering docs to match the real
+  public API.
+
+---
+
 ## Recommended Remediation Order
 
-1. **Finding 2 (ADS path bug)** + **Finding 3 (tzdata)** — these break core file
-   and timezone functionality on Windows *today* (the user's platform). Ship first
-   with the new regression tests.
-2. **Finding 11 / Finding 1 correction** — delete the dead, shadowed
+1. **N9 (account authentication crash)** — the MCP-native authentication tools
+   cannot start or complete device flow until `auth.get_app()` is unpacked
+   correctly.
+2. **N11 + Finding 2 + Finding 3** — outgoing attachment validation, Windows ADS
+   path validation, and `tzdata` affect local file safety and Windows runtime
+   correctness. Ship with regression tests.
+3. **N10 + N1 + N2** — fix mutation cache invalidation, the broken stats tool,
+   and either wire up or stop advertising cache warming.
+4. **Finding 11 / Finding 1 correction** — delete the dead, shadowed
    [tools.py](src/m365_mcp/tools.py) to remove the namespace collision and the
    misleading "registry" docstring.
-3. **Finding 7 + N1 + N2** — make encryption failures loud, fix the broken stats
-   tool, and either wire up or stop advertising cache warming.
-4. **Findings 5, 6, 8, N8** — concurrency/lifecycle hardening, required before the
+5. **Finding 7 + Findings 5, 6, 8, N8** — encryption and
+   concurrency/lifecycle hardening, required before the
    HTTP transport or any multi-worker setup is used in earnest.
-5. **Finding 4, 9** — headless robustness (key persistence warning, non-blocking
+6. **N12 + N13** — request-shaping validation: OData filter escaping and message
+   rule create parity with update.
+7. **Finding 4, 9** — headless robustness (key persistence warning, non-blocking
    auth).
-6. **N3–N7** — cleanup and defensive hardening.
+8. **N3-N7 + N14 + N15** — cleanup, defensive hardening, and public surface/docs
+   alignment.
 
 ## Methodology Note
 
@@ -383,3 +553,14 @@ experiments on Windows (package-vs-module import precedence; `pathlib` drive/ADS
 and `relative_to` case behaviour). Where a claim could not be reproduced it is
 marked **REFUTED** with the counter-evidence; where the symptom is real but the
 stated cause was wrong, it is marked **mechanism corrected**.
+
+The 2026-05-30 follow-up additionally ran:
+* `uv run pyright` (failed, confirming N9 in `tools/account.py`; also reported
+  test typing issues in `tests/test_email_folders_integration.py`).
+* Runtime FastMCP introspection (`await mcp.get_tools()`) confirming 85 registered
+  tools.
+* Targeted reproductions for N9, N10, and N12.
+* `uv run pytest tests/test_account_validation.py -q -s` (6 passed) and
+  `uv run pytest tests/test_cache_tools.py -q -s` (15 passed). These passing
+  tests do not cover the tuple-shaped `auth.get_app()` contract or the mutation
+  invalidation call-site bug.

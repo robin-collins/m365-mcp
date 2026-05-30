@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import base64
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+from src.m365_mcp import validators
 from src.m365_mcp.tools import email as email_tools
 from src.m365_mcp.validators import ValidationError
 
@@ -82,6 +85,140 @@ def test_email_send_enforces_recipient_limit(
         )
 
     assert "Invalid recipients" in str(exc.value)
+
+
+def test_email_send_accepts_valid_attachment(
+    monkeypatch: pytest.MonkeyPatch,
+    mock_account_id: str,
+    tmp_path: Path,
+) -> None:
+    attachment = tmp_path / "notes.txt"
+    attachment.write_text("hello", encoding="utf-8")
+    captured: dict[str, Any] = {}
+
+    class FakeCache:
+        def invalidate_pattern(self, *args: Any, **kwargs: Any) -> int:
+            return 0
+
+    def fake_request(
+        method: str,
+        path: str,
+        account_id: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, str]:
+        captured["method"] = method
+        captured["path"] = path
+        captured["account_id"] = account_id
+        captured["json"] = kwargs.get("json")
+        return {"status": "sent"}
+
+    monkeypatch.setattr(email_tools.graph, "request", fake_request)
+    monkeypatch.setattr(email_tools, "get_cache_manager", lambda: FakeCache())
+
+    result = email_tools.email_send.fn(
+        account_id=mock_account_id,
+        to="ada@example.com",
+        subject="With attachment",
+        body="Hello",
+        attachments=str(attachment),
+        confirm=True,
+    )
+
+    assert result == {"status": "sent"}
+    message = captured["json"]["message"]
+    assert message["attachments"] == [
+        {
+            "@odata.type": "#microsoft.graph.fileAttachment",
+            "name": "notes.txt",
+            "contentBytes": base64.b64encode(b"hello").decode("utf-8"),
+        }
+    ]
+
+
+def test_email_create_draft_rejects_traversal_attachment(
+    mock_account_id: str,
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValidationError, match="parent directory"):
+        email_tools.email_create_draft.fn(
+            account_id=mock_account_id,
+            to="ada@example.com",
+            subject="Unsafe",
+            body="Hello",
+            attachments=str(tmp_path / ".." / "secret.txt"),
+        )
+
+
+def test_email_send_rejects_attachment_outside_allowed_roots(
+    monkeypatch: pytest.MonkeyPatch,
+    mock_account_id: str,
+    tmp_path: Path,
+) -> None:
+    allowed_root = tmp_path / "allowed"
+    blocked_root = tmp_path / "blocked"
+    allowed_root.mkdir()
+    blocked_root.mkdir()
+    attachment = blocked_root / "secret.txt"
+    attachment.write_text("secret", encoding="utf-8")
+
+    monkeypatch.delenv("MCP_FILE_ALLOWED_ROOTS", raising=False)
+    monkeypatch.setattr(
+        validators,
+        "DEFAULT_ALLOWED_ROOTS",
+        (allowed_root.resolve(),),
+    )
+
+    with pytest.raises(ValidationError, match="allowed directories"):
+        email_tools.email_send.fn(
+            account_id=mock_account_id,
+            to="ada@example.com",
+            subject="Blocked",
+            body="Hello",
+            attachments=str(attachment),
+            confirm=True,
+        )
+
+
+def test_email_send_rejects_oversize_attachment(
+    monkeypatch: pytest.MonkeyPatch,
+    mock_account_id: str,
+    tmp_path: Path,
+) -> None:
+    attachment = tmp_path / "too-large.txt"
+    attachment.write_bytes(b"abcd")
+    monkeypatch.setattr(email_tools, "MAX_MAIL_ATTACHMENT_BYTES", 3)
+
+    with pytest.raises(ValidationError, match="exceeds limit"):
+        email_tools.email_send.fn(
+            account_id=mock_account_id,
+            to="ada@example.com",
+            subject="Too large",
+            body="Hello",
+            attachments=str(attachment),
+            confirm=True,
+        )
+
+
+def test_email_send_rejects_too_many_attachments(
+    monkeypatch: pytest.MonkeyPatch,
+    mock_account_id: str,
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "one.txt"
+    second = tmp_path / "two.txt"
+    first.write_text("one", encoding="utf-8")
+    second.write_text("two", encoding="utf-8")
+    monkeypatch.setattr(email_tools, "MAX_MAIL_ATTACHMENTS", 1)
+
+    with pytest.raises(ValidationError, match="exceeds limit"):
+        email_tools.email_send.fn(
+            account_id=mock_account_id,
+            to="ada@example.com",
+            subject="Too many",
+            body="Hello",
+            attachments=[str(first), str(second)],
+            confirm=True,
+        )
 
 
 def test_email_reply_rejects_empty_body_before_confirm(

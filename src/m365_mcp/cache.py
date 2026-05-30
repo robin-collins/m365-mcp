@@ -9,25 +9,42 @@ import json
 import gzip
 import logging
 import time
+import threading
 from pathlib import Path
 from contextlib import contextmanager
 from typing import Any, Optional
 
 try:
     import sqlcipher3 as sqlite3
+
+    USING_SQLCIPHER = True
 except ImportError:
     import sqlite3
+
+    USING_SQLCIPHER = False
 
 from .encryption import EncryptionKeyManager
 from .cache_config import (
     CACHE_DB_PATH,
     TTL_POLICIES,
     CACHE_LIMITS,
+    CONNECTION_POOL_SIZE,
+    CONNECTION_TIMEOUT,
     CacheState,
+    CACHE_WARMING_ENABLED,
+    SQLCIPHER_SETTINGS,
     generate_cache_key,
 )
 
 logger = logging.getLogger(__name__)
+
+_RECOVERABLE_DATABASE_ERROR_FRAGMENTS = (
+    "file is not a database",
+    "file is encrypted",
+    "database disk image is malformed",
+    "malformed database schema",
+    "hmac check failed",
+)
 
 
 class CacheManager:
@@ -46,7 +63,7 @@ class CacheManager:
         self,
         db_path: Optional[str] = None,
         encryption_enabled: bool = True,
-        max_connections: int = 5,
+        max_connections: int = CONNECTION_POOL_SIZE,
     ):
         """
         Initialize cache manager.
@@ -60,10 +77,15 @@ class CacheManager:
         self.encryption_enabled = encryption_enabled
         self.max_connections = max_connections
         self._connection_pool = []
+        self._pool_lock = threading.Lock()
 
         # Get encryption key if enabled
         self.encryption_key = None
         if self.encryption_enabled:
+            if not USING_SQLCIPHER:
+                raise ImportError(
+                    "Cache encryption requested but sqlcipher3 is unavailable."
+                )
             key_manager = EncryptionKeyManager()
             self.encryption_key = key_manager.get_or_create_key()
             logger.info("Cache encryption enabled")
@@ -93,21 +115,34 @@ class CacheManager:
         Returns:
             SQLite connection with encryption configured.
         """
-        conn = sqlite3.connect(str(self.db_path))  # type: ignore[attr-defined]
+        conn = sqlite3.connect(  # type: ignore[attr-defined]
+            str(self.db_path),
+            timeout=CONNECTION_TIMEOUT,
+            check_same_thread=False,
+        )
 
-        if self.encryption_enabled and self.encryption_key:
-            # Set encryption key for SQLCipher
-            conn.execute(f"PRAGMA key = '{self.encryption_key}'")
-            conn.execute("PRAGMA cipher_compatibility = 4")
+        try:
+            if self.encryption_enabled and self.encryption_key:
+                # Set encryption key for SQLCipher
+                conn.execute(
+                    EncryptionKeyManager.sqlcipher_key_pragma(self.encryption_key)
+                )
+                for setting, value in SQLCIPHER_SETTINGS.items():
+                    pragma_value = int(value) if isinstance(value, bool) else value
+                    conn.execute(f"PRAGMA {setting} = {pragma_value}")
+                conn.execute("PRAGMA cipher_compatibility = 4")
 
-        # Performance optimizations
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.execute("PRAGMA synchronous = NORMAL")
-        conn.execute("PRAGMA cache_size = -64000")  # 64MB cache
-        conn.execute("PRAGMA temp_store = MEMORY")
+            # Performance optimizations
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous = NORMAL")
+            conn.execute("PRAGMA cache_size = -64000")  # 64MB cache
+            conn.execute("PRAGMA temp_store = MEMORY")
 
-        conn.row_factory = sqlite3.Row  # type: ignore[attr-defined]
-        return conn
+            conn.row_factory = sqlite3.Row  # type: ignore[attr-defined]
+            return conn
+        except Exception:
+            conn.close()
+            raise
 
     @contextmanager
     def _db(self):
@@ -118,26 +153,60 @@ class CacheManager:
             Database connection from pool or newly created.
         """
         # Get connection from pool or create new
-        if self._connection_pool:
-            conn = self._connection_pool.pop()
-        else:
+        conn = None
+        with self._pool_lock:
+            if self._connection_pool:
+                conn = self._connection_pool.pop()
+
+        if conn is None:
             conn = self._create_connection()
 
+        should_repool = True
         try:
             yield conn
             conn.commit()
         except Exception as e:
+            should_repool = False
             conn.rollback()
             logger.error(f"Database error: {e}")
             raise
         finally:
-            # Return to pool if under limit
-            if len(self._connection_pool) < self.max_connections:
-                self._connection_pool.append(conn)
+            if not should_repool:
+                conn.close()
             else:
+                # Return to pool if under limit
+                with self._pool_lock:
+                    if len(self._connection_pool) < self.max_connections:
+                        self._connection_pool.append(conn)
+                    else:
+                        conn.close()
+
+    def close(self) -> None:
+        """Close all pooled database connections."""
+        with self._pool_lock:
+            while self._connection_pool:
+                conn = self._connection_pool.pop()
                 conn.close()
 
-    def _init_database(self) -> None:
+    @staticmethod
+    def _is_recoverable_database_error(error: Exception) -> bool:
+        """Return True for cache files that can be safely recreated."""
+        message = str(error).lower()
+        return any(
+            fragment in message for fragment in _RECOVERABLE_DATABASE_ERROR_FRAGMENTS
+        )
+
+    def _reset_database_file(self) -> None:
+        """Remove the cache database and sidecar files after recovery-worthy errors."""
+        self.close()
+        for path in (
+            self.db_path,
+            self.db_path.with_name(f"{self.db_path.name}-wal"),
+            self.db_path.with_name(f"{self.db_path.name}-shm"),
+        ):
+            path.unlink(missing_ok=True)
+
+    def _init_database(self, allow_recovery: bool = True) -> None:
         """
         Initialize database schema using migration script.
         """
@@ -153,8 +222,20 @@ class CacheManager:
         with open(migration_path) as f:
             migration_sql = f.read()
 
-        with self._db() as conn:
-            conn.executescript(migration_sql)
+        try:
+            with self._db() as conn:
+                conn.executescript(migration_sql)
+        except sqlite3.DatabaseError as e:  # type: ignore[attr-defined]
+            if not allow_recovery or not self._is_recoverable_database_error(e):
+                raise
+
+            logger.warning(
+                "Cache database could not be opened and will be recreated: %s",
+                self.db_path,
+            )
+            self._reset_database_file()
+            self._init_database(allow_recovery=False)
+            return
 
         logger.info("Database schema initialized")
 
@@ -232,6 +313,9 @@ class CacheManager:
                 """,
                 (time.time(), cache_key),
             )
+
+            if state == CacheState.STALE:
+                self._enqueue_refresh_task(conn, account_id, resource_type, params)
 
             return (data, state)
 
@@ -453,6 +537,58 @@ class CacheManager:
 
         return count
 
+    @staticmethod
+    def _serialize_task_parameters(parameters: dict[str, Any]) -> str:
+        """Serialize task parameters deterministically for duplicate checks."""
+        return json.dumps(parameters, sort_keys=True, separators=(",", ":"))
+
+    def _enqueue_refresh_task(
+        self,
+        conn,
+        account_id: str,
+        operation: str,
+        parameters: dict[str, Any],
+    ) -> None:
+        """Enqueue a background refresh task unless one is already pending."""
+        if not CACHE_WARMING_ENABLED:
+            return
+
+        import uuid
+
+        parameters_json = self._serialize_task_parameters(parameters)
+        existing = conn.execute(
+            """
+            SELECT 1
+            FROM cache_tasks
+            WHERE account_id = ?
+              AND operation = ?
+              AND parameters_json = ?
+              AND status IN ('queued', 'running')
+            LIMIT 1
+            """,
+            (account_id, operation, parameters_json),
+        ).fetchone()
+
+        if existing:
+            return
+
+        conn.execute(
+            """
+            INSERT INTO cache_tasks (
+                task_id, account_id, operation, parameters_json,
+                priority, status, retry_count, created_at
+            )
+            VALUES (?, ?, ?, ?, 5, 'queued', 0, ?)
+            """,
+            (
+                str(uuid.uuid4()),
+                account_id,
+                operation,
+                parameters_json,
+                time.time(),
+            ),
+        )
+
     def get_stats(self) -> dict[str, Any]:
         """
         Get cache statistics.
@@ -550,7 +686,7 @@ class CacheManager:
                     task_id,
                     account_id,
                     operation,
-                    json.dumps(parameters),
+                    self._serialize_task_parameters(parameters),
                     priority,
                     time.time(),
                 ),

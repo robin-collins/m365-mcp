@@ -13,6 +13,7 @@ import traceback
 from typing import Any, Optional
 
 from .cache import CacheManager
+from .cache_warming import get_inactive_warming_status
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +56,25 @@ class BackgroundWorker:
         self.worker_task: Optional[asyncio.Task] = None
         self.max_retries = max_retries
         self.initial_backoff = initial_backoff
+        self.cache_warmer: Any | None = None
 
         logger.info(
             "BackgroundWorker initialized",
             extra={"max_retries": max_retries, "initial_backoff": initial_backoff},
         )
+
+    def set_cache_warmer(self, cache_warmer: Any | None) -> None:
+        """Attach the cache warmer used for warming status reporting."""
+        self.cache_warmer = cache_warmer
+
+    def get_warming_status(self) -> dict[str, Any]:
+        """Return cache warming status when a warmer is attached."""
+        if self.cache_warmer is None:
+            return get_inactive_warming_status(
+                "Cache warming disabled: no cache warmer attached to worker."
+            )
+
+        return self.cache_warmer.get_warming_status()
 
     async def start(self) -> None:
         """
@@ -149,15 +164,16 @@ class BackgroundWorker:
         Returns:
             bool: True if a task was processed, False if no tasks available
         """
-        # Get the next task
-        task = self._get_next_task()
+        # Atomically claim the next task.
+        task = self._claim_next_task()
 
         if not task:
             return False
 
         task_id = task["task_id"]
         operation = task["operation"]
-        params = task.get("parameters", {})
+        params = dict(task.get("parameters", {}))
+        params.setdefault("account_id", task["account_id"])
 
         logger.info(
             f"Processing task {task_id}",
@@ -166,11 +182,6 @@ class BackgroundWorker:
                 "operation": operation,
                 "priority": task.get("priority", 5),
             },
-        )
-
-        # Mark task as running
-        self._update_task_status(
-            task_id=task_id, status="running", started_at=time.time()
         )
 
         try:
@@ -199,26 +210,35 @@ class BackgroundWorker:
             await self._handle_task_failure(task, e)
             return True
 
-    def _get_next_task(self) -> Optional[dict[str, Any]]:
+    def _claim_next_task(self) -> Optional[dict[str, Any]]:
         """
-        Get the next highest priority queued task.
+        Atomically claim the next highest priority queued task.
 
-        Queries the cache_tasks table for tasks with status='queued',
-        ordered by priority (1=highest) and created_at (oldest first).
+        Updates the highest-priority queued task to running in the same
+        statement that returns it, preventing concurrent workers from claiming
+        the same queued task.
 
         Returns:
             Optional[dict[str, Any]]: Task details if available, None otherwise
         """
         try:
             with self.cache_manager._db() as conn:
-                cursor = conn.execute("""
-                    SELECT task_id, account_id, operation, parameters_json,
-                           priority, status, retry_count, created_at
-                    FROM cache_tasks
-                    WHERE status = 'queued'
-                    ORDER BY priority ASC, created_at ASC
-                    LIMIT 1
-                """)
+                cursor = conn.execute(
+                    """
+                    UPDATE cache_tasks
+                    SET status = 'running', started_at = ?
+                    WHERE task_id = (
+                        SELECT task_id
+                        FROM cache_tasks
+                        WHERE status = 'queued'
+                        ORDER BY priority ASC, created_at ASC
+                        LIMIT 1
+                    )
+                    RETURNING task_id, account_id, operation, parameters_json,
+                              priority, status, retry_count, created_at
+                    """,
+                    (time.time(),),
+                )
 
                 row = cursor.fetchone()
 
@@ -239,7 +259,7 @@ class BackgroundWorker:
                 return None
 
         except Exception as e:
-            logger.error(f"Error getting next task: {e}")
+            logger.error(f"Error claiming next task: {e}")
             return None
 
     def _update_task_status(self, task_id: str, status: str, **kwargs) -> None:

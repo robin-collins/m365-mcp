@@ -391,14 +391,8 @@ def file_create(
     # Invalidate cache for file lists and folder tree
     try:
         cache_manager = get_cache_manager()
-        # Get parent folder ID if available
-        if "parentReference" in result and "id" in result["parentReference"]:
-            parent_id = result["parentReference"]["id"]
-            cache_manager.invalidate_pattern(
-                account, f"file_list:*folder_id={parent_id}*"
-            )
-        # Always invalidate folder tree
-        cache_manager.invalidate_pattern(account, "folder_get_tree:*")
+        cache_manager.invalidate_pattern("file_list:*", account_id=account)
+        cache_manager.invalidate_pattern("folder_get_tree:*", account_id=account)
     except Exception:
         # Don't fail the operation if cache invalidation fails
         pass
@@ -447,12 +441,7 @@ def file_update(file_id: str, local_file_path: str, account_id: str) -> dict[str
     # Invalidate cache for file lists (metadata like size/modified date changed)
     try:
         cache_manager = get_cache_manager()
-        # Get parent folder ID if available
-        if "parentReference" in result and "id" in result["parentReference"]:
-            parent_id = result["parentReference"]["id"]
-            cache_manager.invalidate_pattern(
-                account, f"file_list:*folder_id={parent_id}*"
-            )
+        cache_manager.invalidate_pattern("file_list:*", account_id=account)
     except Exception:
         # Don't fail the operation if cache invalidation fails
         pass
@@ -491,9 +480,9 @@ def file_delete(file_id: str, account_id: str, confirm: bool = False) -> dict[st
     try:
         cache_manager = get_cache_manager()
         # Invalidate all file lists
-        cache_manager.invalidate_pattern(account, "file_list:*")
+        cache_manager.invalidate_pattern("file_list:*", account_id=account)
         # Invalidate folder tree
-        cache_manager.invalidate_pattern(account, "folder_get_tree:*")
+        cache_manager.invalidate_pattern("folder_get_tree:*", account_id=account)
     except Exception:
         # Don't fail the operation if cache invalidation fails
         pass
@@ -557,11 +546,9 @@ def file_copy(
     # Invalidate cache for destination folder's file list
     try:
         cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern(
-            account, f"file_list:*folder_id={dest_folder_id}*"
-        )
+        cache_manager.invalidate_pattern("file_list:*", account_id=account)
         # Also invalidate folder tree since child counts changed
-        cache_manager.invalidate_pattern(account, "folder_get_tree:*")
+        cache_manager.invalidate_pattern("folder_get_tree:*", account_id=account)
     except Exception:
         pass
 
@@ -618,9 +605,9 @@ def file_move(
     try:
         cache_manager = get_cache_manager()
         # Invalidate all file lists since we don't know source folder
-        cache_manager.invalidate_pattern(account, "file_list:*")
+        cache_manager.invalidate_pattern("file_list:*", account_id=account)
         # Invalidate folder tree since child counts changed
-        cache_manager.invalidate_pattern(account, "folder_get_tree:*")
+        cache_manager.invalidate_pattern("folder_get_tree:*", account_id=account)
     except Exception:
         pass
 
@@ -678,12 +665,7 @@ def file_rename(
     # Invalidate cache for file lists in parent folder
     try:
         cache_manager = get_cache_manager()
-        # Get parent folder ID if available
-        if "parentReference" in result and "id" in result["parentReference"]:
-            parent_id = result["parentReference"]["id"]
-            cache_manager.invalidate_pattern(
-                account, f"file_list:*folder_id={parent_id}*"
-            )
+        cache_manager.invalidate_pattern("file_list:*", account_id=account)
     except Exception:
         pass
 

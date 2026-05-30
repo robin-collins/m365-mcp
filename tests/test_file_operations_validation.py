@@ -19,18 +19,14 @@ def mock_account_id() -> str:
 def mock_cache_manager(monkeypatch: pytest.MonkeyPatch) -> None:
     """Auto-mock cache manager for all tests."""
     mock_cache = MagicMock()
-    monkeypatch.setattr(
-        "src.m365_mcp.tools.file.get_cache_manager", lambda: mock_cache
-    )
+    monkeypatch.setattr("src.m365_mcp.tools.file.get_cache_manager", lambda: mock_cache)
 
 
 @pytest.fixture(autouse=True)
 def mock_validators(monkeypatch: pytest.MonkeyPatch, mock_account_id: str) -> None:
     """Auto-mock validators for all tests."""
     # Mock validate_account_id to return the account ID as-is
-    monkeypatch.setattr(
-        "src.m365_mcp.tools.file.validate_account_id", lambda x: x
-    )
+    monkeypatch.setattr("src.m365_mcp.tools.file.validate_account_id", lambda x: x)
     # Mock validate_microsoft_graph_id to return the ID as-is
     monkeypatch.setattr(
         "src.m365_mcp.tools.file.validate_microsoft_graph_id", lambda x, y: x

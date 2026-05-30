@@ -39,7 +39,7 @@ class TestDatabaseCreation:
         try:
             # Connect with encryption
             conn = sqlcipher.connect(db_path)  # type: ignore[attr-defined]
-            conn.execute(f"PRAGMA key = '{encryption_key}'")
+            conn.execute(EncryptionKeyManager.sqlcipher_key_pragma(encryption_key))
             conn.execute("PRAGMA cipher_page_size = 4096")
 
             # Create a simple test table
@@ -55,6 +55,7 @@ class TestDatabaseCreation:
             conn.close()
 
             # Verify database is encrypted (cannot open without key)
+<<<<<<< HEAD
             bad_conn = None
             try:
                 with pytest.raises(sqlcipher.DatabaseError):  # type: ignore[attr-defined]
@@ -62,6 +63,13 @@ class TestDatabaseCreation:
                     bad_conn.execute("SELECT * FROM test_table")
             finally:
                 if bad_conn:
+=======
+            with pytest.raises(sqlcipher.DatabaseError):  # type: ignore[attr-defined]
+                bad_conn = sqlcipher.connect(db_path)  # type: ignore[attr-defined]
+                try:
+                    bad_conn.execute("SELECT * FROM test_table")
+                finally:
+>>>>>>> 79fb2e76353245923732a64cd4c63732d7c8155e
                     bad_conn.close()
 
         finally:
@@ -81,7 +89,7 @@ class TestDatabaseCreation:
         try:
             # Connect with encryption
             conn = sqlcipher.connect(db_path)  # type: ignore[attr-defined]
-            conn.execute(f"PRAGMA key = '{encryption_key}'")
+            conn.execute(EncryptionKeyManager.sqlcipher_key_pragma(encryption_key))
             conn.execute("PRAGMA cipher_page_size = 4096")
 
             # Read and execute migration script
@@ -164,7 +172,7 @@ class TestDatabaseCreation:
 
         try:
             conn = sqlcipher.connect(db_path)  # type: ignore[attr-defined]
-            conn.execute(f"PRAGMA key = '{encryption_key}'")
+            conn.execute(EncryptionKeyManager.sqlcipher_key_pragma(encryption_key))
 
             # Execute migration
             migration_path = (

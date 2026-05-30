@@ -11,7 +11,7 @@
 | Email | `email_` | list, get, send, delete, move, update, reply |
 | Email Folders | `emailfolders_` | list, get, tree navigation |
 | Email Rules | `emailrules_` | list, get, create, update, delete, move |
-| Calendar | `calendar_` | list_events, get_event, create_event, update_event, delete_event |
+| Calendar | `calendar_` | calendar_list_events, calendar_get_event, calendar_create_event, calendar_update_event, calendar_delete_event |
 | Contacts | `contact_` | list, get, create, update, delete |
 | Files | `file_` | list, get, create, update, delete |
 | Folders | `folder_` | list, get, tree navigation |

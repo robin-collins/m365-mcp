@@ -90,6 +90,32 @@ class TestKeyValidation:
         valid_key = base64.b64encode(b"0" * 32).decode("utf-8")
         assert EncryptionKeyManager._validate_key(valid_key) is True
 
+    def test_sqlcipher_key_pragma_uses_raw_hex_key(self):
+        """Generated keys should be encoded without SQL string interpolation."""
+        key = base64.b64encode(bytes(range(32))).decode("utf-8")
+
+        pragma = EncryptionKeyManager.sqlcipher_key_pragma(key)
+
+        assert pragma == (
+            "PRAGMA key = "
+            "\"x'000102030405060708090a0b0c0d0e0f"
+            "101112131415161718191a1b1c1d1e1f'\""
+        )
+
+    def test_sqlcipher_key_pragma_accepts_env_style_base64_key(self):
+        """Environment-provided base64 keys should encode to raw SQLCipher keys."""
+        key = base64.b64encode(b"a" * 32).decode("utf-8")
+
+        assert EncryptionKeyManager.sqlcipher_key_pragma(key) == (
+            "PRAGMA key = "
+            "\"x'6161616161616161616161616161616161616161616161616161616161616161'\""
+        )
+
+    def test_sqlcipher_key_pragma_rejects_invalid_key(self):
+        """Invalid key input should fail before a PRAGMA string is built."""
+        with pytest.raises(ValueError, match="format"):
+            EncryptionKeyManager.sqlcipher_key_pragma("not-valid-base64")
+
 
 class TestKeyringIntegration:
     """Test system keyring integration."""
@@ -270,7 +296,83 @@ class TestGetOrCreateKey:
         assert call_args[0][1] == EncryptionKeyManager.KEYRING_USERNAME
         assert call_args[0][2] == key
 
-    def test_get_or_create_key_handles_storage_failure_gracefully(self):
+    def test_get_or_create_key_handles_storage_failure_gracefully(self, caplog):
+        """Test that get_or_create_key continues if keyring storage fails."""
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.return_value = None
+        mock_keyring.set_password.side_effect = Exception("Storage failed")
+
+        with caplog.at_level("WARNING", logger="src.m365_mcp.encryption"):
+            with patch.dict("sys.modules", {"keyring": mock_keyring}):
+                with patch.dict(os.environ, {}, clear=True):
+                    result = EncryptionKeyManager.get_or_create_key()
+
+        # Should still return a valid key
+        assert result is not None
+        assert EncryptionKeyManager._validate_key(result) is True
+        assert "ephemeral cache encryption key" in caplog.text
+        assert EncryptionKeyManager.ENV_VAR in caplog.text
+
+    def test_get_or_create_key_warns_when_keyring_module_missing(self, caplog):
+        """Generated keys should warn when no durable key source is available."""
+        with caplog.at_level("WARNING", logger="src.m365_mcp.encryption"):
+            with patch.dict("sys.modules", {"keyring": None}):
+                with patch.dict(os.environ, {}, clear=True):
+                    result = EncryptionKeyManager.get_or_create_key()
+
+        # Should still return a valid key
+        assert result is not None
+        assert EncryptionKeyManager._validate_key(result) is True
+        assert "ephemeral cache encryption key" in caplog.text
+        assert EncryptionKeyManager.ENV_VAR in caplog.text
+
+    def test_get_or_create_key_no_ephemeral_warning_when_keyring_stores(
+        self,
+        caplog,
+    ):
+        """Persisted generated keys should not emit the ephemeral-key warning."""
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.return_value = None
+
+        with caplog.at_level("WARNING", logger="src.m365_mcp.encryption"):
+            with patch.dict("sys.modules", {"keyring": mock_keyring}):
+                with patch.dict(os.environ, {}, clear=True):
+                    result = EncryptionKeyManager.get_or_create_key()
+
+        # Should still return a valid key
+        assert result is not None
+        assert EncryptionKeyManager._validate_key(result) is True
+        assert "ephemeral cache encryption key" not in caplog.text
+
+    def test_get_or_create_key_no_ephemeral_warning_for_env_key(self, caplog):
+        """Environment-provided keys are durable and should not warn."""
+        test_key = EncryptionKeyManager.generate_key()
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.return_value = None
+
+        with caplog.at_level("WARNING", logger="src.m365_mcp.encryption"):
+            with patch.dict("sys.modules", {"keyring": mock_keyring}):
+                with patch.dict(os.environ, {EncryptionKeyManager.ENV_VAR: test_key}):
+                    result = EncryptionKeyManager.get_or_create_key()
+
+        assert result == test_key
+        assert "ephemeral cache encryption key" not in caplog.text
+
+    def test_get_or_create_key_no_ephemeral_warning_for_keyring_key(self, caplog):
+        """Keyring-provided keys are durable and should not warn."""
+        test_key = EncryptionKeyManager.generate_key()
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.return_value = test_key
+
+        with caplog.at_level("WARNING", logger="src.m365_mcp.encryption"):
+            with patch.dict("sys.modules", {"keyring": mock_keyring}):
+                with patch.dict(os.environ, {}, clear=True):
+                    result = EncryptionKeyManager.get_or_create_key()
+
+        assert result == test_key
+        assert "ephemeral cache encryption key" not in caplog.text
+
+    def test_get_or_create_key_returns_valid_key_on_storage_failure(self):
         """Test that get_or_create_key continues if keyring storage fails."""
         mock_keyring = MagicMock()
         mock_keyring.get_password.return_value = None

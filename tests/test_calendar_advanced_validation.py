@@ -44,7 +44,10 @@ class TestCalendarProposeNewTime:
                 proposed_start="2024-01-15T11:00:00+00:00",
                 proposed_end="2024-01-15T10:00:00+00:00",
             )
-        assert "earlier" in str(exc_info.value).lower() or "start < end" in str(exc_info.value).lower()
+        assert (
+            "earlier" in str(exc_info.value).lower()
+            or "start < end" in str(exc_info.value).lower()
+        )
 
 
 class TestCalendarGetFreeBusy:
@@ -52,7 +55,7 @@ class TestCalendarGetFreeBusy:
 
     def test_get_free_busy_requires_attendees(self):
         """calendar_get_free_busy should require at least one attendee."""
-        with pytest.raises((ValidationError, ValueError)) as exc_info:
+        with pytest.raises((ValidationError, ValueError)):
             calendar_tools.calendar_get_free_busy.fn(
                 account_id="test",
                 attendees=[],
@@ -103,7 +106,10 @@ class TestCalendarGetFreeBusy:
                 start="2024-01-15T11:00:00+00:00",
                 end="2024-01-15T10:00:00+00:00",
             )
-        assert "earlier" in str(exc_info.value).lower() or "start < end" in str(exc_info.value).lower()
+        assert (
+            "earlier" in str(exc_info.value).lower()
+            or "start < end" in str(exc_info.value).lower()
+        )
 
     def test_get_free_busy_rejects_invalid_time_interval_too_small(self):
         """calendar_get_free_busy should reject time_interval < 5."""

@@ -706,9 +706,14 @@ def ensure_safe_path(
         )
 
     if os.name == "nt":
+<<<<<<< HEAD
         for part in resolved.parts:
             if part == resolved.drive or (resolved.drive and part.startswith(resolved.drive)):
                 continue
+=======
+        parts_to_check = resolved.parts[1:] if resolved.drive else resolved.parts
+        for part in parts_to_check:
+>>>>>>> 79fb2e76353245923732a64cd4c63732d7c8155e
             if ":" in part:
                 reason = "alternate data streams are not allowed"
                 _log_failure(param_name, reason, candidate_str)

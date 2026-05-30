@@ -24,6 +24,12 @@ from . import graph
 logger = logging.getLogger(__name__)
 
 
+def _odata_string_literal(value: str) -> str:
+    """Encode a Python string as an OData single-quoted string literal."""
+    escaped = value.replace("'", "''")
+    return f"'{escaped}'"
+
+
 def search_emails(
     account_id: str,
     account_type: str,
@@ -503,10 +509,11 @@ def _search_contacts_filter(
     logger.debug(f"Using $filter search for contacts: {query}")
 
     # Build filter with OR conditions for multiple fields
+    query_literal = _odata_string_literal(query)
     filter_parts = [
-        f"startswith(displayName,'{query}')",
-        f"startswith(givenName,'{query}')",
-        f"startswith(surname,'{query}')",
+        f"startswith(displayName,{query_literal})",
+        f"startswith(givenName,{query_literal})",
+        f"startswith(surname,{query_literal})",
     ]
     filter_query = " or ".join(filter_parts)
 

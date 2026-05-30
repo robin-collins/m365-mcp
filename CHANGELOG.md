@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **MCP Tool Signature Compatibility Policy**: Documented that existing
+  account-scoped tool parameter order is preserved for generated-client and
+  saved-call compatibility. New tools should follow nearby family conventions
+  and any future account-id-first migration must be explicit.
 - **Tool Naming Consistency**: Renamed `reply_all_email` to `email_reply_all` for consistency with naming conventions
   - Updated function name in `src/m365_mcp/tools/email.py:1058`
   - Updated MCP tool registration name from "reply_all_email" to "email_reply_all"

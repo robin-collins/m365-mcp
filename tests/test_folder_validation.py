@@ -168,7 +168,9 @@ def test_folder_delete_success(
 
 def test_folder_delete_without_confirm(mock_account_id: str) -> None:
     """Test deleting folder without confirmation raises error."""
-    with pytest.raises(Exception, match="delete OneDrive folder on resource requires confirm=True"):
+    with pytest.raises(
+        Exception, match="delete OneDrive folder on resource requires confirm=True"
+    ):
         folder_tools.folder_delete.fn(
             folder_id="folder-id",
             account_id=mock_account_id,
@@ -178,7 +180,9 @@ def test_folder_delete_without_confirm(mock_account_id: str) -> None:
 
 def test_folder_delete_confirm_default_false(mock_account_id: str) -> None:
     """Test that confirm defaults to False."""
-    with pytest.raises(Exception, match="delete OneDrive folder on resource requires confirm=True"):
+    with pytest.raises(
+        Exception, match="delete OneDrive folder on resource requires confirm=True"
+    ):
         folder_tools.folder_delete.fn(
             folder_id="folder-id",
             account_id=mock_account_id,

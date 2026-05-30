@@ -46,13 +46,13 @@ m365-mcp/
 │       ├── cache_config.py                 # **NEW** Cache configuration and policies (244 lines)
 │       │                                   #   - TTL policies for 12 resource types (Fresh/Stale/Expired)
 │       │                                   #   - Cache limits and cleanup thresholds
-│       │                                   #   - Cache warming operations configuration
+│       │                                   #   - Cache warming operations configuration (opt-in)
 │       │                                   #   - Cache key generation and parsing utilities
 │       ├── encryption.py                   # **NEW** Encryption key management for secure cache (273 lines)
 │       │                                   #   - EncryptionKeyManager class with 256-bit AES key generation
 │       │                                   #   - Multi-source key retrieval (keyring → env var → generate)
 │       │                                   #   - Cross-platform keyring support (Linux/macOS/Windows)
-│       │                                   #   - Graceful degradation for headless environments
+│       │                                   #   - Ephemeral-key warning when durable storage is unavailable
 │       ├── cache.py                        # **NEW** Encrypted cache manager with compression and TTL (481 lines)
 │       │                                   #   - CacheManager class with full lifecycle management
 │       │                                   #   - Encrypted SQLite operations via SQLCipher (AES-256)
@@ -62,13 +62,9 @@ m365-mcp/
 │       │                                   #   - Pattern-based cache invalidation with wildcards
 │       │                                   #   - Automatic cleanup at 80% capacity
 │       │                                   #   - LRU eviction and statistics tracking
-│       ├── cache_migration.py              # **NEW** Cache migration utilities (121 lines)
-│       │                                   #   - Migrate from unencrypted to encrypted cache
-│       │                                   #   - Automatic detection and migration on startup
-│       │                                   #   - Backup creation for safety
-│       ├── cache_warming.py                # **NEW** Background cache warming system (250 lines)
+│       ├── cache_warming.py                # **NEW** Optional cache warming implementation
 │       │                                   #   - CacheWarmer class for pre-populating cache
-│       │                                   #   - Non-blocking startup (server responds immediately)
+│       │                                   #   - Startup wiring enabled with M365_MCP_CACHE_WARMING=true
 │       │                                   #   - Priority-based queue (folder_tree → emails → files)
 │       │                                   #   - Throttled execution to respect API rate limits
 │       │                                   #   - Automatic retry on failures
@@ -100,13 +96,12 @@ m365-mcp/
 │       │                                   #   - Comprehensive structured logging
 │       │                                   #   - Signal handlers for graceful shutdown
 │       │                                   #   - Request/response timing and client IP tracking
-│       ├── tools.py                        # **NEW** MCP tool registry (imports mcp and triggers tool registration)
 │       ├── validators.py                   # Shared validation helpers and ValidationError class
 │       │                                   #   - Validators for accounts, email, datetime, paths, Graph IDs, URLs
 │       │                                   #   - Security helpers: ensure_safe_path, validate_graph_url, validate_onedrive_path
 │       │                                   #   - Sanitised error messaging and logging utilities
-│       └── tools/                          # **NEW** Modular tool implementations (57 tools across 11 files)
-│           ├── __init__.py                  # **NEW** Tool package exports (imports all functions and mcp)
+│       └── tools/                          # **NEW** Modular tool implementations (runtime exposes 85 tools)
+│           ├── __init__.py                  # **NEW** Tool package exports and registration imports
 │           ├── account.py                   # **NEW** Account management tools (3 tools)
 │           ├── calendar.py                  # **NEW** Calendar and event tools (6 tools)
 │           ├── contact.py                   # **NEW** Contact management tools (5 tools)
@@ -116,12 +111,12 @@ m365-mcp/
 │           ├── file.py                      # **NEW** OneDrive file operations tools (5 tools)
 │           ├── folder.py                    # **NEW** OneDrive folder navigation tools (3 tools)
 │           ├── search.py                    # **NEW** Search operations tools (5 tools)
-│           └── cache.py                     # **NEW** Cache management tools (5 tools)
+│           └── cache_tools.py               # **NEW** Cache management tools
 │               ├── cache_get_stats          # View cache statistics
 │               ├── cache_invalidate         # Invalidate cache entries by pattern
-│               ├── cache_task_enqueue       # Queue background cache task
-│               ├── cache_task_status        # Check cache task status
-│               └── cache_task_list          # List cache tasks
+│               ├── cache_task_get_status    # Check cache task status
+│               ├── cache_task_list          # List cache tasks
+│               └── cache_warming_status     # Report warming/background refresh status
 │           ├── account.py: 3 tools
 │           │   ├── account_list                    # List signed-in accounts
 │           │   ├── account_authenticate            # Start device flow auth
@@ -233,16 +228,16 @@ m365-mcp/
 │   ├── test_cache_tools.py                 # **NEW** Cache management tool tests (~15 tests)
 │   │                                       #   - cache_get_stats functionality
 │   │                                       #   - cache_invalidate pattern matching
-│   │                                       #   - cache_task_enqueue/status/list
+│   │                                       #   - cache_task_get_status/list and cache_warming_status
 │   │                                       #   - Multi-account cache operations
 │   ├── test_integration.py                 # **REWRITTEN** Complete integration test suite (986 lines, 34 tests)
 │   │                                       #   - Emails: list, list_without_body, get, create_draft, update, delete, move, reply, reply_all, send (10 tests)
-│   │                                       #   - Calendar: list_events, get_event, create, update, delete, respond, check_availability (7 tests)
+│   │                                       #   - Calendar: calendar_list_events, calendar_get_event, calendar_create_event, calendar_update_event, calendar_delete_event, calendar_respond_event, calendar_check_availability
 │   │                                       #   - Contacts: list, get, create, update, delete (5 tests)
 │   │                                       #   - Files: list, get, create, update, delete (5 tests)
 │   │                                       #   - Search: files, emails, events, contacts, unified (5 tests)
-│   │                                       #   - Attachments: get_attachment (1 test)
-│   │                                       #   - Account: list_accounts (1 test)
+│   │                                       #   - Attachments: email_get_attachment (1 test)
+│   │                                       #   - Account: account_list (1 test)
 │   │                                       #   - All tests pass (125.80s for 34 tests, ~3.7s per test)
 │   │                                       #   - Uses proven pattern: async for session in get_session()
 │   ├── test_email_folders_integration.py  # **NEW** Email folder integration tests (298 lines, 7 tests)
@@ -309,7 +304,7 @@ m365-mcp/
 
 ### Source Code
 
-- **`src/m365_mcp/tools.py`** (tool registry, imports from tools/ directory)
+- **`src/m365_mcp/mcp_instance.py`** (shared FastMCP instance)
 - **`src/m365_mcp/tools/`** (modular tool implementations)
   - `account.py` - Account management (3 tools)
   - `calendar.py` - Calendar operations (6 tools)
@@ -407,9 +402,9 @@ Tools with `confirm=True` parameter (10 tools):
 
 - `cache_get_stats` - 📖 View cache statistics (size, entries, hit rate)
 - `cache_invalidate` - 📖 Invalidate cache entries by pattern (safe maintenance operation)
-- `cache_task_enqueue` - 📖 Queue background cache warming task
-- `cache_task_status` - 📖 Check status of queued cache task
+- `cache_task_get_status` - 📖 Check status of queued cache task
 - `cache_task_list` - 📖 List all cache tasks by account or status
+- `cache_warming_status` - 📖 Report warming/background refresh status
 
 ## Recent Changes
 
@@ -417,7 +412,7 @@ Tools with `confirm=True` parameter (10 tools):
 
 **Modified:**
 
-- `src/m365_mcp/tools.py` - Added 3 new tools, enhanced 1 tool, added 1 helper function
+- `src/m365_mcp/tools/email_folders.py` - Added email folder tools and helper logic
 
 **Added:**
 
@@ -442,7 +437,7 @@ Tools with `confirm=True` parameter (10 tools):
 
 **Modified:**
 
-- `src/m365_mcp/tools.py` - Added 3 new OneDrive tools, enhanced 1 tool, added 1 helper
+- `src/m365_mcp/tools/folder.py` - Added OneDrive folder tools and helper logic
 
 **Added:**
 
@@ -454,20 +449,20 @@ Tools with `confirm=True` parameter (10 tools):
 - `list_folders` - List only folders in OneDrive
 - `get_folder` - Get OneDrive folder metadata
 - `get_folder_tree` - Build recursive OneDrive folder tree
-- `list_files` enhanced - Added folder_id and type_filter parameters
+- `file_list` enhanced - Added folder_id and type_filter parameters
 
 **Helper Function:**
 
 - `_list_folders_impl()` - OneDrive folder listing implementation
 
-**Tool Count:** 38 → 41 (OneDrive folder tools added)
+**Tool Count:** Runtime registration currently exposes 85 tools.
 
 ### 2025-10-07 - Modular Tool Architecture
 
 **Modified:**
 
-- `src/m365_mcp/tools.py` - Refactored to import from modular tools/ directory
-- `src/m365_mcp/tools/__init__.py` - **NEW** Package exports for all 51 tools
+- `src/m365_mcp/tools/` - Modular tool package
+- `src/m365_mcp/tools/__init__.py` - Package exports and registration imports
 
 **Added:**
 
@@ -535,7 +530,6 @@ Tools with `confirm=True` parameter (10 tools):
 - `src/m365_mcp/cache_warming.py` - Background cache warming (250 lines)
 - `src/m365_mcp/background_worker.py` - Async task queue (200 lines)
 - `src/m365_mcp/encryption.py` - Encryption key management (273 lines)
-- `src/m365_mcp/cache_migration.py` - Database migrations (121 lines)
 - `src/m365_mcp/tools/cache.py` - **NEW** 5 cache management tools
 - `docs/cache_user_guide.md` - Complete user guide (389 lines)
 - `docs/cache_security.md` - Security and compliance guide (486 lines)
@@ -554,17 +548,17 @@ Tools with `confirm=True` parameter (10 tools):
 
 - `cache_get_stats` - View cache statistics
 - `cache_invalidate` - Invalidate cache entries
-- `cache_task_enqueue` - Queue cache task
-- `cache_task_status` - Check task status
+- `cache_task_get_status` - Check task status
 - `cache_task_list` - List cache tasks
+- `cache_warming_status` - Report warming/background refresh status
 
 **Features:**
 
 - **Performance**: 300x speedup for folder operations, 40-100x for email/file operations
-- **Security**: AES-256 encryption via SQLCipher, GDPR/HIPAA compliant
+- **Security**: AES-256 encryption via SQLCipher with controls for GDPR/HIPAA-aligned deployments
 - **Intelligent TTL**: Three-state lifecycle (Fresh/Stale/Expired)
 - **Automatic Compression**: 70-80% size reduction for large entries
-- **Cache Warming**: Non-blocking background pre-population
+- **Cache Warming**: Optional non-blocking background pre-population with `M365_MCP_CACHE_WARMING=true`
 - **Account Isolation**: Multi-tenant safe cache
 - **Zero Breaking Changes**: Fully backward compatible
 
@@ -585,7 +579,7 @@ Tools with `confirm=True` parameter (10 tools):
 - Server tools: +1 (51 total)
 - Cache management tools: +5 (56 total)
 - Email folder management tools: +6 (62 total) - **NEW**
-- Enhanced tools: 5 (`list_emails`, `list_files`, `folder_get_tree` with caching)
+- Enhanced tools: 5 (`email_list`, `file_list`, `folder_get_tree` with caching)
 - Helper functions: 2 (`_list_mail_folders_impl`, `_list_folders_impl`)
 
 ### 2025-10-14 - Email Folder Management Tools

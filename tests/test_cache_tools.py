@@ -1,10 +1,13 @@
 """Tests for cache management tools."""
 
-import pytest
+from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from src.m365_mcp.cache import CacheManager
+from src.m365_mcp.cache_config import generate_cache_key
 
 
 @pytest.fixture
@@ -15,13 +18,14 @@ def temp_cache_db(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def cache_manager(temp_cache_db: Path) -> CacheManager:
+def cache_manager(temp_cache_db: Path) -> Generator[CacheManager, None, None]:
     """Create a cache manager instance for testing."""
     cache_mgr = CacheManager(
         db_path=str(temp_cache_db),
         encryption_enabled=False,  # Disable encryption for faster tests
     )
-    return cache_mgr
+    yield cache_mgr
+    cache_mgr.close()
 
 
 # Test 1: Test get_cache_manager helper function
@@ -31,6 +35,7 @@ def test_get_cache_manager_creates_instance(tmp_path):
 
     # Reset global instance
     cache_tools._cache_manager = None
+    manager = None
 
     try:
         # Create a cache manager with a temp path to avoid conflicts
@@ -47,6 +52,8 @@ def test_get_cache_manager_creates_instance(tmp_path):
 
     finally:
         # Cleanup
+        if manager is not None:
+            manager.close()
         cache_tools._cache_manager = None
 
 
@@ -130,6 +137,31 @@ def test_cache_get_stats(cache_manager):
     stats = cache_manager.get_stats()
     assert stats["entry_count"] == 3
     assert stats["total_bytes"] > 0
+
+
+def test_cache_get_stats_tool_uses_cache_manager_keys(monkeypatch):
+    """Tool stats should use the keys returned by CacheManager.get_stats."""
+    from src.m365_mcp.tools import cache_tools
+
+    fake_manager = MagicMock()
+    fake_manager.get_stats.return_value = {
+        "entry_count": 3,
+        "total_bytes": 1024 * 1024,
+        "total_hits": 7,
+        "usage_percent": 81.5,
+    }
+    monkeypatch.setattr(cache_tools, "get_cache_manager", lambda: fake_manager)
+
+    stats = cache_tools.cache_get_stats.fn()
+
+    assert stats["entry_count"] == 3
+    assert stats["total_bytes"] == 1024 * 1024
+    assert stats["total_size_bytes"] == 1024 * 1024
+    assert stats["total_size_mb"] == 1.0
+    assert stats["size_percentage"] == 81.5
+    assert stats["cleanup_triggered"] is True
+    assert stats["hit_rate"] is None
+    assert stats["miss_count"] is None
 
 
 # Test 5: Test cache invalidation
@@ -303,68 +335,129 @@ def test_cache_invalidate_with_reason(cache_manager):
     assert stats["entry_count"] == 0
 
 
+def test_cache_invalidate_tool_scopes_wildcard_by_account(
+    monkeypatch,
+    cache_manager,
+):
+    """Tool-level account filtering should not rewrite wildcard patterns."""
+    from src.m365_mcp.tools import cache_tools
+
+    target_account = "target@example.com"
+    other_account = "other@example.com"
+    params = {"folder_id": "inbox"}
+    cache_manager.set_cached(target_account, "email_list", params, {"messages": []})
+    cache_manager.set_cached(other_account, "email_list", params, {"messages": []})
+    monkeypatch.setattr(cache_tools, "get_cache_manager", lambda: cache_manager)
+
+    result = cache_tools.cache_invalidate.fn(
+        "email_list:*",
+        account_id=target_account,
+        reason="account_refresh",
+    )
+
+    assert result["entries_deleted"] == 1
+    assert result["pattern"] == "email_list:*"
+    assert result["account_id"] == target_account
+    assert cache_manager.get_cached(target_account, "email_list", params) is None
+    assert cache_manager.get_cached(other_account, "email_list", params) is not None
+
+
+def test_cache_invalidate_tool_scopes_exact_pattern_by_account(
+    monkeypatch,
+    cache_manager,
+):
+    """Exact patterns should still honor account_id filtering."""
+    from src.m365_mcp.tools import cache_tools
+
+    target_account = "target@example.com"
+    other_account = "other@example.com"
+    params = {"email_id": "message-1", "include_body": True}
+    cache_manager.set_cached(target_account, "email_get", params, {"id": "message-1"})
+    cache_manager.set_cached(other_account, "email_get", params, {"id": "message-1"})
+    pattern = generate_cache_key(target_account, "email_get", params)
+    monkeypatch.setattr(cache_tools, "get_cache_manager", lambda: cache_manager)
+
+    result = cache_tools.cache_invalidate.fn(
+        pattern,
+        account_id=target_account,
+        reason="message_update",
+    )
+
+    assert result["entries_deleted"] == 1
+    assert result["pattern"] == pattern
+    assert cache_manager.get_cached(target_account, "email_get", params) is None
+    assert cache_manager.get_cached(other_account, "email_get", params) is not None
+
+
 # Test 12: Test cache_warming_status when not initialized
 def test_cache_warming_status_not_initialized():
     """Test cache warming status when background worker is not set."""
     from src.m365_mcp.tools import cache_tools
 
-    # Reset background worker
-    cache_tools._background_worker = None
+    # Reset warming status provider
+    cache_tools._warming_status_provider = None
 
-    # Call the actual function (need to import and use the real implementation)
-    # Since it's decorated, we need to access it differently
-
-    # The tool is a FastMCP FunctionTool, we can't call it directly in tests
-    # Instead, test the logic through the module function
-    from src.m365_mcp.tools import cache_tools
-
-    # Manually call the logic
-    if cache_tools._background_worker is None:
-        result = {
-            "is_warming": False,
-            "status": "Background worker not initialized",
-            "total_operations": 0,
-            "completed_operations": 0,
-            "failed_operations": 0,
-            "progress_percentage": 0.0,
-        }
+    result = cache_tools.cache_warming_status.fn()
 
     assert result["is_warming"] is False
-    assert result["status"] == "Background worker not initialized"
+    assert result["status"].startswith("Cache warming disabled")
+    assert result["operations_total"] == 0
+    assert result["progress_percent"] == 0.0
 
 
-# Test 13: Test cache_warming_status with mock worker
-def test_cache_warming_status_with_worker(cache_manager):
-    """Test cache warming status with a mocked background worker."""
+# Test 13: Test cache_warming_status with mock warmer
+def test_cache_warming_status_with_cache_warmer(cache_manager):
+    """Test cache warming status with a mocked cache warmer."""
     from src.m365_mcp.tools import cache_tools
 
-    # Create a mock background worker
-    mock_worker = MagicMock()
-    mock_worker.get_warming_status = MagicMock(
+    # Create a mock cache warmer
+    mock_warmer = MagicMock()
+    mock_warmer.get_warming_status = MagicMock(
         return_value={
             "is_warming": True,
-            "total_operations": 10,
-            "completed_operations": 5,
-            "failed_operations": 1,
-            "progress_percentage": 50.0,
+            "operations_total": 10,
+            "operations_completed": 5,
+            "operations_failed": 1,
+            "progress_percent": 50.0,
             "status": "Warming in progress",
         }
     )
 
-    # Set the mock worker
-    cache_tools._background_worker = mock_worker
+    # Set the mock warmer
+    cache_tools.set_cache_warmer(mock_warmer)
 
-    # Since we can't call the decorated function directly,
-    # verify the mock worker has the expected method
-    status = mock_worker.get_warming_status()
+    status = cache_tools.cache_warming_status.fn()
 
     assert status["is_warming"] is True
-    assert status["total_operations"] == 10
-    assert status["completed_operations"] == 5
-    assert status["progress_percentage"] == 50.0
+    assert status["operations_total"] == 10
+    assert status["operations_completed"] == 5
+    assert status["progress_percent"] == 50.0
+    mock_warmer.get_warming_status.assert_called_once()
 
     # Cleanup
-    cache_tools._background_worker = None
+    cache_tools.set_cache_warmer(None)
+
+
+def test_cache_warming_status_accepts_background_worker_provider(cache_manager):
+    """The compatibility setter should accept any status provider."""
+    from src.m365_mcp.tools import cache_tools
+
+    mock_worker = MagicMock()
+    mock_worker.get_warming_status.return_value = {
+        "is_warming": False,
+        "operations_total": 0,
+        "operations_completed": 0,
+        "operations_failed": 0,
+        "progress_percent": 0.0,
+    }
+
+    cache_tools.set_background_worker(mock_worker)
+
+    status = cache_tools.cache_warming_status.fn()
+
+    assert status["is_warming"] is False
+    mock_worker.get_warming_status.assert_called_once()
+    cache_tools.set_background_worker(None)
 
 
 # Test 14: Test cache entry state detection (Fresh/Stale/Expired)

@@ -15,8 +15,10 @@ from typing import Any, Optional
 
 try:
     import sqlcipher3 as sqlite3
+    USING_SQLCIPHER = True
 except ImportError:
     import sqlite3
+    USING_SQLCIPHER = False
 
 from .encryption import EncryptionKeyManager
 from .cache_config import (
@@ -64,6 +66,10 @@ class CacheManager:
         # Get encryption key if enabled
         self.encryption_key = None
         if self.encryption_enabled:
+            if not USING_SQLCIPHER:
+                raise ImportError(
+                    "Cache encryption requested but sqlcipher3 is unavailable."
+                )
             key_manager = EncryptionKeyManager()
             self.encryption_key = key_manager.get_or_create_key()
             logger.info("Cache encryption enabled")

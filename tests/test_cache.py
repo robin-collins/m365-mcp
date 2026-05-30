@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 import time
 
+from src.m365_mcp import cache as cache_module
 from src.m365_mcp.cache import CacheManager, CacheState
 from src.m365_mcp.cache_config import generate_cache_key
 
@@ -341,6 +342,27 @@ class TestCacheStats:
 
 class TestCacheEncryption:
     """Test encryption functionality."""
+
+    def test_encryption_requires_sqlcipher(self, tmp_path, monkeypatch):
+        """Encrypted mode should fail loudly without SQLCipher."""
+        monkeypatch.setattr(cache_module, "USING_SQLCIPHER", False)
+
+        with pytest.raises(ImportError, match="sqlcipher3 is unavailable"):
+            CacheManager(
+                db_path=str(tmp_path / "missing_sqlcipher.db"),
+                encryption_enabled=True,
+            )
+
+    def test_plaintext_mode_allows_sqlite_fallback(self, tmp_path, monkeypatch):
+        """Plaintext mode can still use stdlib sqlite fallback explicitly."""
+        monkeypatch.setattr(cache_module, "USING_SQLCIPHER", False)
+
+        manager = CacheManager(
+            db_path=str(tmp_path / "plaintext.db"),
+            encryption_enabled=False,
+        )
+
+        assert manager.encryption_enabled is False
 
     def test_encrypted_cache_creation(self, cache_manager):
         """Test encrypted cache is created."""

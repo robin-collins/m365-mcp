@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,7 @@ from src.m365_mcp.tools import file as file_tools
 
 
 @pytest.fixture
-def cache_manager(tmp_path: Path) -> CacheManager:
+def cache_manager(tmp_path: Path) -> Generator[CacheManager, None, None]:
     manager = CacheManager(
         db_path=str(tmp_path / "mutation_cache.db"),
         encryption_enabled=False,

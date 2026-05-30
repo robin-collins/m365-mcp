@@ -1,8 +1,10 @@
 """Tests for cache management tools."""
 
-import pytest
+from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import MagicMock
+
+import pytest
 
 from src.m365_mcp.cache import CacheManager
 
@@ -15,7 +17,7 @@ def temp_cache_db(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def cache_manager(temp_cache_db: Path) -> CacheManager:
+def cache_manager(temp_cache_db: Path) -> Generator[CacheManager, None, None]:
     """Create a cache manager instance for testing."""
     cache_mgr = CacheManager(
         db_path=str(temp_cache_db),

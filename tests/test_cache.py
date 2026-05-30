@@ -195,10 +195,9 @@ class TestCacheBasics:
         try:
             assert recovered_manager.get_cached("account-1", "email_list", {}) is None
             recovered_manager.set_cached("account-1", "email_list", {}, {"emails": [2]})
-            assert (
-                recovered_manager.get_cached("account-1", "email_list", {})[0]
-                == {"emails": [2]}
-            )
+            refreshed = recovered_manager.get_cached("account-1", "email_list", {})
+            assert refreshed is not None
+            assert refreshed[0] == {"emails": [2]}
         finally:
             recovered_manager.close()
 

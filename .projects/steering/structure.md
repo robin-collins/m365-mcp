@@ -13,7 +13,8 @@ m365-mcp/
 │   ├── auth.py                # Authentication & token management
 │   ├── graph.py               # Microsoft Graph API client
 │   ├── server.py              # MCP server configuration & HTTP transport
-│   ├── tools.py               # MCP tool definitions (51+ tools)
+│   ├── mcp_instance.py        # Shared FastMCP instance
+│   ├── tools/                 # Modular MCP tool package
 │   ├── cache.py               # Encrypted SQLite cache manager (AES-256)
 │   ├── cache_config.py        # Cache configuration, TTL policies, key generation
 │   ├── cache_warming.py       # Cache warming implementation (startup wiring deferred)
@@ -52,8 +53,10 @@ m365-mcp/
 - **Rate limiting** - Intelligent backoff and retry logic
 - **File upload** - Large file handling with chunked upload
 
-### Tool Layer (`tools.py`)
-- **MCP tool definitions** - FastMCP decorators for all operations
+### Tool Layer (`tools/` package)
+- **MCP tool definitions** - FastMCP decorators organized by domain module
+- **Package registration** - `tools/__init__.py` imports tool modules so
+  decorators register against the shared `mcp_instance.mcp`
 - **Business logic** - Email, calendar, file, and contact operations
 - **Error handling** - Comprehensive error management
 - **Type safety** - Full type annotations for all tools
@@ -129,11 +132,14 @@ uv.lock                        # Dependency lock file
 ## File Organization Guidelines
 
 ### Adding New Tools
-1. **Location** - Add to `src/m365_mcp/tools.py`
-2. **Pattern** - Use `@mcp.tool` decorator
-3. **Signature** - Include `account_id: str` as first parameter
-4. **Documentation** - Comprehensive docstring with examples
-5. **Error Handling** - Proper exception raising and handling
+1. **Location** - Add to the matching module under `src/m365_mcp/tools/`
+2. **Pattern** - Import `mcp` from `mcp_instance` or local module patterns and
+   use the `@mcp.tool` decorator
+3. **Registration** - Import/export the new tool from `tools/__init__.py`
+4. **Signature** - Include `account_id: str` as first parameter where the tool
+   is account-scoped
+5. **Documentation** - Comprehensive docstring with examples
+6. **Error Handling** - Proper exception raising and handling
 
 ### Adding New Modules
 1. **Location** - Create in `src/m365_mcp/`
@@ -168,7 +174,7 @@ uv.lock                        # Dependency lock file
 
 ### Adding New Microsoft Services
 1. **API Client** - Extend `graph.py` with new endpoints
-2. **Tools** - Add tools in `tools.py` for new operations
+2. **Tools** - Add tools in the appropriate `tools/` package module
 3. **Authentication** - Update scopes in `auth.py` if needed
 4. **Testing** - Add integration tests for new services
 

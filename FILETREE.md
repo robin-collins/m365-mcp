@@ -46,7 +46,7 @@ m365-mcp/
 │       ├── cache_config.py                 # **NEW** Cache configuration and policies (244 lines)
 │       │                                   #   - TTL policies for 12 resource types (Fresh/Stale/Expired)
 │       │                                   #   - Cache limits and cleanup thresholds
-│       │                                   #   - Cache warming operations configuration
+│       │                                   #   - Cache warming operations configuration (startup disabled)
 │       │                                   #   - Cache key generation and parsing utilities
 │       ├── encryption.py                   # **NEW** Encryption key management for secure cache (273 lines)
 │       │                                   #   - EncryptionKeyManager class with 256-bit AES key generation
@@ -66,9 +66,9 @@ m365-mcp/
 │       │                                   #   - Migrate from unencrypted to encrypted cache
 │       │                                   #   - Automatic detection and migration on startup
 │       │                                   #   - Backup creation for safety
-│       ├── cache_warming.py                # **NEW** Background cache warming system (250 lines)
+│       ├── cache_warming.py                # **NEW** Cache warming implementation (startup wiring deferred)
 │       │                                   #   - CacheWarmer class for pre-populating cache
-│       │                                   #   - Non-blocking startup (server responds immediately)
+│       │                                   #   - Startup wiring currently disabled until worker hardening
 │       │                                   #   - Priority-based queue (folder_tree → emails → files)
 │       │                                   #   - Throttled execution to respect API rate limits
 │       │                                   #   - Automatic retry on failures
@@ -100,13 +100,12 @@ m365-mcp/
 │       │                                   #   - Comprehensive structured logging
 │       │                                   #   - Signal handlers for graceful shutdown
 │       │                                   #   - Request/response timing and client IP tracking
-│       ├── tools.py                        # **NEW** MCP tool registry (imports mcp and triggers tool registration)
 │       ├── validators.py                   # Shared validation helpers and ValidationError class
 │       │                                   #   - Validators for accounts, email, datetime, paths, Graph IDs, URLs
 │       │                                   #   - Security helpers: ensure_safe_path, validate_graph_url, validate_onedrive_path
 │       │                                   #   - Sanitised error messaging and logging utilities
-│       └── tools/                          # **NEW** Modular tool implementations (57 tools across 11 files)
-│           ├── __init__.py                  # **NEW** Tool package exports (imports all functions and mcp)
+│       └── tools/                          # **NEW** Modular tool implementations (runtime exposes 85 tools)
+│           ├── __init__.py                  # **NEW** Tool package exports and registration imports
 │           ├── account.py                   # **NEW** Account management tools (3 tools)
 │           ├── calendar.py                  # **NEW** Calendar and event tools (6 tools)
 │           ├── contact.py                   # **NEW** Contact management tools (5 tools)
@@ -116,7 +115,7 @@ m365-mcp/
 │           ├── file.py                      # **NEW** OneDrive file operations tools (5 tools)
 │           ├── folder.py                    # **NEW** OneDrive folder navigation tools (3 tools)
 │           ├── search.py                    # **NEW** Search operations tools (5 tools)
-│           └── cache.py                     # **NEW** Cache management tools (5 tools)
+│           └── cache_tools.py               # **NEW** Cache management tools
 │               ├── cache_get_stats          # View cache statistics
 │               ├── cache_invalidate         # Invalidate cache entries by pattern
 │               ├── cache_task_enqueue       # Queue background cache task
@@ -309,7 +308,7 @@ m365-mcp/
 
 ### Source Code
 
-- **`src/m365_mcp/tools.py`** (tool registry, imports from tools/ directory)
+- **`src/m365_mcp/mcp_instance.py`** (shared FastMCP instance)
 - **`src/m365_mcp/tools/`** (modular tool implementations)
   - `account.py` - Account management (3 tools)
   - `calendar.py` - Calendar operations (6 tools)
@@ -407,7 +406,7 @@ Tools with `confirm=True` parameter (10 tools):
 
 - `cache_get_stats` - 📖 View cache statistics (size, entries, hit rate)
 - `cache_invalidate` - 📖 Invalidate cache entries by pattern (safe maintenance operation)
-- `cache_task_enqueue` - 📖 Queue background cache warming task
+- `cache_task_enqueue` - 📖 Queue background cache task
 - `cache_task_status` - 📖 Check status of queued cache task
 - `cache_task_list` - 📖 List all cache tasks by account or status
 
@@ -417,7 +416,7 @@ Tools with `confirm=True` parameter (10 tools):
 
 **Modified:**
 
-- `src/m365_mcp/tools.py` - Added 3 new tools, enhanced 1 tool, added 1 helper function
+- `src/m365_mcp/tools/email_folders.py` - Added email folder tools and helper logic
 
 **Added:**
 
@@ -442,7 +441,7 @@ Tools with `confirm=True` parameter (10 tools):
 
 **Modified:**
 
-- `src/m365_mcp/tools.py` - Added 3 new OneDrive tools, enhanced 1 tool, added 1 helper
+- `src/m365_mcp/tools/folder.py` - Added OneDrive folder tools and helper logic
 
 **Added:**
 
@@ -460,14 +459,14 @@ Tools with `confirm=True` parameter (10 tools):
 
 - `_list_folders_impl()` - OneDrive folder listing implementation
 
-**Tool Count:** 38 → 41 (OneDrive folder tools added)
+**Tool Count:** Runtime registration currently exposes 85 tools.
 
 ### 2025-10-07 - Modular Tool Architecture
 
 **Modified:**
 
-- `src/m365_mcp/tools.py` - Refactored to import from modular tools/ directory
-- `src/m365_mcp/tools/__init__.py` - **NEW** Package exports for all 51 tools
+- `src/m365_mcp/tools/` - Modular tool package
+- `src/m365_mcp/tools/__init__.py` - Package exports and registration imports
 
 **Added:**
 

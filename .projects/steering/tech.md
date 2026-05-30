@@ -105,9 +105,8 @@ uv run authenticate.py
 
 # Complete authentication flow
 uv run python -c "
-import asyncio
-from src.m365_mcp.tools import complete_authentication
-result = asyncio.run(complete_authentication('your-flow-cache'))
+from src.m365_mcp.tools import account_complete_auth
+result = account_complete_auth.fn('your-flow-cache')
 print(result)
 "
 ```
@@ -127,6 +126,8 @@ print(result)
 
 ### Architecture Patterns
 - **MCP Tool Pattern** - All Microsoft 365 operations exposed as MCP tools
+- **Modular Tool Package** - Tool implementations live under `src/m365_mcp/tools/`
+  and register against the shared FastMCP instance from `mcp_instance.py`
 - **Authentication Proxy** - Centralized token management and refresh
 - **Graph API Client** - Unified HTTP client with retry logic and rate limiting
 - **Multi-account Support** - Account isolation and context management

@@ -13,7 +13,9 @@ M365 MCP is a Model Context Protocol (MCP) server that provides AI assistants wi
 - **`src/m365_mcp/server.py`**: Entry point that initializes the FastMCP server
 - **`src/m365_mcp/auth.py`**: Handles MSAL authentication using device flow, token caching to `~/.m365_mcp_token_cache.json`, and multi-account management
 - **`src/m365_mcp/graph.py`**: HTTP client wrapper for Microsoft Graph API with retry logic, pagination, chunked uploads (15×320 KiB chunks), and rate limiting handling
-- **`src/m365_mcp/tools.py`**: Defines 51 MCP tools using FastMCP decorators (`@mcp.tool`)
+- **`src/m365_mcp/mcp_instance.py`**: Defines the shared FastMCP instance
+- **`src/m365_mcp/tools/`**: Modular MCP tool package; each domain module
+  registers tools with FastMCP decorators (`@mcp.tool`)
 - **`authenticate.py`**: Standalone script for interactive account authentication
 
 ### Cache System
@@ -32,7 +34,9 @@ M365 MCP is a Model Context Protocol (MCP) server that provides AI assistants wi
 - **Pagination**: `graph.request_paginated()` follows `@odata.nextLink` for large result sets
 - **Large File Handling**: Files >4.8MB use resumable upload sessions via `graph.upload_large_file()` and `graph.upload_large_mail_attachment()`
 - **Error Handling**: Graph requests implement exponential backoff for 5xx errors and respect 429 rate limit headers
-- **Encrypted Caching**: AES-256 encrypted SQLite cache with automatic compression, TTL management, and cache warming for 300x performance improvement on repeated operations
+- **Encrypted Caching**: AES-256 encrypted SQLite cache with automatic
+  compression, TTL management, and on-demand cache hits for large performance
+  improvements on repeated operations
 
 ### Cache Architecture
 
@@ -56,10 +60,8 @@ The M365 MCP server includes a comprehensive caching system that dramatically im
    - Pattern-based invalidation (e.g., `email_*` invalidates all email caches)
    - Account-isolated invalidation (changes to account A don't affect account B)
 
-5. **Cache Warming**: Automatic background cache population on server startup
-   - Non-blocking startup (server responds immediately)
-   - Prioritized queue (folder trees → email lists → file lists)
-   - Throttled execution to respect API rate limits
+5. **Cache Warming**: Implementation exists, but automatic startup wiring is
+   currently disabled until worker lifecycle hardening is complete
 
 6. **Connection Pooling**: Pool of 5 SQLite connections for concurrent access
 
@@ -197,7 +199,9 @@ create_file(
 
 ## Important Notes
 
-- FastMCP handles tool registration via decorators; tools are auto-discovered from `tools.py`
+- FastMCP handles tool registration via decorators; importing
+  `src/m365_mcp/tools/__init__.py` loads the domain modules and registers tools
+  against `mcp_instance.mcp`
 - Graph API requests automatically add `ConsistencyLevel: eventual` header for search queries
 - Email body content returns as plain text (via `outlook.body-content-type="text"` preference header)
 - Folder names in `FOLDERS` dict map user-friendly names to Graph API folder IDs (e.g., "deleted" → "deleteditems")

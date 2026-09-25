@@ -30,6 +30,9 @@ class FakeClient:
 def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     recorded: list[float] = []
     monkeypatch.setattr(graph.time, "sleep", recorded.append)
+    # Sleeps are faked, so freeze the deadline clock too (see
+    # tests/test_graph_deadline.py for budget behaviour).
+    monkeypatch.setattr(graph, "_clock", lambda: 0.0)
     return recorded
 
 

@@ -7,6 +7,7 @@ from typing import Any, Callable
 import httpx
 import pytest
 
+from src.m365_mcp.services import drive
 from src.m365_mcp.tools import file as file_tools
 from src.m365_mcp.validators import ValidationError
 
@@ -30,7 +31,7 @@ def record_stream_calls(monkeypatch: pytest.MonkeyPatch) -> Callable[[list[Any]]
         data: bytes = outcome
         destination.write_bytes(data)
 
-    monkeypatch.setattr(file_tools, "_stream_download", fake_stream)
+    monkeypatch.setattr(drive, "_stream_download", fake_stream)
     return configure
 
 
@@ -92,7 +93,7 @@ def test_file_get_enforces_size_limit(
     mock_account_id: str,
     record_stream_calls: Callable[[list[Any]], None],
 ) -> None:
-    monkeypatch.setattr(file_tools, "MAX_DOWNLOAD_MIB", 1)
+    monkeypatch.setattr(drive, "MAX_DOWNLOAD_MIB", 1)
     destination = tmp_path / "downloaded.txt"
     metadata = mock_file_metadata(size=2 * 1024 * 1024)
     _register_metadata(mock_graph_request, metadata)

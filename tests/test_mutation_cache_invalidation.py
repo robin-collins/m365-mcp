@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from src.m365_mcp.cache import CacheManager
+from src.m365_mcp.services import drive
 from src.m365_mcp.tools import email as email_tools
 from src.m365_mcp.tools import file as file_tools
 
@@ -130,7 +131,7 @@ def test_file_delete_invalidates_file_and_folder_lists_for_only_target_account(
         return {}
 
     monkeypatch.setattr(file_tools.graph, "request", fake_request)
-    monkeypatch.setattr(file_tools, "get_cache_manager", lambda: cache_manager)
+    monkeypatch.setattr(drive, "get_cache_manager", lambda: cache_manager)
 
     result = file_tools.file_delete.fn(
         file_id="file-1",
@@ -179,7 +180,7 @@ def test_file_rename_invalidates_file_lists_for_only_target_account(
         }
 
     monkeypatch.setattr(file_tools.graph, "request", fake_request)
-    monkeypatch.setattr(file_tools, "get_cache_manager", lambda: cache_manager)
+    monkeypatch.setattr(drive, "get_cache_manager", lambda: cache_manager)
 
     result = file_tools.file_rename.fn(
         file_id="file-1",

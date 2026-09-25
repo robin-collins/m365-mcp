@@ -19,7 +19,7 @@ def mock_account_id() -> str:
 def mock_cache_manager(monkeypatch: pytest.MonkeyPatch) -> None:
     """Auto-mock cache manager for all tests."""
     mock_cache = MagicMock()
-    monkeypatch.setattr("src.m365_mcp.tools.file.get_cache_manager", lambda: mock_cache)
+    monkeypatch.setattr("src.m365_mcp.services.drive.get_cache_manager", lambda: mock_cache)
 
 
 @pytest.fixture(autouse=True)

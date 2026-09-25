@@ -5,6 +5,7 @@ Tests validation, error handling, and API calls for folder management tools.
 
 from typing import Any
 import pytest
+from src.m365_mcp.services import drive
 from src.m365_mcp.tools import folder as folder_tools
 
 
@@ -37,7 +38,7 @@ def test_folder_create_success_root_level(
             "folder": {"childCount": 0},
         }
 
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(drive.graph, "request", fake_request)
 
     result = folder_tools.folder_create.fn(
         name="Test Folder",
@@ -74,7 +75,7 @@ def test_folder_create_success_with_parent(
             "folder": {"childCount": 0},
         }
 
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(drive.graph, "request", fake_request)
 
     result = folder_tools.folder_create.fn(
         name="Child Folder",
@@ -124,7 +125,7 @@ def test_folder_create_strips_whitespace(
         captured["json"] = kwargs.get("json", {})
         return {"id": "folder-123", "name": "Test Folder"}
 
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(drive.graph, "request", fake_request)
 
     folder_tools.folder_create.fn(
         name="  Test Folder  ",
@@ -152,7 +153,7 @@ def test_folder_delete_success(
         captured["method"] = method
         captured["path"] = path
 
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(drive.graph, "request", fake_request)
 
     result = folder_tools.folder_delete.fn(
         folder_id="folder-to-delete",
@@ -211,7 +212,7 @@ def test_folder_rename_success(
             "name": "New Folder Name",
         }
 
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(drive.graph, "request", fake_request)
 
     result = folder_tools.folder_rename.fn(
         folder_id="folder-123",
@@ -261,7 +262,7 @@ def test_folder_rename_strips_whitespace(
         captured["json"] = kwargs.get("json", {})
         return {"id": "folder-123", "name": "Renamed"}
 
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(drive.graph, "request", fake_request)
 
     folder_tools.folder_rename.fn(
         folder_id="folder-123",
@@ -295,7 +296,7 @@ def test_folder_move_success(
             "parentReference": {"id": "new-parent-id"},
         }
 
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(drive.graph, "request", fake_request)
 
     result = folder_tools.folder_move.fn(
         folder_id="folder-123",

@@ -1,37 +1,20 @@
 from __future__ import annotations
 
-import logging
-import os
-import time
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin
-
-import httpx
 
 from .. import graph
 from ..mcp_instance import mcp
-from .cache_tools import get_cache_manager
+from ..services import drive
 from ..validators import (
     ValidationError,
     ensure_safe_path,
     format_validation_error,
     require_confirm,
     validate_account_id,
-    validate_graph_url,
     validate_limit,
     validate_microsoft_graph_id,
     validate_onedrive_path,
-    validate_request_size,
 )
-
-LOGGER = logging.getLogger("microsoft_mcp.tools.file")
-
-DEFAULT_DOWNLOAD_TIMEOUT = float(os.getenv("MCP_FILE_DOWNLOAD_TIMEOUT", "60.0"))
-DEFAULT_CHUNK_SIZE = int(os.getenv("MCP_FILE_DOWNLOAD_CHUNK_SIZE", "1048576"))
-MAX_DOWNLOAD_MIB = int(os.getenv("MCP_FILE_DOWNLOAD_MAX_MB", "512"))
-MAX_REDIRECTS = 3
 
 
 # file_list
@@ -87,160 +70,14 @@ def file_list(
             )
         )
 
-    # Generate cache key from parameters
-    cache_params = {
-        "path": path,
-        "folder_id": folder_id,
-        "limit": limit,
-        "type_filter": type_filter,
-    }
-
-    # Try to get from cache if enabled and not forcing refresh
-    if use_cache and not force_refresh:
-        try:
-            cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(
-                account_id, "file_list", cache_params
-            )
-
-            if cached_result:
-                data, state = cached_result
-                # Add cache status to each item in the list
-                for item in data:
-                    item["_cache_status"] = state.value
-                return data
-        except Exception:
-            # If cache fails, continue to API call
-            pass
-
-    # Determine endpoint
-    if folder_id:
-        endpoint = f"/me/drive/items/{folder_id}/children"
-    else:
-        validated_path = validate_onedrive_path(path, "path")
-        if validated_path == "/":
-            endpoint = "/me/drive/root/children"
-        else:
-            endpoint = f"/me/drive/root:{validated_path}:/children"
-
-    params = {
-        "$top": limit,
-        "$select": "id,name,size,lastModifiedDateTime,folder,file,@microsoft.graph.downloadUrl",
-    }
-
-    items = list(
-        graph.request_paginated(endpoint, account_id, params=params, limit=limit)
-    )
-
-    # Apply type filtering
-    result = []
-    cached_at = datetime.now(timezone.utc).isoformat()
-
-    for item in items:
-        is_folder = "folder" in item
-        is_file = "file" in item
-
-        # Filter based on type_filter
-        if type_filter == "folders" and not is_folder:
-            continue
-        if type_filter == "files" and not is_file:
-            continue
-
-        result.append(
-            {
-                "id": item["id"],
-                "name": item["name"],
-                "type": "folder" if is_folder else "file",
-                "size": item.get("size", 0),
-                "modified": item.get("lastModifiedDateTime"),
-                "download_url": item.get("@microsoft.graph.downloadUrl"),
-                "_cache_status": "miss",  # Fresh from API
-                "_cached_at": cached_at,
-            }
-        )
-
-    # Store in cache if enabled
-    if use_cache:
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.set_cached(account_id, "file_list", cache_params, result)
-        except Exception:
-            # If cache storage fails, still return the result
-            pass
-
-    return result
-
-
-def _stream_download(
-    url: str,
-    destination: Path,
-    *,
-    timeout: float,
-    chunk_size: int,
-) -> None:
-    """Stream file contents from a validated URL to destination path."""
-    target_url = url
-    for redirect in range(MAX_REDIRECTS + 1):
-        with httpx.Client(timeout=timeout, follow_redirects=False) as client:
-            with client.stream("GET", target_url) as response:
-                if response.status_code in {301, 302, 303, 307, 308}:
-                    location = response.headers.get("Location")
-                    if not location:
-                        raise RuntimeError("Redirect response missing Location header")
-                    next_url = urljoin(target_url, location)
-                    target_url = validate_graph_url(next_url, "redirect_url")
-                    continue
-
-                response.raise_for_status()
-                with destination.open("wb") as output:
-                    for chunk in response.iter_bytes(chunk_size):
-                        if chunk:
-                            output.write(chunk)
-                return
-    raise RuntimeError("Exceeded redirect limit during download")
-
-
-def _download_with_retries(
-    url: str,
-    destination: Path,
-    *,
-    timeout: float,
-    chunk_size: int,
-    retries: int,
-) -> None:
-    """Download with exponential backoff retry strategy."""
-    attempt = 0
-    backoff = 1.0
-    last_error: Exception | None = None
-    while attempt <= retries:
-        try:
-            _stream_download(
-                url,
-                destination,
-                timeout=timeout,
-                chunk_size=chunk_size,
-            )
-            return
-        except (httpx.HTTPError, OSError, RuntimeError) as exc:
-            last_error = exc
-            LOGGER.warning(
-                "file_get download attempt failed",
-                extra={
-                    "attempt": attempt + 1,
-                    "retries": retries,
-                    "reason": str(exc),
-                },
-            )
-            if destination.exists():
-                destination.unlink(missing_ok=True)
-            if attempt >= retries:
-                break
-            time.sleep(backoff)
-            backoff *= 2
-            attempt += 1
-    assert last_error is not None
-    raise RuntimeError(f"Failed to download file after retries: {last_error}") from (
-        last_error
+    return drive.list_items(
+        account_id,
+        path=path,
+        folder_id=folder_id,
+        limit=limit,
+        type_filter=type_filter,
+        use_cache=use_cache,
+        force_refresh=force_refresh,
     )
 
 
@@ -250,66 +87,7 @@ def _file_get_impl(file_id: str, account_id: str, download_path: str) -> dict[st
     destination = ensure_safe_path(download_path, allow_overwrite=False)
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    metadata = graph.request("GET", f"/me/drive/items/{graph_file_id}", account)
-    if not metadata:
-        raise ValidationError(
-            format_validation_error(
-                "file_id",
-                graph_file_id,
-                "not found in OneDrive",
-                "Existing file identifier",
-            )
-        )
-
-    size_bytes = metadata.get("size", 0) or 0
-    size_limit = MAX_DOWNLOAD_MIB * 1024 * 1024
-    validate_request_size(size_bytes, size_limit, "download_size")
-
-    download_url = metadata.get("@microsoft.graph.downloadUrl")
-    if not download_url:
-        raise RuntimeError("No download URL available for this file")
-    safe_url = validate_graph_url(download_url, "download_url")
-
-    LOGGER.info(
-        "Initiating file download",
-        extra={
-            "file_id": graph_file_id,
-            "account_id": account,
-            "destination": str(destination),
-            "expected_size": size_bytes,
-        },
-    )
-
-    try:
-        _download_with_retries(
-            safe_url,
-            destination,
-            timeout=max(DEFAULT_DOWNLOAD_TIMEOUT, 1.0),
-            chunk_size=max(DEFAULT_CHUNK_SIZE, 65536),
-            retries=3,
-        )
-    except Exception as exc:  # noqa: BLE001
-        LOGGER.error(
-            "file_get download failed",
-            extra={
-                "file_id": graph_file_id,
-                "account_id": account,
-                "destination": str(destination),
-            },
-        )
-        if destination.exists():
-            destination.unlink(missing_ok=True)
-        if isinstance(exc, ValidationError):
-            raise
-        raise RuntimeError(f"Failed to download file: {exc}") from exc
-
-    actual_size = destination.stat().st_size
-    return {
-        "path": str(destination),
-        "name": metadata.get("name", "unknown"),
-        "size_mb": round(actual_size / (1024 * 1024), 2),
-        "mime_type": metadata.get("file", {}).get("mimeType") if metadata else None,
-    }
+    return drive.download_file(account, graph_file_id, destination)
 
 
 @mcp.tool(
@@ -384,20 +162,7 @@ def file_create(
     )
 
     data = source_path.read_bytes()
-    result = graph.upload_large_file(f"/me/drive/root:{target}:", data, account)
-    if not result:
-        raise RuntimeError(f"Failed to create file at path: {target}")
-
-    # Invalidate cache for file lists and folder tree
-    try:
-        cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern("file_list:*", account_id=account)
-        cache_manager.invalidate_pattern("folder_get_tree:*", account_id=account)
-    except Exception:
-        # Don't fail the operation if cache invalidation fails
-        pass
-
-    return result
+    return drive.upload_file(account, target, data)
 
 
 # file_update
@@ -430,23 +195,7 @@ def file_update(file_id: str, local_file_path: str, account_id: str) -> dict[str
         local_file_path, must_exist=True, allow_overwrite=True
     )
     data = source_path.read_bytes()
-    result = graph.upload_large_file(
-        f"/me/drive/items/{graph_file_id}",
-        data,
-        account,
-    )
-    if not result:
-        raise RuntimeError(f"Failed to update file with ID: {graph_file_id}")
-
-    # Invalidate cache for file lists (metadata like size/modified date changed)
-    try:
-        cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern("file_list:*", account_id=account)
-    except Exception:
-        # Don't fail the operation if cache invalidation fails
-        pass
-
-    return result
+    return drive.replace_file(account, graph_file_id, data)
 
 
 # file_delete
@@ -474,20 +223,7 @@ def file_delete(file_id: str, account_id: str, confirm: bool = False) -> dict[st
     require_confirm(confirm, "delete OneDrive item")
     account = validate_account_id(account_id)
     graph_file_id = validate_microsoft_graph_id(file_id, "file_id")
-    graph.request("DELETE", f"/me/drive/items/{graph_file_id}", account)
-
-    # Invalidate cache for file lists and folder tree
-    try:
-        cache_manager = get_cache_manager()
-        # Invalidate all file lists
-        cache_manager.invalidate_pattern("file_list:*", account_id=account)
-        # Invalidate folder tree
-        cache_manager.invalidate_pattern("folder_get_tree:*", account_id=account)
-    except Exception:
-        # Don't fail the operation if cache invalidation fails
-        pass
-
-    return {"status": "deleted"}
+    return drive.delete_item(account, graph_file_id)
 
 
 # file_copy
@@ -531,28 +267,12 @@ def file_copy(
         destination_folder_id, "destination_folder_id"
     )
 
-    payload: dict[str, Any] = {"parentReference": {"id": dest_folder_id}}
-
     if new_name is not None:
         if not new_name.strip():
             raise ValueError("new_name cannot be empty")
-        payload["name"] = new_name.strip()
+        new_name = new_name.strip()
 
-    # Copy is an async operation, returns 202 Accepted with location header
-    result = graph.request(
-        "POST", f"/me/drive/items/{graph_file_id}/copy", account, json=payload
-    )
-
-    # Invalidate cache for destination folder's file list
-    try:
-        cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern("file_list:*", account_id=account)
-        # Also invalidate folder tree since child counts changed
-        cache_manager.invalidate_pattern("folder_get_tree:*", account_id=account)
-    except Exception:
-        pass
-
-    return result if result else {"status": "copy initiated"}
+    return drive.copy_item(account, graph_file_id, dest_folder_id, new_name=new_name)
 
 
 # file_move
@@ -593,25 +313,7 @@ def file_move(
         destination_folder_id, "destination_folder_id"
     )
 
-    payload = {"parentReference": {"id": dest_folder_id}}
-
-    result = graph.request(
-        "PATCH", f"/me/drive/items/{graph_file_id}", account, json=payload
-    )
-    if not result:
-        raise ValueError("Failed to move file")
-
-    # Invalidate cache for both source and destination folder file lists
-    try:
-        cache_manager = get_cache_manager()
-        # Invalidate all file lists since we don't know source folder
-        cache_manager.invalidate_pattern("file_list:*", account_id=account)
-        # Invalidate folder tree since child counts changed
-        cache_manager.invalidate_pattern("folder_get_tree:*", account_id=account)
-    except Exception:
-        pass
-
-    return result
+    return drive.move_file(account, graph_file_id, dest_folder_id)
 
 
 # file_rename
@@ -654,22 +356,7 @@ def file_rename(
 
     new_name = new_name.strip()
 
-    payload = {"name": new_name}
-
-    result = graph.request(
-        "PATCH", f"/me/drive/items/{graph_file_id}", account, json=payload
-    )
-    if not result:
-        raise ValueError("Failed to rename file")
-
-    # Invalidate cache for file lists in parent folder
-    try:
-        cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern("file_list:*", account_id=account)
-    except Exception:
-        pass
-
-    return result
+    return drive.rename_file(account, graph_file_id, new_name)
 
 
 def _list_folders_impl(
@@ -774,19 +461,9 @@ def file_share(
             )
         )
 
-    payload = {
-        "type": permission_type,
-        "scope": scope,
-    }
-
-    result = graph.request(
-        "POST", f"/me/drive/items/{graph_file_id}/createLink", account, json=payload
+    return drive.create_sharing_link(
+        account, graph_file_id, permission_type=permission_type, scope=scope
     )
-
-    if not result:
-        raise ValueError(f"Failed to create sharing link for file {graph_file_id}")
-
-    return result
 
 
 # file_download_url
@@ -823,23 +500,4 @@ def file_download_url(
     account = validate_account_id(account_id)
     graph_file_id = validate_microsoft_graph_id(file_id, "file_id")
 
-    # Request file metadata with download URL
-    params = {"$select": "id,name,size,@microsoft.graph.downloadUrl"}
-
-    result = graph.request(
-        "GET", f"/me/drive/items/{graph_file_id}", account, params=params
-    )
-
-    if not result:
-        raise ValueError(f"File with ID {graph_file_id} not found")
-
-    download_url = result.get("@microsoft.graph.downloadUrl")
-    if not download_url:
-        raise ValueError(f"No download URL available for file {graph_file_id}")
-
-    return {
-        "id": result.get("id"),
-        "name": result.get("name"),
-        "size": result.get("size"),
-        "download_url": download_url,
-    }
+    return drive.get_download_url(account, graph_file_id)

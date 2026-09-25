@@ -1,0 +1,267 @@
+{
+  "spec_version": "1.0.0",
+  "name": "calendar_find_availability",
+  "title": "Find Free Time",
+  "description": "Show when you are busy in your own calendar during a time range and, given slot_minutes, suggest free slots of that length within your working hours. Personal accounts cannot see other people's availability, so this covers your calendar only.",
+  "annotations": {
+    "title": "Find Free Time",
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "calendar",
+    "tier": "core",
+    "safety_level": "safe",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "start": {
+        "type": "string",
+        "description": "RFC 3339 date-time with offset, e.g. 2026-10-01T09:00:00+09:30.",
+        "format": "date-time"
+      },
+      "end": {
+        "type": "string",
+        "description": "Range end; at most 62 days after start.",
+        "format": "date-time"
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "time_zone": {
+        "type": "string",
+        "description": "IANA time-zone name, e.g. Australia/Adelaide. Defaults to the mailbox time zone.",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "slot_minutes": {
+        "type": "integer",
+        "description": "Length of free slots to suggest.",
+        "minimum": 15,
+        "maximum": 480
+      },
+      "working_hours_only": {
+        "type": "boolean",
+        "description": "Only suggest slots inside your Outlook working hours.",
+        "default": true
+      },
+      "min_gap_minutes": {
+        "type": "integer",
+        "description": "Buffer to keep before and after busy time.",
+        "minimum": 0,
+        "maximum": 120,
+        "default": 0
+      },
+      "max_slots": {
+        "type": "integer",
+        "description": "Most free slots to return.",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 10
+      }
+    },
+    "required": [
+      "start",
+      "end"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Busy blocks and suggested free slots.",
+    "properties": {
+      "time_zone": {
+        "type": "string"
+      },
+      "busy": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "description": "Busy block.",
+          "properties": {
+            "start": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "end": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "show_as": {
+              "enum": [
+                "tentative",
+                "busy",
+                "oof",
+                "workingElsewhere"
+              ]
+            },
+            "subject": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "start",
+            "end",
+            "show_as",
+            "subject"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "free_slots": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "description": "Free slot.",
+          "properties": {
+            "start": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "end": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "working_hours": {
+        "anyOf": [
+          {
+            "type": "object",
+            "description": "Your Outlook working hours.",
+            "properties": {
+              "days": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "monday",
+                    "tuesday",
+                    "wednesday",
+                    "thursday",
+                    "friday",
+                    "saturday",
+                    "sunday"
+                  ]
+                }
+              },
+              "start_time": {
+                "type": "string"
+              },
+              "end_time": {
+                "type": "string"
+              },
+              "time_zone": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "days",
+              "start_time",
+              "end_time",
+              "time_zone"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "time_zone",
+      "busy",
+      "free_slots",
+      "working_hours",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "GET /me/calendarView?startDateTime&endDateTime&$select=subject,start,end,showAs (paged)",
+    "GET /me/mailboxSettings/workingHours",
+    "Free slots computed server-side (getSchedule/findMeetingTimes are not used: undocumented or unsupported for personal accounts)"
+  ],
+  "validation_rules": [
+    {
+      "rule": "end after start, at most 62 days.",
+      "error": "Invalid end: must be after start and within 62 days"
+    },
+    {
+      "rule": "working_hours_only has no effect without slot_minutes.",
+      "error": "(no error; busy blocks are always returned)"
+    }
+  ],
+  "replaces": [
+    "calendar_check_availability",
+    "calendar_get_free_busy"
+  ],
+  "examples": [
+    {
+      "title": "An hour free on Thursday",
+      "input": {
+        "start": "2026-10-01T00:00:00+09:30",
+        "end": "2026-10-02T00:00:00+09:30",
+        "slot_minutes": 60,
+        "max_slots": 1
+      },
+      "output": {
+        "time_zone": "Australia/Adelaide",
+        "busy": [
+          {
+            "start": "2026-10-01T09:00:00+09:30",
+            "end": "2026-10-01T10:30:00+09:30",
+            "show_as": "busy",
+            "subject": "Physio"
+          }
+        ],
+        "free_slots": [
+          {
+            "start": "2026-10-01T10:30:00+09:30",
+            "end": "2026-10-01T11:30:00+09:30"
+          }
+        ],
+        "working_hours": {
+          "days": [
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday"
+          ],
+          "start_time": "08:00:00",
+          "end_time": "17:00:00",
+          "time_zone": "Australia/Adelaide"
+        },
+        "summary": "1 busy block; first free hour 10:30–11:30."
+      }
+    }
+  ]
+}

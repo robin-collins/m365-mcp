@@ -1,0 +1,659 @@
+{
+  "spec_version": "1.0.0",
+  "name": "email_rule_manage",
+  "title": "Manage Inbox Rule",
+  "description": "Create, change, enable or disable, or reorder an Inbox rule. Rules that forward, redirect or delete mail require confirm=true because they act silently on future mail. Read rules with m365_list or m365_get; delete one with m365_delete. Returns the rule.",
+  "annotations": {
+    "title": "Manage Inbox Rule",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "email",
+    "tier": "extended",
+    "safety_level": "dangerous",
+    "confirm": "conditional",
+    "confirm_rule": "Required when the resulting rule forwards, redirects or deletes mail (forward_to, forward_as_attachment_to, redirect_to, delete, permanent_delete)."
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "create",
+          "update",
+          "set_enabled",
+          "reorder"
+        ],
+        "description": "What to do."
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "rule_id": {
+        "type": "string",
+        "description": "Existing rule (update, set_enabled, reorder).",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "rule": {
+        "type": "object",
+        "description": "Rule definition. create requires display_name, conditions and actions; update applies only the supplied fields.",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "description": "Rule name.",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "conditions": {
+            "$ref": "#/$defs/rule_predicates_input",
+            "description": "Conditions that must all match."
+          },
+          "actions": {
+            "type": "object",
+            "description": "Rule actions. Names map 1:1 to Graph messageRuleActions in camelCase. forward_to, forward_as_attachment_to, redirect_to, delete and permanent_delete require confirm=true.",
+            "properties": {
+              "move_to_folder": {
+                "type": "string",
+                "description": "Mail folder ID to move the message to.",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              "copy_to_folder": {
+                "type": "string",
+                "description": "Mail folder ID to copy the message to.",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              "assign_categories": {
+                "type": "array",
+                "description": "Any of these strings.",
+                "items": {
+                  "type": "string",
+                  "description": "Text to match.",
+                  "minLength": 1,
+                  "maxLength": 255
+                },
+                "minItems": 1,
+                "maxItems": 50
+              },
+              "mark_as_read": {
+                "type": "boolean",
+                "description": "Mark the message as read."
+              },
+              "mark_importance": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "normal",
+                  "high"
+                ],
+                "description": "Set importance."
+              },
+              "stop_processing_rules": {
+                "type": "boolean",
+                "description": "Do not evaluate later rules."
+              },
+              "forward_to": {
+                "type": "array",
+                "description": "Any of these addresses.",
+                "items": {
+                  "type": "string",
+                  "format": "email",
+                  "minLength": 3,
+                  "maxLength": 320,
+                  "description": "Email address, e.g. jane@example.com."
+                },
+                "minItems": 1,
+                "maxItems": 50
+              },
+              "forward_as_attachment_to": {
+                "type": "array",
+                "description": "Any of these addresses.",
+                "items": {
+                  "type": "string",
+                  "format": "email",
+                  "minLength": 3,
+                  "maxLength": 320,
+                  "description": "Email address, e.g. jane@example.com."
+                },
+                "minItems": 1,
+                "maxItems": 50
+              },
+              "redirect_to": {
+                "type": "array",
+                "description": "Any of these addresses.",
+                "items": {
+                  "type": "string",
+                  "format": "email",
+                  "minLength": 3,
+                  "maxLength": 320,
+                  "description": "Email address, e.g. jane@example.com."
+                },
+                "minItems": 1,
+                "maxItems": 50
+              },
+              "delete": {
+                "type": "boolean",
+                "description": "Move the message to Deleted Items."
+              },
+              "permanent_delete": {
+                "type": "boolean",
+                "description": "Delete the message permanently, skipping Deleted Items."
+              }
+            },
+            "additionalProperties": false,
+            "minProperties": 1
+          },
+          "exceptions": {
+            "$ref": "#/$defs/rule_predicates_input",
+            "description": "Conditions that stop the rule applying."
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "description": "Whether the rule runs.",
+            "default": true
+          },
+          "sequence": {
+            "type": "integer",
+            "description": "Run order (1 runs first).",
+            "minimum": 1,
+            "maximum": 1000
+          }
+        },
+        "additionalProperties": false,
+        "minProperties": 1
+      },
+      "is_enabled": {
+        "type": "boolean",
+        "description": "set_enabled: turn the rule on (true) or off (false)."
+      },
+      "position": {
+        "type": "string",
+        "enum": [
+          "top",
+          "bottom",
+          "up",
+          "down",
+          "before",
+          "after"
+        ],
+        "description": "reorder: new position. before/after need relative_to_rule_id."
+      },
+      "relative_to_rule_id": {
+        "type": "string",
+        "description": "reorder with before/after: the other rule.",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "confirm": {
+        "type": "boolean",
+        "description": "Must be true to save a rule that forwards, redirects or deletes mail; set only after the user approves.",
+        "default": false
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+      "rule_predicates_input": {
+        "type": "object",
+        "description": "Rule conditions (all must match). Names map 1:1 to Graph messageRulePredicates in camelCase.",
+        "properties": {
+          "subject_contains": {
+            "type": "array",
+            "description": "Any of these strings.",
+            "items": {
+              "type": "string",
+              "description": "Text to match.",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "body_contains": {
+            "type": "array",
+            "description": "Any of these strings.",
+            "items": {
+              "type": "string",
+              "description": "Text to match.",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "body_or_subject_contains": {
+            "type": "array",
+            "description": "Any of these strings.",
+            "items": {
+              "type": "string",
+              "description": "Text to match.",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "sender_contains": {
+            "type": "array",
+            "description": "Any of these strings.",
+            "items": {
+              "type": "string",
+              "description": "Text to match.",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "recipient_contains": {
+            "type": "array",
+            "description": "Any of these strings.",
+            "items": {
+              "type": "string",
+              "description": "Text to match.",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "header_contains": {
+            "type": "array",
+            "description": "Any of these strings.",
+            "items": {
+              "type": "string",
+              "description": "Text to match.",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "categories": {
+            "type": "array",
+            "description": "Any of these strings.",
+            "items": {
+              "type": "string",
+              "description": "Text to match.",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "from_addresses": {
+            "type": "array",
+            "description": "Any of these addresses.",
+            "items": {
+              "type": "string",
+              "format": "email",
+              "minLength": 3,
+              "maxLength": 320,
+              "description": "Email address, e.g. jane@example.com."
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "sent_to_addresses": {
+            "type": "array",
+            "description": "Any of these addresses.",
+            "items": {
+              "type": "string",
+              "format": "email",
+              "minLength": 3,
+              "maxLength": 320,
+              "description": "Email address, e.g. jane@example.com."
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "has_attachments": {
+            "type": "boolean",
+            "description": "Message has attachments."
+          },
+          "importance": {
+            "type": "string",
+            "enum": [
+              "low",
+              "normal",
+              "high"
+            ],
+            "description": "Message importance."
+          },
+          "sensitivity": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "personal",
+              "private",
+              "confidential"
+            ],
+            "description": "Message sensitivity."
+          },
+          "message_action_flag": {
+            "type": "string",
+            "enum": [
+              "any",
+              "call",
+              "doNotForward",
+              "followUp",
+              "fyi",
+              "forward",
+              "noResponseNecessary",
+              "read",
+              "reply",
+              "replyToAll",
+              "review"
+            ],
+            "description": "Flag-for-action value on the message."
+          },
+          "within_size_range": {
+            "type": "object",
+            "description": "Message size range in kilobytes.",
+            "properties": {
+              "minimum_kb": {
+                "type": "integer",
+                "description": "Minimum size in KB.",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "maximum_kb": {
+                "type": "integer",
+                "description": "Maximum size in KB.",
+                "minimum": 0,
+                "maximum": 2147483647
+              }
+            },
+            "additionalProperties": false,
+            "minProperties": 1
+          },
+          "is_approval_request": {
+            "type": "boolean",
+            "description": "Message is an approval request."
+          },
+          "is_automatic_forward": {
+            "type": "boolean",
+            "description": "Message was auto-forwarded."
+          },
+          "is_automatic_reply": {
+            "type": "boolean",
+            "description": "Message is an automatic reply."
+          },
+          "is_encrypted": {
+            "type": "boolean",
+            "description": "Message is encrypted."
+          },
+          "is_meeting_request": {
+            "type": "boolean",
+            "description": "Message is a meeting request."
+          },
+          "is_meeting_response": {
+            "type": "boolean",
+            "description": "Message is a meeting response."
+          },
+          "is_non_delivery_report": {
+            "type": "boolean",
+            "description": "Message is a non-delivery report."
+          },
+          "is_permission_controlled": {
+            "type": "boolean",
+            "description": "Message is rights-protected."
+          },
+          "is_read_receipt": {
+            "type": "boolean",
+            "description": "Message is a read receipt."
+          },
+          "is_signed": {
+            "type": "boolean",
+            "description": "Message is S/MIME signed."
+          },
+          "is_voicemail": {
+            "type": "boolean",
+            "description": "Message is a voicemail."
+          },
+          "not_sent_to_me": {
+            "type": "boolean",
+            "description": "You are not a recipient."
+          },
+          "sent_cc_me": {
+            "type": "boolean",
+            "description": "You are in Cc."
+          },
+          "sent_only_to_me": {
+            "type": "boolean",
+            "description": "You are the only recipient."
+          },
+          "sent_to_me": {
+            "type": "boolean",
+            "description": "You are in To."
+          },
+          "sent_to_or_cc_me": {
+            "type": "boolean",
+            "description": "You are in To or Cc."
+          }
+        },
+        "additionalProperties": false,
+        "minProperties": 1
+      }
+    }
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "The rule after the change.",
+    "properties": {
+      "action": {
+        "enum": [
+          "create",
+          "update",
+          "set_enabled",
+          "reorder"
+        ]
+      },
+      "rule": {
+        "$ref": "#/$defs/email_rule"
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "action",
+      "rule",
+      "summary"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+      "email_rule": {
+        "type": "object",
+        "description": "Inbox rule.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "is_enabled": {
+            "type": "boolean"
+          },
+          "conditions": {
+            "$ref": "#/$defs/rule_predicates"
+          },
+          "actions": {
+            "$ref": "#/$defs/rule_actions"
+          },
+          "exceptions": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/rule_predicates"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "sequence",
+          "is_enabled",
+          "conditions",
+          "actions",
+          "exceptions"
+        ],
+        "additionalProperties": false
+      },
+      "rule_actions": {
+        "type": "object",
+        "description": "Rule actions, same keys as the input schema.",
+        "propertyNames": {
+          "enum": [
+            "move_to_folder",
+            "copy_to_folder",
+            "assign_categories",
+            "mark_as_read",
+            "mark_importance",
+            "stop_processing_rules",
+            "forward_to",
+            "forward_as_attachment_to",
+            "redirect_to",
+            "delete",
+            "permanent_delete"
+          ]
+        }
+      },
+      "rule_predicates": {
+        "type": "object",
+        "description": "Rule conditions, same keys as the input schema.",
+        "propertyNames": {
+          "enum": [
+            "subject_contains",
+            "body_contains",
+            "body_or_subject_contains",
+            "sender_contains",
+            "recipient_contains",
+            "header_contains",
+            "categories",
+            "from_addresses",
+            "sent_to_addresses",
+            "has_attachments",
+            "importance",
+            "sensitivity",
+            "message_action_flag",
+            "within_size_range",
+            "is_approval_request",
+            "is_automatic_forward",
+            "is_automatic_reply",
+            "is_encrypted",
+            "is_meeting_request",
+            "is_meeting_response",
+            "is_non_delivery_report",
+            "is_permission_controlled",
+            "is_read_receipt",
+            "is_signed",
+            "is_voicemail",
+            "not_sent_to_me",
+            "sent_cc_me",
+            "sent_only_to_me",
+            "sent_to_me",
+            "sent_to_or_cc_me"
+          ]
+        }
+      }
+    }
+  },
+  "graph_calls": [
+    "create: POST /me/mailFolders/inbox/messageRules",
+    "update / set_enabled: PATCH /me/mailFolders/inbox/messageRules/{id}",
+    "reorder: GET all rules, then PATCH sequence on each rule whose position changes"
+  ],
+  "validation_rules": [
+    {
+      "rule": "create needs rule.display_name, rule.conditions and rule.actions.",
+      "error": "Invalid rule: create requires display_name, conditions and actions"
+    },
+    {
+      "rule": "update / set_enabled / reorder need rule_id.",
+      "error": "Invalid rule_id: required for action 'reorder'"
+    },
+    {
+      "rule": "before/after need relative_to_rule_id, which must differ from rule_id.",
+      "error": "Invalid relative_to_rule_id: required for position 'before'"
+    },
+    {
+      "rule": "move_to_folder / copy_to_folder must be existing mail folder IDs.",
+      "error": "Invalid move_to_folder: folder not found"
+    },
+    {
+      "rule": "confirm required when the resulting rule forwards, redirects or deletes.",
+      "error": "Invalid confirm 'False': a rule that forwards mail requires confirm=True to proceed. Expected: Explicit user confirmation"
+    }
+  ],
+  "replaces": [
+    "emailrules_create",
+    "emailrules_update",
+    "emailrules_move_top",
+    "emailrules_move_bottom",
+    "emailrules_move_up",
+    "emailrules_move_down"
+  ],
+  "examples": [
+    {
+      "title": "File bills into a folder",
+      "input": {
+        "action": "create",
+        "rule": {
+          "display_name": "Bills",
+          "conditions": {
+            "from_addresses": [
+              "billing@example.com"
+            ]
+          },
+          "actions": {
+            "move_to_folder": "AQMkADAwATM3ZmYAZS1kBILL",
+            "stop_processing_rules": true
+          }
+        }
+      },
+      "output": {
+        "action": "create",
+        "rule": {
+          "id": "AQAAAJ5dZqA=",
+          "display_name": "Bills",
+          "sequence": 3,
+          "is_enabled": true,
+          "conditions": {
+            "from_addresses": [
+              "billing@example.com"
+            ]
+          },
+          "actions": {
+            "move_to_folder": "AQMkADAwATM3ZmYAZS1kBILL",
+            "stop_processing_rules": true
+          },
+          "exceptions": null
+        },
+        "summary": "Created rule 'Bills' (position 3)."
+      }
+    }
+  ]
+}

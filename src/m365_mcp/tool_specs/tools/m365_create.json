@@ -1,0 +1,711 @@
+{
+  "spec_version": "1.0.0",
+  "name": "m365_create",
+  "title": "Create Item",
+  "description": "Create a mail folder, calendar, contact, contact folder or OneDrive folder. Supply the sub-object that matches resource. Not for emails (email_create_draft), events (calendar_create_event), inbox rules (email_rule_manage) or uploading files (drive_upload). Returns the created item.",
+  "annotations": {
+    "title": "Create Item",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "m365",
+    "tier": "core",
+    "safety_level": "moderate",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "resource": {
+        "type": "string",
+        "enum": [
+          "email_folder",
+          "calendar",
+          "contact",
+          "contact_folder",
+          "drive_item"
+        ],
+        "description": "Type of item to create."
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "email_folder": {
+        "type": "object",
+        "description": "Required when resource='email_folder'.",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "description": "Folder name.",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "parent_id": {
+            "type": "string",
+            "description": "Parent mail folder ID or alias (default: top level).",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "additionalProperties": false
+      },
+      "calendar": {
+        "type": "object",
+        "description": "Required when resource='calendar'.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Calendar name.",
+            "minLength": 1,
+            "maxLength": 255
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "contact": {
+        "type": "object",
+        "description": "Required when resource='contact'.",
+        "properties": {
+          "given_name": {
+            "type": "string",
+            "description": "First name.",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "surname": {
+            "type": "string",
+            "description": "Last name.",
+            "maxLength": 255
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Name shown in Outlook. Defaults to given_name + surname.",
+            "maxLength": 255
+          },
+          "emails": {
+            "type": "array",
+            "description": "Email addresses (at most 3).",
+            "items": {
+              "type": "string",
+              "format": "email",
+              "minLength": 3,
+              "maxLength": 320,
+              "description": "Email address, e.g. jane@example.com."
+            },
+            "maxItems": 3,
+            "uniqueItems": true
+          },
+          "mobile_phone": {
+            "type": "string",
+            "description": "Mobile phone number.",
+            "maxLength": 64
+          },
+          "business_phones": {
+            "type": "array",
+            "description": "Business phone numbers.",
+            "items": {
+              "type": "string",
+              "description": "Phone number.",
+              "maxLength": 64
+            },
+            "maxItems": 5
+          },
+          "home_phones": {
+            "type": "array",
+            "description": "Home phone numbers.",
+            "items": {
+              "type": "string",
+              "description": "Phone number.",
+              "maxLength": 64
+            },
+            "maxItems": 5
+          },
+          "company_name": {
+            "type": "string",
+            "description": "Company.",
+            "maxLength": 255
+          },
+          "job_title": {
+            "type": "string",
+            "description": "Job title.",
+            "maxLength": 255
+          },
+          "department": {
+            "type": "string",
+            "description": "Department.",
+            "maxLength": 255
+          },
+          "folder_id": {
+            "type": "string",
+            "description": "Contact folder ID (default: your main Contacts).",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "required": [
+          "given_name"
+        ],
+        "additionalProperties": false
+      },
+      "contact_folder": {
+        "type": "object",
+        "description": "Required when resource='contact_folder'.",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "description": "Folder name.",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "parent_id": {
+            "type": "string",
+            "description": "Parent contact folder ID (default: top level).",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "additionalProperties": false
+      },
+      "drive_folder": {
+        "type": "object",
+        "description": "Required when resource='drive_item' (creates a folder).",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Folder name.",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "parent_id": {
+            "type": "string",
+            "description": "Parent folder ID (default: OneDrive root).",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "parent_path": {
+            "type": "string",
+            "description": "Parent folder path instead of parent_id, e.g. /Documents.",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "if_exists": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "rename"
+            ],
+            "description": "What to do if a folder with this name exists.",
+            "default": "fail"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "resource"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "The created item.",
+    "properties": {
+      "resource": {
+        "enum": [
+          "email_folder",
+          "calendar",
+          "contact",
+          "contact_folder",
+          "drive_item"
+        ]
+      },
+      "item": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/email_folder"
+          },
+          {
+            "$ref": "#/$defs/calendar"
+          },
+          {
+            "$ref": "#/$defs/contact"
+          },
+          {
+            "$ref": "#/$defs/contact_folder"
+          },
+          {
+            "$ref": "#/$defs/drive_item"
+          }
+        ]
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "resource",
+      "item",
+      "summary"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+      "calendar": {
+        "type": "object",
+        "description": "Calendar.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "can_edit": {
+            "type": "boolean"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "is_default",
+          "can_edit",
+          "color"
+        ],
+        "additionalProperties": false
+      },
+      "contact": {
+        "type": "object",
+        "description": "Contact.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "given_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "surname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "emails": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mobile_phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "business_phones": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "home_phones": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "job_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "folder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "given_name",
+          "surname",
+          "emails",
+          "mobile_phone",
+          "business_phones",
+          "home_phones",
+          "company_name",
+          "job_title",
+          "department",
+          "folder_id"
+        ],
+        "additionalProperties": false
+      },
+      "contact_folder": {
+        "type": "object",
+        "description": "Contact folder.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "parent_id"
+        ],
+        "additionalProperties": false
+      },
+      "drive_item": {
+        "type": "object",
+        "description": "OneDrive file or folder. children is populated only in tree mode.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "file",
+              "folder"
+            ]
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "modified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "child_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "web_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shared": {
+            "type": "boolean"
+          },
+          "children": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/drive_item"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "item_type",
+          "path",
+          "parent_id",
+          "size",
+          "modified_at",
+          "created_at",
+          "mime_type",
+          "child_count",
+          "web_url",
+          "shared",
+          "children"
+        ],
+        "additionalProperties": false
+      },
+      "email_folder": {
+        "type": "object",
+        "description": "Mail folder. children is populated only in tree mode (recursive=true).",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unread_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "child_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "children": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/email_folder"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "parent_id",
+          "unread_count",
+          "total_count",
+          "child_count",
+          "children"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "graph_calls": [
+    "email_folder: POST /me/mailFolders or /me/mailFolders/{parent}/childFolders",
+    "calendar: POST /me/calendars",
+    "contact: POST /me/contacts or /me/contactFolders/{id}/contacts",
+    "contact_folder: POST /me/contactFolders or /me/contactFolders/{parent}/childFolders",
+    "drive_item: POST /me/drive/items/{parent}/children with folder facet and @microsoft.graph.conflictBehavior"
+  ],
+  "validation_rules": [
+    {
+      "rule": "Exactly one sub-object, and it must match resource.",
+      "error": "Invalid contact: resource is 'calendar'. Expected: supply only the 'calendar' object"
+    },
+    {
+      "rule": "drive_folder.parent_id and parent_path are mutually exclusive.",
+      "error": "Invalid parent_path: cannot be combined with parent_id"
+    },
+    {
+      "rule": "Name conflicts fail unless if_exists='rename'.",
+      "error": "A folder named 'Tax' already exists there. Expected: another name or if_exists='rename'"
+    }
+  ],
+  "replaces": [
+    "emailfolders_create",
+    "calendar_create_calendar",
+    "contact_create",
+    "contact_create_list",
+    "folder_create"
+  ],
+  "examples": [
+    {
+      "title": "Create a contact in a folder",
+      "input": {
+        "resource": "contact",
+        "contact": {
+          "given_name": "Jane",
+          "surname": "Citizen",
+          "emails": [
+            "jane@example.com"
+          ],
+          "mobile_phone": "+61 400 000 000",
+          "folder_id": "AQMkADAwATM3ZmYAZS1kCFLD"
+        }
+      },
+      "output": {
+        "resource": "contact",
+        "item": {
+          "id": "AQMkADAwATM3ZmYAZS1kCON",
+          "display_name": "Jane Citizen",
+          "given_name": "Jane",
+          "surname": "Citizen",
+          "emails": [
+            "jane@example.com"
+          ],
+          "mobile_phone": "+61 400 000 000",
+          "business_phones": [],
+          "home_phones": [],
+          "company_name": null,
+          "job_title": null,
+          "department": null,
+          "folder_id": "AQMkADAwATM3ZmYAZS1kCFLD"
+        },
+        "summary": "Created contact Jane Citizen."
+      }
+    }
+  ]
+}

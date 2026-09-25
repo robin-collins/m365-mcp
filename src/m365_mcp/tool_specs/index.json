@@ -1,0 +1,87 @@
+{
+  "spec_version": "1.0.0",
+  "tool_count": 29,
+  "tool_order": [
+    "m365_list",
+    "m365_get",
+    "m365_search",
+    "m365_get_content",
+    "m365_create",
+    "m365_update",
+    "m365_move",
+    "m365_delete",
+    "email_create_draft",
+    "email_send",
+    "email_reply",
+    "email_forward",
+    "calendar_create_event",
+    "calendar_update_event",
+    "calendar_respond",
+    "calendar_find_availability",
+    "drive_upload",
+    "drive_copy",
+    "drive_share",
+    "email_folder_mark_all_read",
+    "email_folder_empty",
+    "email_rule_manage",
+    "calendar_forward",
+    "account_list",
+    "account_auth_begin",
+    "account_auth_complete",
+    "admin_cache_get",
+    "admin_cache_invalidate",
+    "admin_server_info"
+  ],
+  "tiers": {
+    "core": [
+      "m365_list",
+      "m365_get",
+      "m365_search",
+      "m365_get_content",
+      "m365_create",
+      "m365_update",
+      "m365_move",
+      "m365_delete",
+      "email_create_draft",
+      "email_send",
+      "email_reply",
+      "email_forward",
+      "calendar_create_event",
+      "calendar_update_event",
+      "calendar_respond",
+      "calendar_find_availability"
+    ],
+    "extended": [
+      "drive_upload",
+      "drive_copy",
+      "drive_share",
+      "email_folder_mark_all_read",
+      "email_folder_empty",
+      "email_rule_manage",
+      "calendar_forward"
+    ],
+    "admin": [
+      "account_list",
+      "account_auth_begin",
+      "account_auth_complete",
+      "admin_cache_get",
+      "admin_cache_invalidate",
+      "admin_server_info"
+    ]
+  },
+  "default_toolsets": [
+    "core",
+    "extended"
+  ],
+  "resources": [
+    "email",
+    "email_folder",
+    "email_rule",
+    "event",
+    "calendar",
+    "contact",
+    "contact_folder",
+    "drive_item",
+    "operation"
+  ]
+}

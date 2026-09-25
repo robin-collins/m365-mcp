@@ -1,0 +1,282 @@
+{
+  "spec_version": "1.0.0",
+  "name": "drive_upload",
+  "title": "Upload File",
+  "description": "Upload a local file to OneDrive, as a new file (parent_id or parent_path) or by replacing an existing file's contents (item_id). Reads from the local disk, inside the allowed folders only. Returns the OneDrive item.",
+  "annotations": {
+    "title": "Upload File",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "drive",
+    "tier": "extended",
+    "safety_level": "moderate",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "local_path": {
+        "type": "string",
+        "description": "Local file path inside the server's allowed folders. Hidden and secret files are refused.",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "parent_id": {
+        "type": "string",
+        "description": "New file: destination folder ID ('root' allowed).",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "parent_path": {
+        "type": "string",
+        "description": "New file: destination folder path, e.g. /Documents.",
+        "minLength": 1,
+        "maxLength": 2048
+      },
+      "name": {
+        "type": "string",
+        "description": "New file: name in OneDrive (default: local file name).",
+        "minLength": 1,
+        "maxLength": 255
+      },
+      "item_id": {
+        "type": "string",
+        "description": "Replace the contents of this existing file.",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "if_exists": {
+        "type": "string",
+        "enum": [
+          "fail",
+          "replace",
+          "rename"
+        ],
+        "description": "New file: what to do if the name is taken.",
+        "default": "fail"
+      }
+    },
+    "required": [
+      "local_path"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "The uploaded file.",
+    "properties": {
+      "item": {
+        "$ref": "#/$defs/drive_item"
+      },
+      "status": {
+        "enum": [
+          "created",
+          "replaced",
+          "renamed"
+        ]
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "item",
+      "status",
+      "summary"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+      "drive_item": {
+        "type": "object",
+        "description": "OneDrive file or folder. children is populated only in tree mode.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "file",
+              "folder"
+            ]
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "modified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "child_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "web_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shared": {
+            "type": "boolean"
+          },
+          "children": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/drive_item"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "item_type",
+          "path",
+          "parent_id",
+          "size",
+          "modified_at",
+          "created_at",
+          "mime_type",
+          "child_count",
+          "web_url",
+          "shared",
+          "children"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "graph_calls": [
+    "≤ 4 MB: PUT /me/drive/items/{parent}:/{name}:/content or /me/drive/items/{item}/content",
+    "> 4 MB: POST …/createUploadSession then 15 × 320 KiB chunks (no Authorization header)"
+  ],
+  "validation_rules": [
+    {
+      "rule": "Exactly one target: item_id, or parent_id/parent_path (not both).",
+      "error": "Invalid item_id: cannot be combined with parent_id or parent_path"
+    },
+    {
+      "rule": "local_path inside allowed roots, not deny-listed, and a regular file.",
+      "error": "Invalid local_path: '.env' is a protected file"
+    },
+    {
+      "rule": "if_exists='fail' and the name exists.",
+      "error": "A file named 'budget.xlsx' already exists there. Expected: if_exists='replace' or 'rename'"
+    }
+  ],
+  "replaces": [
+    "file_create",
+    "file_update"
+  ],
+  "examples": [
+    {
+      "title": "Upload a new file",
+      "input": {
+        "local_path": "C:/Users/me/Downloads/budget.xlsx",
+        "parent_path": "/Documents"
+      },
+      "output": {
+        "item": {
+          "id": "01ABCDEF6789",
+          "name": "budget.xlsx",
+          "item_type": "file",
+          "path": "/Documents",
+          "parent_id": "01ABCDEF0002",
+          "size": 20480,
+          "modified_at": "2026-09-26T10:10:00+09:30",
+          "created_at": "2026-09-26T10:10:00+09:30",
+          "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "child_count": null,
+          "web_url": "https://onedrive.live.com/?id=01ABCDEF6789",
+          "shared": false,
+          "children": null
+        },
+        "status": "created",
+        "summary": "Uploaded budget.xlsx to /Documents."
+      }
+    }
+  ]
+}

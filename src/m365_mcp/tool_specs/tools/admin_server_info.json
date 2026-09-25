@@ -1,0 +1,99 @@
+{
+  "spec_version": "1.0.0",
+  "name": "admin_server_info",
+  "title": "Server Info",
+  "description": "Report the server version, supported MCP protocol versions and enabled toolsets.",
+  "annotations": {
+    "title": "Server Info",
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "admin",
+    "tier": "admin",
+    "safety_level": "safe",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Server information.",
+    "properties": {
+      "version": {
+        "type": "string"
+      },
+      "protocol_versions": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "toolsets_enabled": {
+        "type": "array",
+        "items": {
+          "enum": [
+            "core",
+            "extended",
+            "admin"
+          ]
+        }
+      },
+      "tool_count": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "cache_enabled": {
+        "type": "boolean"
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "version",
+      "protocol_versions",
+      "toolsets_enabled",
+      "tool_count",
+      "cache_enabled",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "None."
+  ],
+  "validation_rules": [],
+  "replaces": [
+    "server_get_version"
+  ],
+  "examples": [
+    {
+      "title": "Info",
+      "input": {},
+      "output": {
+        "version": "1.0.0",
+        "protocol_versions": [
+          "2025-06-18"
+        ],
+        "toolsets_enabled": [
+          "core",
+          "extended",
+          "admin"
+        ],
+        "tool_count": 29,
+        "cache_enabled": true,
+        "summary": "m365-mcp 1.0.0, 29 tools."
+      }
+    }
+  ]
+}

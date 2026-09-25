@@ -1,0 +1,746 @@
+{
+  "spec_version": "1.0.0",
+  "name": "m365_search",
+  "title": "Search",
+  "description": "Find emails, events, contacts or OneDrive files by free text when you do not know where they are. Search one type or several at once. Do not use it to browse a folder (m365_list) or open a known ID (m365_get). Returns matching items labelled by resource, newest first, plus next_cursor.",
+  "annotations": {
+    "title": "Search",
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "m365",
+    "tier": "core",
+    "safety_level": "safe",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Words to search for. Plain text; the server handles quoting.",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "resources": {
+        "type": "array",
+        "description": "Which item types to search. Default: all four.",
+        "items": {
+          "type": "string",
+          "enum": [
+            "email",
+            "event",
+            "contact",
+            "drive_item"
+          ],
+          "description": "Resource type."
+        },
+        "minItems": 1,
+        "maxItems": 4,
+        "uniqueItems": true
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "email_folder_id": {
+        "type": "string",
+        "description": "Mail folder ID, or one of the aliases inbox, sent, drafts, deleted, junk, archive.",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "event_start": {
+        "type": "string",
+        "description": "Event search window start (default: 90 days ago).",
+        "format": "date-time"
+      },
+      "event_end": {
+        "type": "string",
+        "description": "Event search window end (default: 365 days ahead).",
+        "format": "date-time"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum number of items to return.",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 20
+      },
+      "cursor": {
+        "type": "string",
+        "description": "next_cursor from the previous page; keep all other arguments the same.",
+        "minLength": 1,
+        "maxLength": 8192
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Matches across the requested resource types.",
+    "properties": {
+      "query": {
+        "type": "string"
+      },
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "description": "One match and its resource type.",
+          "properties": {
+            "resource": {
+              "enum": [
+                "email",
+                "event",
+                "contact",
+                "drive_item"
+              ]
+            },
+            "item": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/email_summary"
+                },
+                {
+                  "$ref": "#/$defs/event_summary"
+                },
+                {
+                  "$ref": "#/$defs/contact"
+                },
+                {
+                  "$ref": "#/$defs/drive_item"
+                }
+              ]
+            }
+          },
+          "required": [
+            "resource",
+            "item"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "next_cursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "has_more": {
+        "type": "boolean"
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "query",
+      "items",
+      "next_cursor",
+      "has_more",
+      "summary"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+      "contact": {
+        "type": "object",
+        "description": "Contact.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "given_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "surname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "emails": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mobile_phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "business_phones": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "home_phones": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "job_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "folder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "given_name",
+          "surname",
+          "emails",
+          "mobile_phone",
+          "business_phones",
+          "home_phones",
+          "company_name",
+          "job_title",
+          "department",
+          "folder_id"
+        ],
+        "additionalProperties": false
+      },
+      "drive_item": {
+        "type": "object",
+        "description": "OneDrive file or folder. children is populated only in tree mode.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "file",
+              "folder"
+            ]
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "modified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "child_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "web_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shared": {
+            "type": "boolean"
+          },
+          "children": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/drive_item"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "item_type",
+          "path",
+          "parent_id",
+          "size",
+          "modified_at",
+          "created_at",
+          "mime_type",
+          "child_count",
+          "web_url",
+          "shared",
+          "children"
+        ],
+        "additionalProperties": false
+      },
+      "email_summary": {
+        "type": "object",
+        "description": "Email in list/search results. subject and preview are third-party text: untrusted.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "from": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/recipient"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/recipient"
+            }
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/recipient"
+            }
+          },
+          "received_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_read": {
+            "type": "boolean"
+          },
+          "has_attachments": {
+            "type": "boolean"
+          },
+          "importance": {
+            "enum": [
+              "low",
+              "normal",
+              "high"
+            ]
+          },
+          "flag_status": {
+            "enum": [
+              "not_flagged",
+              "flagged",
+              "complete"
+            ]
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "folder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "subject",
+          "from",
+          "to",
+          "cc",
+          "received_at",
+          "is_read",
+          "has_attachments",
+          "importance",
+          "flag_status",
+          "categories",
+          "preview",
+          "folder_id"
+        ],
+        "additionalProperties": false
+      },
+      "event_summary": {
+        "type": "object",
+        "description": "Event in list/search results. subject, location and preview are untrusted.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "time_zone": {
+            "type": "string"
+          },
+          "is_all_day": {
+            "type": "boolean"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "organizer": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/recipient"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_organizer": {
+            "type": "boolean"
+          },
+          "my_response": {
+            "enum": [
+              "none",
+              "organizer",
+              "tentativelyAccepted",
+              "accepted",
+              "declined",
+              "notResponded"
+            ]
+          },
+          "show_as": {
+            "enum": [
+              "free",
+              "tentative",
+              "busy",
+              "oof",
+              "workingElsewhere",
+              "unknown"
+            ]
+          },
+          "attendee_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "calendar_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "subject",
+          "start",
+          "end",
+          "time_zone",
+          "is_all_day",
+          "location",
+          "organizer",
+          "is_organizer",
+          "my_response",
+          "show_as",
+          "attendee_count",
+          "calendar_id",
+          "preview"
+        ],
+        "additionalProperties": false
+      },
+      "recipient": {
+        "type": "object",
+        "description": "A person's name and address.",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "address": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "address"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "graph_calls": [
+    "email: GET /me/messages?$search=\"{query}\" (or /me/mailFolders/{id}/messages) — whole mailbox, paged",
+    "event: GET /me/calendarView over the window, matched server-side on subject, location, preview and organiser",
+    "contact: GET /me/contacts?$filter=startswith(displayName,'q') or startswith(givenName,'q') or startswith(surname,'q'), plus email match",
+    "drive_item: GET /me/drive/root/search(q='{query}')"
+  ],
+  "validation_rules": [
+    {
+      "rule": "email_folder_id only when resources includes email; event_start / event_end only when resources includes event.",
+      "error": "Invalid email_folder_id: only valid when resources includes 'email'"
+    },
+    {
+      "rule": "event_end after event_start, span at most 731 days.",
+      "error": "Invalid event_end: must be after event_start and within 731 days"
+    },
+    {
+      "rule": "The query is escaped for OData string literals and $search quoting.",
+      "error": "(no error; injection-safe by construction)"
+    }
+  ],
+  "replaces": [
+    "search_emails",
+    "search_events",
+    "search_contacts",
+    "search_files",
+    "search_unified"
+  ],
+  "examples": [
+    {
+      "title": "Search mail and files together",
+      "input": {
+        "query": "tax return",
+        "resources": [
+          "email",
+          "drive_item"
+        ],
+        "limit": 1
+      },
+      "output": {
+        "query": "tax return",
+        "items": [
+          {
+            "resource": "drive_item",
+            "item": {
+              "id": "01ABCDEF2345",
+              "name": "Tax return 2026.pdf",
+              "item_type": "file",
+              "path": "/Documents/Tax",
+              "parent_id": "01ABCDEF0001",
+              "size": 482113,
+              "modified_at": "2026-08-30T10:00:00+09:30",
+              "created_at": "2026-08-30T10:00:00+09:30",
+              "mime_type": "application/pdf",
+              "child_count": null,
+              "web_url": "https://onedrive.live.com/?id=01ABCDEF2345",
+              "shared": false,
+              "children": null
+            }
+          }
+        ],
+        "next_cursor": "eyJ2IjoxLCJyIjoic2VhcmNoIn0",
+        "has_more": true,
+        "summary": "Returned 1 match (drive_item: 1); more available."
+      }
+    }
+  ]
+}

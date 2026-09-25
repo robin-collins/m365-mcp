@@ -1,0 +1,357 @@
+{
+  "spec_version": "1.0.0",
+  "name": "m365_update",
+  "title": "Update Item",
+  "description": "Change properties of an existing email, mail folder, contact or OneDrive item: mark read or unread, flag, set importance or categories, Focused/Other, rename folders and files, or edit contact details. Supply the *_changes object that matches resource. Not for events (calendar_update_event), inbox rules (email_rule_manage) or file contents (drive_upload). Returns the changed field names.",
+  "annotations": {
+    "title": "Update Item",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "m365",
+    "tier": "core",
+    "safety_level": "moderate",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "resource": {
+        "type": "string",
+        "enum": [
+          "email",
+          "email_folder",
+          "contact",
+          "drive_item"
+        ],
+        "description": "Type of item."
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "id": {
+        "type": "string",
+        "description": "Item ID.",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "email_changes": {
+        "type": "object",
+        "description": "Required when resource='email'.",
+        "properties": {
+          "is_read": {
+            "type": "boolean",
+            "description": "Mark read (true) or unread (false)."
+          },
+          "flag": {
+            "type": "object",
+            "description": "Follow-up flag.",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "not_flagged",
+                  "flagged",
+                  "complete"
+                ],
+                "description": "Flag state."
+              },
+              "start_at": {
+                "type": "string",
+                "description": "RFC 3339 date-time with offset, e.g. 2026-10-01T09:00:00+09:30.",
+                "format": "date-time"
+              },
+              "due_at": {
+                "type": "string",
+                "description": "RFC 3339 date-time with offset, e.g. 2026-10-01T09:00:00+09:30.",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          "importance": {
+            "type": "string",
+            "enum": [
+              "low",
+              "normal",
+              "high"
+            ],
+            "description": "Message importance."
+          },
+          "categories_add": {
+            "type": "array",
+            "description": "Category names.",
+            "items": {
+              "type": "string",
+              "description": "Category name.",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "minItems": 1,
+            "maxItems": 25,
+            "uniqueItems": true
+          },
+          "categories_remove": {
+            "type": "array",
+            "description": "Category names.",
+            "items": {
+              "type": "string",
+              "description": "Category name.",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "minItems": 1,
+            "maxItems": 25,
+            "uniqueItems": true
+          },
+          "categories_set": {
+            "type": "array",
+            "description": "Replace all categories (empty list clears them).",
+            "items": {
+              "type": "string",
+              "description": "Category name.",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "minItems": 0,
+            "maxItems": 25,
+            "uniqueItems": true
+          },
+          "inference_classification": {
+            "type": "string",
+            "enum": [
+              "focused",
+              "other"
+            ],
+            "description": "Focused Inbox placement."
+          }
+        },
+        "additionalProperties": false,
+        "minProperties": 1
+      },
+      "email_folder_changes": {
+        "type": "object",
+        "description": "Required when resource='email_folder'.",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "description": "New folder name.",
+            "minLength": 1,
+            "maxLength": 255
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "additionalProperties": false
+      },
+      "contact_changes": {
+        "type": "object",
+        "description": "Required when resource='contact'. Only supplied fields change; lists replace the existing list.",
+        "properties": {
+          "given_name": {
+            "type": "string",
+            "description": "First name.",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "surname": {
+            "type": "string",
+            "description": "Last name.",
+            "maxLength": 255
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Name shown in Outlook. Defaults to given_name + surname.",
+            "maxLength": 255
+          },
+          "emails": {
+            "type": "array",
+            "description": "Email addresses (at most 3).",
+            "items": {
+              "type": "string",
+              "format": "email",
+              "minLength": 3,
+              "maxLength": 320,
+              "description": "Email address, e.g. jane@example.com."
+            },
+            "maxItems": 3,
+            "uniqueItems": true
+          },
+          "mobile_phone": {
+            "type": "string",
+            "description": "Mobile phone number.",
+            "maxLength": 64
+          },
+          "business_phones": {
+            "type": "array",
+            "description": "Business phone numbers.",
+            "items": {
+              "type": "string",
+              "description": "Phone number.",
+              "maxLength": 64
+            },
+            "maxItems": 5
+          },
+          "home_phones": {
+            "type": "array",
+            "description": "Home phone numbers.",
+            "items": {
+              "type": "string",
+              "description": "Phone number.",
+              "maxLength": 64
+            },
+            "maxItems": 5
+          },
+          "company_name": {
+            "type": "string",
+            "description": "Company.",
+            "maxLength": 255
+          },
+          "job_title": {
+            "type": "string",
+            "description": "Job title.",
+            "maxLength": 255
+          },
+          "department": {
+            "type": "string",
+            "description": "Department.",
+            "maxLength": 255
+          }
+        },
+        "additionalProperties": false,
+        "minProperties": 1
+      },
+      "drive_item_changes": {
+        "type": "object",
+        "description": "Required when resource='drive_item'.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "New name, including extension.",
+            "minLength": 1,
+            "maxLength": 255
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "resource",
+      "id"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Which fields changed.",
+    "properties": {
+      "resource": {
+        "enum": [
+          "email",
+          "email_folder",
+          "contact",
+          "drive_item"
+        ]
+      },
+      "id": {
+        "type": "string"
+      },
+      "status": {
+        "const": "updated"
+      },
+      "changed_fields": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "resource",
+      "id",
+      "status",
+      "changed_fields",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "email: PATCH /me/messages/{id} (isRead, flag, importance, categories, inferenceClassification; add/remove reads current categories first)",
+    "email_folder: PATCH /me/mailFolders/{id}",
+    "contact: PATCH /me/contacts/{id}",
+    "drive_item: PATCH /me/drive/items/{id} {name}"
+  ],
+  "validation_rules": [
+    {
+      "rule": "Exactly one *_changes object, matching resource.",
+      "error": "Invalid email_changes: resource is 'contact'. Expected: contact_changes"
+    },
+    {
+      "rule": "categories_set cannot be combined with categories_add or categories_remove.",
+      "error": "Invalid categories_set: cannot be combined with categories_add or categories_remove"
+    },
+    {
+      "rule": "Well-known mail folders cannot be renamed.",
+      "error": "Invalid id: inbox cannot be renamed"
+    },
+    {
+      "rule": "The OneDrive root cannot be renamed.",
+      "error": "Invalid id: the OneDrive root cannot be renamed"
+    }
+  ],
+  "replaces": [
+    "email_update",
+    "email_mark_read",
+    "email_flag",
+    "email_add_category",
+    "emailfolders_rename",
+    "contact_update",
+    "file_rename",
+    "folder_rename"
+  ],
+  "examples": [
+    {
+      "title": "Mark read and add a category",
+      "input": {
+        "resource": "email",
+        "id": "AQMkADAwATM3ZmYAZS1k",
+        "email_changes": {
+          "is_read": true,
+          "categories_add": [
+            "Bills"
+          ]
+        }
+      },
+      "output": {
+        "resource": "email",
+        "id": "AQMkADAwATM3ZmYAZS1k",
+        "status": "updated",
+        "changed_fields": [
+          "is_read",
+          "categories"
+        ],
+        "summary": "Updated email: is_read, categories."
+      }
+    }
+  ]
+}

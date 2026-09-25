@@ -1,0 +1,160 @@
+{
+  "spec_version": "1.0.0",
+  "name": "m365_move",
+  "title": "Move Item",
+  "description": "Move an email, mail folder, contact or OneDrive item to another folder. Moving an email to 'archive' archives it; moving a contact places it in a contact folder. Moved emails and contacts get a new ID, which is returned: use it for later calls.",
+  "annotations": {
+    "title": "Move Item",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "m365",
+    "tier": "core",
+    "safety_level": "moderate",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "resource": {
+        "type": "string",
+        "enum": [
+          "email",
+          "email_folder",
+          "contact",
+          "drive_item"
+        ],
+        "description": "Type of item."
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "id": {
+        "type": "string",
+        "description": "Item to move.",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "destination_id": {
+        "type": "string",
+        "description": "Destination folder. email: mail folder ID or alias (archive, inbox, junk, deleted, drafts, sent). email_folder: mail folder ID or 'root'. contact: contact folder ID or 'default'. drive_item: folder ID or 'root'.",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "destination_path": {
+        "type": "string",
+        "description": "drive_item only: destination folder path instead of destination_id.",
+        "minLength": 1,
+        "maxLength": 2048
+      },
+      "new_name": {
+        "type": "string",
+        "description": "drive_item only: rename while moving.",
+        "minLength": 1,
+        "maxLength": 255
+      }
+    },
+    "required": [
+      "resource",
+      "id"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Move result. status 'copied_not_removed' (contacts only) means the copy exists but deleting the original failed; both IDs are valid.",
+    "properties": {
+      "resource": {
+        "enum": [
+          "email",
+          "email_folder",
+          "contact",
+          "drive_item"
+        ]
+      },
+      "previous_id": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "moved",
+          "copied_not_removed"
+        ]
+      },
+      "destination_id": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "resource",
+      "previous_id",
+      "id",
+      "status",
+      "destination_id",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "email: POST /me/messages/{id}/move {destinationId} (returns new id)",
+    "email_folder: POST /me/mailFolders/{id}/move {destinationId}",
+    "contact: POST /me/contactFolders/{dest}/contacts (copy of fields) then DELETE /me/contacts/{id}",
+    "drive_item: PATCH /me/drive/items/{id} {parentReference, name?}"
+  ],
+  "validation_rules": [
+    {
+      "rule": "Exactly one of destination_id or destination_path (path only for drive_item).",
+      "error": "Invalid destination_id: required"
+    },
+    {
+      "rule": "A folder cannot be moved into itself or its own subfolder.",
+      "error": "Invalid destination_id: is inside the folder being moved"
+    },
+    {
+      "rule": "Not retried after an ambiguous failure; the error says to check the destination first.",
+      "error": "Outcome unknown: check the destination folder before retrying"
+    }
+  ],
+  "replaces": [
+    "email_move",
+    "email_archive",
+    "emailfolders_move",
+    "contact_add_to_list",
+    "file_move",
+    "folder_move"
+  ],
+  "examples": [
+    {
+      "title": "Archive an email",
+      "input": {
+        "resource": "email",
+        "id": "AQMkADAwATM3ZmYAZS1k",
+        "destination_id": "archive"
+      },
+      "output": {
+        "resource": "email",
+        "previous_id": "AQMkADAwATM3ZmYAZS1k",
+        "id": "AQMkADAwATM3ZmYAZS2m",
+        "status": "moved",
+        "destination_id": "AQMkADAwATM3ZmYAZS1kARCH",
+        "summary": "Moved email to Archive (new id AQMkADAwATM3ZmYAZS2m)."
+      }
+    }
+  ]
+}

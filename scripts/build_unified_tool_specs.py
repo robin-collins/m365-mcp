@@ -14,8 +14,11 @@ writes, under ``docs/unified-tools/``:
 - ``SCHEMA_REFERENCE.md``: the human-readable reference generated from the
   above.
 
+``tools/<tool>.json`` and ``index.json`` are also written, byte for byte, to
+``src/m365_mcp/tool_specs/`` so the server can load them as package data.
+
 Edit this file, never the generated output. ``--check`` exits with status 1
-when the generated files are stale (used by
+when any generated file (docs or package copy) is stale (used by
 ``tests/test_unified_tool_specs.py``).
 
 Usage:
@@ -33,6 +36,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "docs" / "unified-tools"
+PKG_DIR = ROOT / "src" / "m365_mcp" / "tool_specs"
 SPEC_VERSION = "1.0.0"
 SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema"
 
@@ -3954,6 +3958,10 @@ def build() -> dict[Path, str]:
         }
     )
     files[OUT_DIR / "SCHEMA_REFERENCE.md"] = render_reference(tools) + "\n"
+    # Package-data copy loaded by the server (m365_mcp.tool_specs).
+    for path, content in list(files.items()):
+        if path.parent.name == "tools" or path.name == "index.json":
+            files[PKG_DIR / path.relative_to(OUT_DIR)] = content
     return files
 
 
@@ -3971,11 +3979,12 @@ def main() -> int:
         if not path.exists() or path.read_text(encoding="utf-8") != content
     ]
     expected = set(files)
-    extra = (
-        [p for p in (OUT_DIR / "tools").glob("*.json") if p not in expected]
-        if (OUT_DIR / "tools").exists()
-        else []
-    )
+    extra = [
+        p
+        for tools_dir in (OUT_DIR / "tools", PKG_DIR / "tools")
+        for p in sorted(tools_dir.glob("*.json"))
+        if p not in expected
+    ]
 
     if args.check:
         if stale or extra:
@@ -3991,7 +4000,8 @@ def main() -> int:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
     print(
-        f"Wrote {len(files)} files for {len(TOOLS)} tools to {OUT_DIR.relative_to(ROOT)}."
+        f"Wrote {len(files)} files for {len(TOOLS)} tools to "
+        f"{OUT_DIR.relative_to(ROOT)} and {PKG_DIR.relative_to(ROOT)}."
     )
     return 0
 

@@ -1,0 +1,78 @@
+{
+  "spec_version": "1.0.0",
+  "name": "account_auth_begin",
+  "title": "Start Sign-in",
+  "description": "Start signing in a personal Microsoft account. Returns a web address and code for the user to enter, and an auth_session_id to pass to account_auth_complete. Prefer `uv run authenticate.py` when available.",
+  "annotations": {
+    "title": "Start Sign-in",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "account",
+    "tier": "admin",
+    "safety_level": "moderate",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Sign-in instructions. The device code itself never leaves the server.",
+    "properties": {
+      "auth_session_id": {
+        "type": "string"
+      },
+      "verification_url": {
+        "type": "string"
+      },
+      "user_code": {
+        "type": "string"
+      },
+      "expires_in": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "auth_session_id",
+      "verification_url",
+      "user_code",
+      "expires_in",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "MSAL initiate_device_flow against https://login.microsoftonline.com/consumers"
+  ],
+  "validation_rules": [],
+  "replaces": [
+    "account_authenticate"
+  ],
+  "examples": [
+    {
+      "title": "Begin",
+      "input": {},
+      "output": {
+        "auth_session_id": "as_91b2",
+        "verification_url": "https://login.microsoft.com/device",
+        "user_code": "PMQDYGWPS",
+        "expires_in": 900,
+        "summary": "Visit https://login.microsoft.com/device and enter PMQDYGWPS."
+      }
+    }
+  ]
+}

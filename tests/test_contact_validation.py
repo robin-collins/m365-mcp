@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 
+from src.m365_mcp.services import contacts as contacts_service
 from src.m365_mcp.tools import contact as contact_tools
 from src.m365_mcp.validators import ValidationError
 
@@ -28,7 +29,7 @@ def test_contact_update_normalises_payload(
         captured["json"] = kwargs.get("json") or {}
         return {"status": "updated"}
 
-    monkeypatch.setattr(contact_tools.graph, "request", fake_request)
+    monkeypatch.setattr(contacts_service.graph, "request", fake_request)
 
     result = contact_tools.contact_update.fn(
         contact_id="contact-1",

@@ -1,8 +1,6 @@
 from typing import Any
-from datetime import datetime, timezone
 from ..mcp_instance import mcp
-from .. import graph
-from .cache_tools import get_cache_manager
+from ..services import contacts as contacts_service
 from ..validators import (
     ValidationError,
     format_validation_error,
@@ -148,52 +146,12 @@ def contact_list(
         Each contact includes _cache_status and _cached_at fields.
     """
     limit = validate_limit(limit, 1, 500, "limit")
-
-    # Build cache parameters
-    cache_params = {
-        "limit": limit,
-    }
-
-    # Try to get from cache if enabled and not forcing refresh
-    if use_cache and not force_refresh:
-        try:
-            cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(
-                account_id, "contact_list", cache_params
-            )
-
-            if cached_result:
-                data, state = cached_result
-                # Add cache status to each contact
-                for contact in data:
-                    contact["_cache_status"] = state.value
-                return data
-        except Exception:
-            # If cache fails, continue to API call
-            pass
-
-    # Fetch from API
-    params = {"$top": limit}
-    contacts = list(
-        graph.request_paginated("/me/contacts", account_id, params=params, limit=limit)
+    return contacts_service.list_contacts(
+        account_id,
+        limit=limit,
+        use_cache=use_cache,
+        force_refresh=force_refresh,
     )
-
-    # Add cache metadata to each contact
-    cached_at = datetime.now(timezone.utc).isoformat()
-    for contact in contacts:
-        contact["_cache_status"] = "fresh"
-        contact["_cached_at"] = cached_at
-
-    # Store in cache if enabled
-    if use_cache:
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.set_cached(account_id, "contact_list", cache_params, contacts)
-        except Exception:
-            # If cache storage fails, still return the result
-            pass
-
-    return contacts
 
 
 # contact_get
@@ -232,47 +190,12 @@ def contact_get(
         - _cache_status: Cache state (fresh/stale/miss)
         - _cached_at: When data was cached (ISO format)
     """
-    # Generate cache key from parameters
-    cache_params = {
-        "contact_id": contact_id,
-    }
-
-    # Try to get from cache if enabled and not forcing refresh
-    if use_cache and not force_refresh:
-        try:
-            cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(
-                account_id, "contact_get", cache_params
-            )
-
-            if cached_result:
-                data, state = cached_result
-                # Add cache metadata
-                data["_cache_status"] = state.value
-                return data
-        except Exception:
-            # If cache fails, continue to API call
-            pass
-
-    # Fetch from API
-    result = graph.request("GET", f"/me/contacts/{contact_id}", account_id)
-    if not result:
-        raise ValueError(f"Contact with ID {contact_id} not found")
-
-    # Add cache metadata
-    result["_cache_status"] = "miss"  # Fresh from API
-    result["_cached_at"] = datetime.now(timezone.utc).isoformat()
-
-    # Store in cache if enabled
-    if use_cache:
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.set_cached(account_id, "contact_get", cache_params, result)
-        except Exception:
-            # If cache storage fails, still return the result
-            pass
-
-    return result
+    return contacts_service.get_contact(
+        account_id,
+        contact_id=contact_id,
+        use_cache=use_cache,
+        force_refresh=force_refresh,
+    )
 
 
 # contact_create
@@ -308,35 +231,13 @@ def contact_create(
     Returns:
         Created contact object with ID
     """
-    contact: dict[str, Any] = {"givenName": given_name}
-
-    if surname:
-        contact["surname"] = surname
-
-    if email_addresses:
-        email_list = (
-            [email_addresses] if isinstance(email_addresses, str) else email_addresses
-        )
-        contact["emailAddresses"] = [
-            {"address": email, "name": f"{given_name} {surname or ''}".strip()}
-            for email in email_list
-        ]
-
-    if phone_numbers:
-        if "business" in phone_numbers:
-            contact["businessPhones"] = [phone_numbers["business"]]
-        if "home" in phone_numbers:
-            contact["homePhones"] = [phone_numbers["home"]]
-        if "mobile" in phone_numbers:
-            contact["mobilePhone"] = phone_numbers["mobile"]
-
-    result = graph.request("POST", "/me/contacts", account_id, json=contact)
-    if not result:
-        raise ValueError("Failed to create contact")
-
-    # Note: Cache invalidation happens automatically via TTL (20min for contact_list)
-
-    return result
+    return contacts_service.create_contact(
+        account_id,
+        given_name=given_name,
+        surname=surname,
+        email_addresses=email_addresses,
+        phone_numbers=phone_numbers,
+    )
 
 
 # contact_update
@@ -450,13 +351,9 @@ def contact_update(
                 )
             graph_updates["mobilePhone"] = trimmed
 
-    result = graph.request(
-        "PATCH", f"/me/contacts/{contact_id}", account_id, json=graph_updates
+    return contacts_service.update_contact(
+        account_id, contact_id=contact_id, updates=graph_updates
     )
-
-    # Note: Cache invalidation happens automatically via TTL (20min for contact_list)
-
-    return result or {"status": "updated"}
 
 
 # contact_delete
@@ -491,11 +388,7 @@ def contact_delete(
         Status confirmation
     """
     require_confirm(confirm, "delete contact")
-    graph.request("DELETE", f"/me/contacts/{contact_id}", account_id)
-
-    # Note: Cache invalidation happens automatically via TTL (20min for contact_list)
-
-    return {"status": "deleted"}
+    return contacts_service.delete_contact(account_id, contact_id=contact_id)
 
 
 # contact_create_list
@@ -551,15 +444,7 @@ def contact_create_list(
             )
         )
 
-    # Create contact folder payload
-    payload = {"displayName": name_stripped}
-
-    # Create contact folder
-    result = graph.request("POST", "/me/contactFolders", account_id, json=payload)
-    if not result:
-        raise ValueError("Failed to create contact list")
-
-    return result
+    return contacts_service.create_contact_list(account_id, display_name=name_stripped)
 
 
 # contact_add_to_list
@@ -595,37 +480,9 @@ def contact_add_to_list(
     Raises:
         ValueError: If contact or list is not found.
     """
-    # First, get the contact details
-    contact = graph.request("GET", f"/me/contacts/{contact_id}", account_id)
-    if not contact:
-        raise ValueError(f"Contact with ID {contact_id} not found")
-
-    # Create a copy of the contact in the target folder
-    # Remove system fields that shouldn't be copied
-    contact_copy = {
-        k: v
-        for k, v in contact.items()
-        if k
-        not in (
-            "id",
-            "@odata.context",
-            "@odata.etag",
-            "createdDateTime",
-            "lastModifiedDateTime",
-        )
-    }
-
-    # Add the contact to the folder
-    result = graph.request(
-        "POST",
-        f"/me/contactFolders/{list_id}/contacts",
-        account_id,
-        json=contact_copy,
+    return contacts_service.add_contact_to_list(
+        account_id, contact_id=contact_id, list_id=list_id
     )
-    if not result:
-        raise ValueError(f"Failed to add contact to list {list_id}")
-
-    return result
 
 
 # contact_export
@@ -673,91 +530,4 @@ def contact_export(
             )
         )
 
-    # Get contact details
-    contact = graph.request("GET", f"/me/contacts/{contact_id}", account_id)
-    if not contact:
-        raise ValueError(f"Contact with ID {contact_id} not found")
-
-    # Build vCard format (version 3.0)
-    vcard_lines = ["BEGIN:VCARD", "VERSION:3.0"]
-
-    # Add name fields
-    given_name = contact.get("givenName", "")
-    surname = contact.get("surname", "")
-    display_name = contact.get("displayName", f"{given_name} {surname}".strip())
-
-    if display_name:
-        vcard_lines.append(f"FN:{display_name}")
-
-    if given_name or surname:
-        # Format: surname;given_name;middle;prefix;suffix
-        vcard_lines.append(f"N:{surname};{given_name};;;")
-
-    # Add email addresses
-    email_addresses = contact.get("emailAddresses", [])
-    for idx, email_obj in enumerate(email_addresses):
-        if isinstance(email_obj, dict) and "address" in email_obj:
-            email_type = "INTERNET" if idx == 0 else f"INTERNET,type=OTHER{idx}"
-            vcard_lines.append(f"EMAIL;type={email_type}:{email_obj['address']}")
-
-    # Add phone numbers
-    business_phones = contact.get("businessPhones", [])
-    for phone in business_phones:
-        vcard_lines.append(f"TEL;type=WORK,VOICE:{phone}")
-
-    home_phones = contact.get("homePhones", [])
-    for phone in home_phones:
-        vcard_lines.append(f"TEL;type=HOME,VOICE:{phone}")
-
-    mobile_phone = contact.get("mobilePhone")
-    if mobile_phone:
-        vcard_lines.append(f"TEL;type=CELL:{mobile_phone}")
-
-    # Add organization information
-    company_name = contact.get("companyName")
-    department = contact.get("department")
-    if company_name or department:
-        org_value = f"{company_name or ''};{department or ''}"
-        vcard_lines.append(f"ORG:{org_value}")
-
-    job_title = contact.get("jobTitle")
-    if job_title:
-        vcard_lines.append(f"TITLE:{job_title}")
-
-    # Add business address if available
-    business_address = contact.get("businessAddress")
-    if business_address and isinstance(business_address, dict):
-        street = business_address.get("street", "")
-        city = business_address.get("city", "")
-        state = business_address.get("state", "")
-        postal_code = business_address.get("postalCode", "")
-        country = business_address.get("countryOrRegion", "")
-        # Format: POBox;Extended;Street;City;State;PostalCode;Country
-        vcard_lines.append(
-            f"ADR;type=WORK:;;{street};{city};{state};{postal_code};{country}"
-        )
-
-    # Add home address if available
-    home_address = contact.get("homeAddress")
-    if home_address and isinstance(home_address, dict):
-        street = home_address.get("street", "")
-        city = home_address.get("city", "")
-        state = home_address.get("state", "")
-        postal_code = home_address.get("postalCode", "")
-        country = home_address.get("countryOrRegion", "")
-        vcard_lines.append(
-            f"ADR;type=HOME:;;{street};{city};{state};{postal_code};{country}"
-        )
-
-    vcard_lines.append("END:VCARD")
-
-    # Join lines with CRLF as per vCard spec
-    vcard_content = "\r\n".join(vcard_lines)
-
-    return {
-        "contact_id": contact_id,
-        "display_name": display_name,
-        "format": "vcard",
-        "vcard": vcard_content,
-        "size_bytes": len(vcard_content.encode("utf-8")),
-    }
+    return contacts_service.export_contact_vcard(account_id, contact_id=contact_id)

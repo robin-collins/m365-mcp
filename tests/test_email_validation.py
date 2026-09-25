@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from src.m365_mcp import validators
+from src.m365_mcp.services import mail as mail_service
 from src.m365_mcp.tools import email as email_tools
 from src.m365_mcp.validators import ValidationError
 
@@ -113,7 +114,7 @@ def test_email_send_accepts_valid_attachment(
         return {"status": "sent"}
 
     monkeypatch.setattr(email_tools.graph, "request", fake_request)
-    monkeypatch.setattr(email_tools, "get_cache_manager", lambda: FakeCache())
+    monkeypatch.setattr(mail_service, "get_cache_manager", lambda: FakeCache())
 
     result = email_tools.email_send.fn(
         account_id=mock_account_id,

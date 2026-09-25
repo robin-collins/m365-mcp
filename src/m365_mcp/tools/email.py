@@ -1,19 +1,18 @@
-import base64
-import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from .. import graph
 from ..mcp_instance import mcp
-from .cache_tools import get_cache_manager
+from ..services import mail as mail_service
+from ..services.mail import EMAIL_FOLDER_NAMES, FOLDERS
 from ..validators import (
     ValidationError,
     ensure_safe_path,
     format_validation_error,
     normalize_recipients,
     require_confirm,
-    validate_attachments,
     validate_account_id,
+    validate_attachments,
     validate_choices,
     validate_folder_choice,
     validate_iso_datetime,
@@ -24,25 +23,8 @@ from ..validators import (
     validate_timezone,
 )
 
-LOGGER = logging.getLogger("microsoft_mcp.tools.email")
-
-FOLDERS = {
-    k.casefold(): v
-    for k, v in {
-        "inbox": "inbox",
-        "sent": "sentitems",
-        "drafts": "drafts",
-        "deleted": "deleteditems",
-        "junk": "junkemail",
-        "archive": "archive",
-    }.items()
-}
-EMAIL_FOLDER_NAMES = tuple(FOLDERS.keys())
-
-MAX_ATTACHMENT_DOWNLOAD_BYTES = 25 * 1024 * 1024
 MAX_MAIL_ATTACHMENT_BYTES = 25 * 1024 * 1024
 MAX_MAIL_ATTACHMENTS = 10
-MAIL_INLINE_ATTACHMENT_THRESHOLD = 3 * 1024 * 1024
 MAX_EMAIL_RECIPIENTS = 500
 ALLOWED_EMAIL_UPDATE_KEYS = (
     "isRead",
@@ -270,69 +252,16 @@ def email_list(
         # Default to inbox
         folder_path = "inbox"
 
-    # Generate cache key from parameters
-    cache_params = {
-        "folder": folder,
-        "folder_id": folder_id,
-        "folder_path": folder_path,
-        "limit": limit,
-        "include_body": include_body,
-    }
-
-    # Try to get from cache if enabled and not forcing refresh
-    if use_cache and not force_refresh:
-        try:
-            cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(
-                account_id, "email_list", cache_params
-            )
-
-            if cached_result:
-                data, state = cached_result
-                # Add cache status to each email in the list
-                for email in data:
-                    email["_cache_status"] = state.value
-                return data
-        except Exception:
-            # If cache fails, continue to API call
-            pass
-
-    if include_body:
-        select_fields = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead"
-    else:
-        select_fields = "id,subject,from,toRecipients,receivedDateTime,hasAttachments,conversationId,isRead"
-
-    params = {
-        "$top": limit,
-        "$select": select_fields,
-        "$orderby": "receivedDateTime desc",
-    }
-
-    emails = list(
-        graph.request_paginated(
-            f"/me/mailFolders/{folder_path}/messages",
-            account_id,
-            params=params,
-            limit=limit,
-        )
+    return mail_service.list_messages(
+        account_id,
+        folder=folder,
+        folder_id=folder_id,
+        folder_path=folder_path,
+        limit=limit,
+        include_body=include_body,
+        use_cache=use_cache,
+        force_refresh=force_refresh,
     )
-
-    # Add cache metadata to each email
-    cached_at = datetime.now(timezone.utc).isoformat()
-    for email in emails:
-        email["_cache_status"] = "miss"  # Fresh from API
-        email["_cached_at"] = cached_at
-
-    # Store in cache if enabled
-    if use_cache:
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.set_cached(account_id, "email_list", cache_params, emails)
-        except Exception:
-            # If cache storage fails, still return the result
-            pass
-
-    return emails
 
 
 def _list_mail_folders_impl(
@@ -408,73 +337,15 @@ def email_get(
     """
     body_max_length = validate_limit(body_max_length, 1, 500_000, "body_max_length")
 
-    # Generate cache key from parameters
-    cache_params = {
-        "email_id": email_id,
-        "include_body": include_body,
-        "body_max_length": body_max_length,
-        "include_attachments": include_attachments,
-    }
-
-    # Try to get from cache if enabled and not forcing refresh
-    if use_cache and not force_refresh:
-        try:
-            cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(
-                account_id, "email_get", cache_params
-            )
-
-            if cached_result:
-                data, state = cached_result
-                # Add cache metadata
-                data["_cache_status"] = state.value
-                return data
-        except Exception:
-            # If cache fails, continue to API call
-            pass
-
-    # Fetch from API
-    params = {}
-    if include_attachments:
-        params["$expand"] = "attachments($select=id,name,size,contentType)"
-
-    result = graph.request("GET", f"/me/messages/{email_id}", account_id, params=params)
-    if not result:
-        raise ValueError(f"Email with ID {email_id} not found")
-
-    # Truncate body if needed
-    if include_body and "body" in result and "content" in result["body"]:
-        content = result["body"]["content"]
-        if len(content) > body_max_length:
-            result["body"]["content"] = (
-                content[:body_max_length]
-                + f"\n\n[Content truncated - {len(content)} total characters]"
-            )
-            result["body"]["truncated"] = True
-            result["body"]["total_length"] = len(content)
-    elif not include_body and "body" in result:
-        del result["body"]
-
-    # Remove attachment content bytes to reduce size
-    if "attachments" in result and result["attachments"]:
-        for attachment in result["attachments"]:
-            if "contentBytes" in attachment:
-                del attachment["contentBytes"]
-
-    # Add cache metadata
-    result["_cache_status"] = "miss"  # Fresh from API
-    result["_cached_at"] = datetime.now(timezone.utc).isoformat()
-
-    # Store in cache if enabled
-    if use_cache:
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.set_cached(account_id, "email_get", cache_params, result)
-        except Exception:
-            # If cache storage fails, still return the result
-            pass
-
-    return result
+    return mail_service.get_message(
+        account_id,
+        email_id=email_id,
+        include_body=include_body,
+        body_max_length=body_max_length,
+        include_attachments=include_attachments,
+        use_cache=use_cache,
+        force_refresh=force_refresh,
+    )
 
 
 # email_create_draft
@@ -515,54 +386,16 @@ def email_create_draft(
     """
     to_unique, cc_unique = _prepare_message_recipients(to, cc)
 
-    message = {
-        "subject": subject,
-        "body": {"contentType": "Text", "content": body},
-        "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_unique],
-    }
+    prepared = _prepare_outbound_attachments(attachments) if attachments else []
 
-    if cc_unique:
-        message["ccRecipients"] = [
-            {"emailAddress": {"address": addr}} for addr in cc_unique
-        ]
-
-    small_attachments = []
-    large_attachments = []
-
-    if attachments:
-        for attachment in _prepare_outbound_attachments(attachments):
-            if attachment["size"] < MAIL_INLINE_ATTACHMENT_THRESHOLD:
-                small_attachments.append(
-                    {
-                        "@odata.type": "#microsoft.graph.fileAttachment",
-                        "name": attachment["name"],
-                        "contentBytes": base64.b64encode(
-                            attachment["content_bytes"]
-                        ).decode("utf-8"),
-                    }
-                )
-            else:
-                large_attachments.append(attachment)
-
-    if small_attachments:
-        message["attachments"] = small_attachments
-
-    result = graph.request("POST", "/me/messages", account_id, json=message)
-    if not result:
-        raise ValueError("Failed to create email draft")
-
-    message_id = result["id"]
-
-    for att in large_attachments:
-        graph.upload_large_mail_attachment(
-            message_id,
-            att["name"],
-            att["content_bytes"],
-            account_id,
-            att.get("content_type", "application/octet-stream"),
-        )
-
-    return result
+    return mail_service.create_draft(
+        account_id,
+        to=to_unique,
+        cc=cc_unique,
+        subject=subject,
+        body=body,
+        attachments=prepared,
+    )
 
 
 # email_send
@@ -618,100 +451,16 @@ def email_send(
     to_unique, cc_unique = _prepare_message_recipients(to, cc)
     require_confirm(confirm, "send email")
 
-    def build_message() -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "subject": subject,
-            "body": {"contentType": "Text", "content": body},
-            "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_unique],
-        }
-        if cc_unique:
-            payload["ccRecipients"] = [
-                {"emailAddress": {"address": addr}} for addr in cc_unique
-            ]
-        return payload
-
     processed_attachments = _prepare_outbound_attachments(attachments)
-    has_large_attachments = any(
-        att["size"] >= MAIL_INLINE_ATTACHMENT_THRESHOLD for att in processed_attachments
+
+    return mail_service.send_message(
+        account_id,
+        to=to_unique,
+        cc=cc_unique,
+        subject=subject,
+        body=body,
+        attachments=processed_attachments,
     )
-
-    if not has_large_attachments and processed_attachments:
-        message = build_message()
-        message["attachments"] = [
-            {
-                "@odata.type": "#microsoft.graph.fileAttachment",
-                "name": att["name"],
-                "contentBytes": base64.b64encode(att["content_bytes"]).decode("utf-8"),
-            }
-            for att in processed_attachments
-        ]
-        graph.request("POST", "/me/sendMail", account_id, json={"message": message})
-
-        # Invalidate cache for sent folder
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.invalidate_pattern("email_list:*", account_id=account_id)
-        except Exception:
-            pass
-
-        return {"status": "sent"}
-    elif has_large_attachments:
-        # Create draft first, then add large attachments, then send
-        # We need to handle large attachments manually here
-        message = build_message()
-        result = graph.request("POST", "/me/messages", account_id, json=message)
-        if not result:
-            raise ValueError("Failed to create email draft")
-
-        message_id = result["id"]
-
-        for att in processed_attachments:
-            if att["size"] >= MAIL_INLINE_ATTACHMENT_THRESHOLD:
-                graph.upload_large_mail_attachment(
-                    message_id,
-                    att["name"],
-                    att["content_bytes"],
-                    account_id,
-                    att.get("content_type", "application/octet-stream"),
-                )
-            else:
-                small_att = {
-                    "@odata.type": "#microsoft.graph.fileAttachment",
-                    "name": att["name"],
-                    "contentBytes": base64.b64encode(att["content_bytes"]).decode(
-                        "utf-8"
-                    ),
-                }
-                graph.request(
-                    "POST",
-                    f"/me/messages/{message_id}/attachments",
-                    account_id,
-                    json=small_att,
-                )
-
-        graph.request("POST", f"/me/messages/{message_id}/send", account_id)
-
-        # Invalidate cache for sent folder
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.invalidate_pattern("email_list:*", account_id=account_id)
-        except Exception:
-            pass
-
-        return {"status": "sent"}
-    else:
-        graph.request(
-            "POST", "/me/sendMail", account_id, json={"message": build_message()}
-        )
-
-        # Invalidate cache for sent folder
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.invalidate_pattern("email_list:*", account_id=account_id)
-        except Exception:
-            pass
-
-        return {"status": "sent"}
 
 
 # email_update
@@ -832,21 +581,9 @@ def email_update(
         )
         graph_updates["inferenceClassification"] = inference
 
-    result = graph.request(
-        "PATCH", f"/me/messages/{email_id}", account_id, json=graph_updates
+    return mail_service.update_message(
+        account_id, email_id=email_id, updates=graph_updates
     )
-    if not result:
-        raise ValueError(f"Failed to update email {email_id} - no response")
-
-    # Invalidate cache for the specific email
-    try:
-        cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern("email_get:*", account_id=account_id)
-    except Exception:
-        # Don't fail the operation if cache invalidation fails
-        pass
-
-    return result
 
 
 # email_delete
@@ -883,20 +620,7 @@ def email_delete(
         Status confirmation
     """
     require_confirm(confirm, "delete email")
-    graph.request("DELETE", f"/me/messages/{email_id}", account_id)
-
-    # Invalidate cache for email lists and specific email
-    try:
-        cache_manager = get_cache_manager()
-        # Invalidate all email lists
-        cache_manager.invalidate_pattern("email_list:*", account_id=account_id)
-        # Invalidate the specific email
-        cache_manager.invalidate_pattern("email_get:*", account_id=account_id)
-    except Exception:
-        # Don't fail the operation if cache invalidation fails
-        pass
-
-    return {"status": "deleted"}
+    return mail_service.delete_message(account_id, email_id=email_id)
 
 
 # email_move
@@ -931,56 +655,12 @@ def email_move(
     folder_key = validate_folder_choice(
         destination_folder, EMAIL_FOLDER_NAMES, "destination_folder"
     )
-    folder_path = FOLDERS[folder_key.casefold()]
-
-    folders = graph.request("GET", "/me/mailFolders", account_id)
-    folder_id = None
-
-    if not folders:
-        raise ValueError("Failed to retrieve mail folders")
-    if "value" not in folders:
-        raise ValueError(f"Unexpected folder response structure: {folders}")
-
-    for folder in folders["value"]:
-        display_name = folder.get("displayName", "")
-        well_known = folder.get("wellKnownName", "")
-        if (
-            isinstance(well_known, str)
-            and well_known.casefold() == folder_path.casefold()
-        ):
-            folder_id = folder["id"]
-            break
-        if (
-            isinstance(display_name, str)
-            and display_name.casefold() == folder_key.casefold()
-        ):
-            folder_id = folder["id"]
-            break
-
-    if not folder_id:
-        raise ValueError(
-            f"Folder '{destination_folder}' not found. "
-            f"Valid options: {', '.join(sorted(EMAIL_FOLDER_NAMES))}"
-        )
-
-    payload = {"destinationId": folder_id}
-    result = graph.request(
-        "POST", f"/me/messages/{email_id}/move", account_id, json=payload
+    return mail_service.move_message(
+        account_id,
+        email_id=email_id,
+        folder_key=folder_key,
+        destination_folder=destination_folder,
     )
-    if not result:
-        raise ValueError("Failed to move email - no response from server")
-    if "id" not in result:
-        raise ValueError(f"Failed to move email - unexpected response: {result}")
-
-    # Invalidate cache for email lists (folder contents changed)
-    try:
-        cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern("email_list:*", account_id=account_id)
-    except Exception:
-        # Don't fail the operation if cache invalidation fails
-        pass
-
-    return {"status": "moved", "new_id": result["id"]}
 
 
 # email_reply
@@ -1037,10 +717,7 @@ def email_reply(
         )
 
     require_confirm(confirm, "reply to email")
-    endpoint = f"/me/messages/{email_id}/reply"
-    payload = {"message": {"body": {"contentType": "Text", "content": body_stripped}}}
-    graph.request("POST", endpoint, account_id, json=payload)
-    return {"status": "sent"}
+    return mail_service.reply(account_id, email_id=email_id, body=body_stripped)
 
 
 # email_reply_all
@@ -1097,10 +774,7 @@ def email_reply_all(
         )
 
     require_confirm(confirm, "reply to all recipients")
-    endpoint = f"/me/messages/{email_id}/replyAll"
-    payload = {"message": {"body": {"contentType": "Text", "content": body_stripped}}}
-    graph.request("POST", endpoint, account_id, json=payload)
-    return {"status": "sent"}
+    return mail_service.reply_all(account_id, email_id=email_id, body=body_stripped)
 
 
 # email_forward
@@ -1185,23 +859,13 @@ def email_forward(
 
     require_confirm(confirm, "forward email")
 
-    payload: dict[str, Any] = {
-        "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_unique],
-    }
-
-    if cc_unique:
-        payload["ccRecipients"] = [
-            {"emailAddress": {"address": addr}} for addr in cc_unique
-        ]
-
-    if body:
-        body_stripped = body.strip()
-        if body_stripped:
-            payload["comment"] = body_stripped
-
-    endpoint = f"/me/messages/{email_id}/forward"
-    graph.request("POST", endpoint, account_id, json=payload)
-    return {"status": "sent"}
+    return mail_service.forward_message(
+        account_id,
+        email_id=email_id,
+        to=to_unique,
+        cc=cc_unique,
+        body=body,
+    )
 
 
 # email_get_attachment
@@ -1238,62 +902,12 @@ def email_get_attachment(
     destination = ensure_safe_path(save_path, allow_overwrite=False)
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    result = graph.request(
-        "GET", f"/me/messages/{message_id}/attachments/{attachment}", account
+    return mail_service.download_attachment(
+        account,
+        email_id=message_id,
+        attachment_id=attachment,
+        destination=destination,
     )
-
-    if not result:
-        raise ValidationError(
-            format_validation_error(
-                "attachment_id",
-                attachment,
-                "attachment not found for email",
-                "Existing attachment identifier",
-            )
-        )
-
-    if "contentBytes" not in result:
-        raise RuntimeError("Attachment content not available for download")
-
-    reported_size = result.get("size", 0) or 0
-    validate_request_size(
-        int(reported_size),
-        MAX_ATTACHMENT_DOWNLOAD_BYTES,
-        "attachment_size",
-    )
-
-    try:
-        content_bytes = base64.b64decode(result["contentBytes"])
-    except (ValueError, KeyError) as exc:
-        raise RuntimeError(f"Failed to decode attachment content: {exc}") from exc
-
-    validate_request_size(
-        len(content_bytes),
-        MAX_ATTACHMENT_DOWNLOAD_BYTES,
-        "attachment_size",
-    )
-
-    try:
-        destination.write_bytes(content_bytes)
-    except OSError as exc:  # noqa: BLE001
-        if destination.exists():
-            destination.unlink(missing_ok=True)
-        LOGGER.error(
-            "Failed to persist attachment",
-            extra={
-                "email_id": message_id,
-                "attachment_id": attachment,
-                "destination": str(destination),
-            },
-        )
-        raise RuntimeError(f"Unable to write attachment to disk: {exc}") from exc
-
-    return {
-        "name": result.get("name", "unknown"),
-        "content_type": result.get("contentType", "application/octet-stream"),
-        "size": len(content_bytes),
-        "saved_to": str(destination),
-    }
 
 
 # email_mark_read
@@ -1342,23 +956,7 @@ def email_mark_read(
             )
         )
 
-    payload = {"isRead": is_read}
-
-    result = graph.request("PATCH", f"/me/messages/{message_id}", account, json=payload)
-
-    if not result:
-        raise ValueError(f"Failed to update email {message_id} - no response")
-
-    # Invalidate cache for the specific email and email lists
-    try:
-        cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern("email_get:*", account_id=account)
-        cache_manager.invalidate_pattern("email_list:*", account_id=account)
-    except Exception:
-        # Don't fail the operation if cache invalidation fails
-        pass
-
-    return result
+    return mail_service.mark_read(account, email_id=message_id, is_read=is_read)
 
 
 # email_flag
@@ -1403,26 +1001,9 @@ def email_flag(
         "flag_status",
     )
 
-    payload = {
-        "flag": {
-            "flagStatus": validated_status,
-        }
-    }
-
-    result = graph.request("PATCH", f"/me/messages/{message_id}", account, json=payload)
-
-    if not result:
-        raise ValueError(f"Failed to update email {message_id} - no response")
-
-    # Invalidate cache for the specific email
-    try:
-        cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern("email_get:*", account_id=account)
-    except Exception:
-        # Don't fail the operation if cache invalidation fails
-        pass
-
-    return result
+    return mail_service.set_flag(
+        account, email_id=message_id, flag_status=validated_status
+    )
 
 
 # email_add_category
@@ -1511,22 +1092,9 @@ def email_add_category(
             )
         )
 
-    payload = {"categories": validated_categories}
-
-    result = graph.request("PATCH", f"/me/messages/{message_id}", account, json=payload)
-
-    if not result:
-        raise ValueError(f"Failed to update email {message_id} - no response")
-
-    # Invalidate cache for the specific email
-    try:
-        cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern("email_get:*", account_id=account)
-    except Exception:
-        # Don't fail the operation if cache invalidation fails
-        pass
-
-    return result
+    return mail_service.set_categories(
+        account, email_id=message_id, categories=validated_categories
+    )
 
 
 # email_archive
@@ -1567,51 +1135,4 @@ def email_archive(
     account = validate_account_id(account_id)
     message_id = validate_microsoft_graph_id(email_id, "email_id")
 
-    # Get the archive folder
-    folder_path = FOLDERS["archive"]
-
-    folders = graph.request("GET", "/me/mailFolders", account)
-    folder_id = None
-
-    if not folders:
-        raise ValueError("Failed to retrieve mail folders")
-    if "value" not in folders:
-        raise ValueError(f"Unexpected folder response structure: {folders}")
-
-    for folder in folders["value"]:
-        display_name = folder.get("displayName", "")
-        well_known = folder.get("wellKnownName", "")
-        if (
-            isinstance(well_known, str)
-            and well_known.casefold() == folder_path.casefold()
-        ):
-            folder_id = folder["id"]
-            break
-        if isinstance(display_name, str) and display_name.casefold() == "archive":
-            folder_id = folder["id"]
-            break
-
-    if not folder_id:
-        raise ValueError(
-            "Archive folder not found. This may indicate the account does not "
-            "have an archive folder enabled."
-        )
-
-    payload = {"destinationId": folder_id}
-    result = graph.request(
-        "POST", f"/me/messages/{message_id}/move", account, json=payload
-    )
-    if not result:
-        raise ValueError("Failed to archive email - no response from server")
-    if "id" not in result:
-        raise ValueError(f"Failed to archive email - unexpected response: {result}")
-
-    # Invalidate cache for email lists (folder contents changed)
-    try:
-        cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern("email_list:*", account_id=account)
-    except Exception:
-        # Don't fail the operation if cache invalidation fails
-        pass
-
-    return {"status": "archived", "new_id": result["id"]}
+    return mail_service.archive_message(account, email_id=message_id)

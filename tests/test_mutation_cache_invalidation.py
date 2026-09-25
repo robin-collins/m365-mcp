@@ -8,6 +8,7 @@ import pytest
 
 from src.m365_mcp.cache import CacheManager
 from src.m365_mcp.services import drive
+from src.m365_mcp.services import mail as mail_service
 from src.m365_mcp.tools import email as email_tools
 from src.m365_mcp.tools import file as file_tools
 
@@ -45,7 +46,7 @@ def test_email_delete_invalidates_email_lists_for_only_target_account(
         return {}
 
     monkeypatch.setattr(email_tools.graph, "request", fake_request)
-    monkeypatch.setattr(email_tools, "get_cache_manager", lambda: cache_manager)
+    monkeypatch.setattr(mail_service, "get_cache_manager", lambda: cache_manager)
 
     result = email_tools.email_delete.fn(
         email_id="message-1",
@@ -82,7 +83,7 @@ def test_email_update_invalidates_email_get_entries_for_only_target_account(
         return {"id": "message-1"}
 
     monkeypatch.setattr(email_tools.graph, "request", fake_request)
-    monkeypatch.setattr(email_tools, "get_cache_manager", lambda: cache_manager)
+    monkeypatch.setattr(mail_service, "get_cache_manager", lambda: cache_manager)
 
     result = email_tools.email_update.fn(
         email_id="message-1",

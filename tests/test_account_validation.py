@@ -742,3 +742,55 @@ def test_authenticate_script_reauth_reports_failure(
 
     assert authenticate.main() == 1
     assert "grant is expired" in capsys.readouterr().out
+
+
+def test_device_flow_records_issuing_tenant(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A consumers fallback must be remembered on the flow."""
+
+    class FakeApp:
+        def __init__(self, reject: bool) -> None:
+            self.reject = reject
+
+        def initiate_device_flow(self, scopes: Iterable[str]) -> dict[str, Any]:
+            if self.reject:
+                return {"error": "invalid_scope", "error_description": "reserved"}
+            return {"user_code": "ABCD", "device_code": "dc"}
+
+    consumer_app = FakeApp(reject=False)
+    monkeypatch.setattr(
+        account_tools.auth, "_build_app", lambda tenant_id: consumer_app
+    )
+
+    app, flow = account_tools.auth._initiate_device_flow(FakeApp(True), "common")
+
+    assert app is consumer_app
+    assert flow[account_tools.auth.DEVICE_FLOW_TENANT_KEY] == "consumers"
+
+
+def test_account_complete_auth_uses_issuing_tenant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The device code is redeemed with the authority that issued it."""
+    built: list[str] = []
+
+    class FakeApp:
+        def acquire_token_by_device_flow(
+            self, flow: dict[str, Any], **kwargs: Any
+        ) -> dict[str, str]:
+            return {"error": "authorization_pending", "error_description": "wait"}
+
+    def fake_build_app(tenant_id: str) -> FakeApp:
+        built.append(tenant_id)
+        return FakeApp()
+
+    def fail_get_app() -> None:
+        pytest.fail("get_app should not be used when the flow names its tenant")
+
+    monkeypatch.setattr(account_tools.auth, "_build_app", fake_build_app)
+    monkeypatch.setattr(account_tools.auth, "get_app", fail_get_app)
+
+    flow = {"device_code": "dc", account_tools.auth.DEVICE_FLOW_TENANT_KEY: "consumers"}
+    result = account_tools.account_complete_auth.fn(str(flow))
+
+    assert result["status"] == "pending"
+    assert built == ["consumers"]

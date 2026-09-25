@@ -163,3 +163,40 @@ def test_chunked_upload_sends_no_authorization_and_accepts_empty_201(
     assert token_calls == []
     assert all("Authorization" not in call["headers"] for call in client.calls)
     assert client.calls[1]["headers"]["Content-Range"] == "bytes 4-5/6"
+
+
+def test_request_does_not_mutate_caller_params(
+    monkeypatch: pytest.MonkeyPatch, token_calls: list[bool], sleeps: list[float]
+) -> None:
+    client = _install(monkeypatch, httpx.Response(200, json={"value": []}))
+    params = {"$search": '"invoice"'}
+
+    graph.request("GET", "/me/messages", "acc-1", params=params)
+
+    assert params == {"$search": '"invoice"'}
+    assert client.calls[0]["params"]["$count"] == "true"
+
+
+def test_paginated_next_pages_keep_query_headers(
+    monkeypatch: pytest.MonkeyPatch, token_calls: list[bool], sleeps: list[float]
+) -> None:
+    """Page 2+ must keep plain-text bodies and eventual consistency."""
+    next_link = f"{graph.BASE_URL}/me/messages?$search=x&$skiptoken=abc"
+    client = _install(
+        monkeypatch,
+        httpx.Response(200, json={"value": [{"id": 1}], "@odata.nextLink": next_link}),
+        httpx.Response(200, json={"value": [{"id": 2}]}),
+    )
+
+    items = list(
+        graph.request_paginated(
+            "/me/messages", "acc-1", params={"$search": "x", "$select": "body"}
+        )
+    )
+
+    assert [item["id"] for item in items] == [1, 2]
+    second = client.calls[1]
+    assert second["url"] == next_link
+    assert second["params"] is None
+    assert second["headers"]["ConsistencyLevel"] == "eventual"
+    assert second["headers"]["Prefer"] == 'outlook.body-content-type="text"'

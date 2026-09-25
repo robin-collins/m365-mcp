@@ -9,15 +9,25 @@ not touched.
 
 from __future__ import annotations
 
+import inspect
+import json
 import os
-from typing import Any
+import re
+from collections.abc import Iterable
+from datetime import datetime
+from typing import Any, cast
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import Tool, ToolResult
-from mcp.types import ToolAnnotations
+from jsonschema import Draft202012Validator, FormatChecker
+from jsonschema.exceptions import ValidationError as JSONSchemaError
+from jsonschema.exceptions import best_match
+from mcp.types import TextContent, ToolAnnotations
 
 from ..tool_specs import load_index, load_tool_spec
+from ..validators import format_validation_error
+from . import handlers
 
 __all__ = ["SERVER_INSTRUCTIONS", "SpecTool", "build_server"]
 
@@ -32,22 +42,198 @@ SERVER_INSTRUCTIONS = (
 TOOLSETS_ENV = "M365_MCP_TOOLSETS"
 
 
+_FORMAT_CHECKER = FormatChecker()
+_RFC3339 = re.compile(
+    r"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$"
+)
+
+
+@_FORMAT_CHECKER.checks("date-time", raises=ValueError)
+def _is_date_time(value: object) -> bool:
+    """Check RFC 3339 date-times; jsonschema skips them by default."""
+    if not isinstance(value, str):
+        return True
+    if not _RFC3339.match(value):
+        return False
+    datetime.fromisoformat(value.upper())
+    return True
+
+
+_TYPE_WORDS = {
+    "array": "an array",
+    "boolean": "true or false",
+    "integer": "an integer",
+    "number": "a number",
+    "object": "an object",
+    "string": "a string",
+}
+_FORMAT_WORDS = {
+    "date-time": "RFC 3339 date-time with offset, e.g. 2026-10-01T09:00:00+09:30",
+    "email": "email address",
+}
+
+
+def _describe(schema: dict[str, Any]) -> str:
+    """Describe the values a schema accepts, for ``Expected:`` text."""
+    if "enum" in schema:
+        return "one of " + ", ".join(str(value) for value in schema["enum"])
+    kind = schema.get("type")
+    if "format" in schema:
+        return _FORMAT_WORDS.get(schema["format"], str(schema["format"]))
+    if kind in ("integer", "number") and "minimum" in schema:
+        return f"{kind} from {schema['minimum']} to {schema['maximum']}"
+    if kind == "string" and "maxLength" in schema:
+        low = schema.get("minLength", 0)
+        return f"string of {low} to {schema['maxLength']} characters"
+    if kind == "array":
+        low, high = schema.get("minItems", 0), schema.get("maxItems")
+        size = f"{low} to {high}" if high is not None else f"at least {low}"
+        return f"array of {size} items, each {_describe(schema.get('items', {}))}"
+    if kind == "object" and schema.get("properties"):
+        return "object with fields " + ", ".join(schema["properties"])
+    if isinstance(kind, str):
+        return _TYPE_WORDS.get(kind, kind)
+    return "a valid value"
+
+
+def _param_name(path: Iterable[Any]) -> str:
+    name = ""
+    for part in path:
+        name += f"[{part}]" if isinstance(part, int) else f".{part}"
+    return name.lstrip(".") or "arguments"
+
+
+_MISSING = object()
+
+
+def _shown(value: Any) -> str:
+    if value is _MISSING:
+        return ""
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _schema_error_text(tool_name: str, error: JSONSchemaError) -> str:
+    """Convert a jsonschema error to the canonical validation text."""
+    path = list(error.absolute_path)
+    value: Any = error.instance
+    schema: Any = error.schema
+    keyword, limit = error.validator, cast(Any, error.validator_value)
+    expected = _describe(schema)
+
+    if keyword == "required":
+        missing = next(n for n in limit if n not in value)
+        path.append(missing)
+        value, reason = _MISSING, "is required"
+        expected = _describe(schema.get("properties", {}).get(missing, {}))
+    elif keyword == "additionalProperties":
+        known = schema.get("properties", {})
+        extra = next(n for n in value if n not in known)
+        path.append(extra)
+        value = value[extra]
+        if len(path) == 1:
+            reason = f"is not a parameter of {tool_name}"
+        else:
+            reason = f"is not a field of {_param_name(path[:-1])}"
+        expected = "one of " + ", ".join(known)
+    elif keyword == "enum":
+        reason = "is not an allowed value"
+    elif keyword == "type":
+        reason = f"must be {_TYPE_WORDS.get(str(limit), limit)}"
+    elif keyword == "minimum":
+        reason = f"is below the minimum of {limit}"
+    elif keyword == "maximum":
+        reason = f"is above the maximum of {limit}"
+    elif keyword == "minLength":
+        reason = (
+            "must not be empty"
+            if value == ""
+            else f"is shorter than {limit} characters"
+        )
+    elif keyword == "maxLength":
+        reason = f"is longer than {limit} characters"
+    elif keyword == "format":
+        reason = f"is not a valid {limit}"
+    elif keyword == "minItems":
+        reason = f"has fewer than {limit} items"
+    elif keyword == "maxItems":
+        reason = f"has more than {limit} items"
+    elif keyword == "uniqueItems":
+        reason = "contains duplicate items"
+    elif keyword == "minProperties":
+        reason = f"must set at least {limit} field{'s' if limit != 1 else ''}"
+    else:
+        reason = error.message
+    return format_validation_error(_param_name(path), _shown(value), reason, expected)
+
+
+def _translate_exception(exc: Exception) -> Exception:
+    """Map an unexpected handler exception to the error to raise.
+
+    The Graph error mapping (``errors.py``, task U2.7) plugs in here; until
+    then the exception is returned unchanged, so FastMCP masks it.
+
+    Args:
+        exc: Exception raised by a handler or validation rule.
+
+    Returns:
+        The exception to raise instead (``exc`` itself for now).
+    """
+    return exc
+
+
 class SpecTool(Tool):
     """A unified tool whose MCP definition is its spec JSON."""
 
     async def run(self, arguments: dict[str, Any]) -> ToolResult:
-        """Run the tool's handler.
+        """Validate the arguments and run the tool's handler.
+
+        Pipeline: JSON Schema (Draft 2020-12, format checked), then the
+        tool's semantic validation rules, then its handler.
 
         Args:
             arguments: Tool call arguments from the client.
 
         Returns:
-            The handler result as ``structuredContent``.
+            The handler result as ``structuredContent`` plus its
+            ``summary`` as the single text block.
 
         Raises:
-            ToolError: If the tool has no handler yet.
+            ToolError: On invalid arguments, a rule or handler
+                ``ValueError``, or when the tool has no handler yet.
         """
-        raise ToolError(f"{self.name} is not implemented yet")
+        args = dict(arguments or {})
+        validator = Draft202012Validator(
+            self.parameters, format_checker=_FORMAT_CHECKER
+        )
+        error = best_match(validator.iter_errors(args))
+        if error is not None:
+            raise ToolError(_schema_error_text(self.name, error))
+
+        try:
+            for rule in handlers.get_validation_rules(self.name):
+                rule(args)
+            handler = handlers.get_handler(self.name)
+            if handler is None:
+                raise ToolError(f"{self.name} is not implemented yet")
+            result = handler(args)
+            if inspect.isawaitable(result):
+                result = await result
+        except ToolError:
+            raise
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+        except Exception as exc:
+            translated = _translate_exception(exc)
+            if translated is exc:
+                raise
+            raise translated from exc
+
+        return ToolResult(
+            content=[TextContent(type="text", text=result["summary"])],
+            structured_content=result,
+        )
 
 
 def _parse_toolsets(toolsets: str | None) -> list[str]:

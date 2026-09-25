@@ -175,26 +175,30 @@ def test_tool_is_fully_specified(name: str) -> None:
         assert rule["rule"] and rule["error"]
 
 
+# Common model mistakes every schema must reject. Shared with
+# tests/test_input_validation.py, which checks the runtime rejection.
+INVALID_INPUT_CASES: list[tuple[str, dict[str, Any]]] = [
+    ("m365_list", {"resource": "mail"}),
+    ("m365_list", {"resource": "email", "limit": 500}),
+    ("m365_list", {"resource": "email", "unknown": 1}),
+    ("m365_delete", {"resource": "email", "id": "x"}),
+    ("email_send", {"mode": "new", "to": "jane@example.com", "confirm": True}),
+    (
+        "email_reply",
+        {"email_id": "x", "mode": "everyone", "body": "hi", "confirm": True},
+    ),
+    (
+        "drive_share",
+        {"item_id": "x", "mode": "link", "link_type": "public", "confirm": True},
+    ),
+    ("calendar_respond", {"event_id": "x", "action": "maybe"}),
+    ("m365_update", {"resource": "email", "id": "x", "email_changes": {}}),
+]
+
+
 def test_invalid_inputs_are_rejected() -> None:
     """Spot-check that schemas reject common model mistakes."""
-    cases = [
-        ("m365_list", {"resource": "mail"}),
-        ("m365_list", {"resource": "email", "limit": 500}),
-        ("m365_list", {"resource": "email", "unknown": 1}),
-        ("m365_delete", {"resource": "email", "id": "x"}),
-        ("email_send", {"mode": "new", "to": "jane@example.com", "confirm": True}),
-        (
-            "email_reply",
-            {"email_id": "x", "mode": "everyone", "body": "hi", "confirm": True},
-        ),
-        (
-            "drive_share",
-            {"item_id": "x", "mode": "link", "link_type": "public", "confirm": True},
-        ),
-        ("calendar_respond", {"event_id": "x", "action": "maybe"}),
-        ("m365_update", {"resource": "email", "id": "x", "email_changes": {}}),
-    ]
-    for name, arguments in cases:
+    for name, arguments in INVALID_INPUT_CASES:
         validator = Draft202012Validator(TOOLS[name]["inputSchema"])
         assert list(validator.iter_errors(arguments)), f"{name} accepted {arguments}"
 

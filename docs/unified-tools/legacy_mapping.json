@@ -1,0 +1,431 @@
+{
+  "spec_version": "1.0.0",
+  "legacy_tool_count": 85,
+  "mapping": [
+    {
+      "legacy_tool": "account_list",
+      "replacement": "account_list",
+      "behaviour_change": "account_type removed"
+    },
+    {
+      "legacy_tool": "account_authenticate",
+      "replacement": "account_auth_begin",
+      "behaviour_change": "opaque auth_session_id; device code stays server-side"
+    },
+    {
+      "legacy_tool": "account_complete_auth",
+      "replacement": "account_auth_complete",
+      "behaviour_change": "session handle instead of flow dump; non-blocking; personal accounts only"
+    },
+    {
+      "legacy_tool": "cache_task_get_status",
+      "replacement": "admin_cache_get(view='task')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "cache_task_list",
+      "replacement": "admin_cache_get(view='tasks')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "cache_get_stats",
+      "replacement": "admin_cache_get(view='stats')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "cache_invalidate",
+      "replacement": "admin_cache_invalidate",
+      "behaviour_change": "typed scope instead of glob pattern"
+    },
+    {
+      "legacy_tool": "cache_warming_status",
+      "replacement": "admin_cache_get(view='warming')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "calendar_list_events",
+      "replacement": "m365_list(resource='event', start, end)",
+      "behaviour_change": "time window instead of days_ahead; recurrences expanded"
+    },
+    {
+      "legacy_tool": "calendar_get_event",
+      "replacement": "m365_get(resource='event')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "calendar_create_event",
+      "replacement": "calendar_create_event",
+      "behaviour_change": "confirm when attendees; calendar_id, is_all_day, reminder, show_as added"
+    },
+    {
+      "legacy_tool": "calendar_update_event",
+      "replacement": "calendar_update_event",
+      "behaviour_change": "typed changes; confirm when attendees affected"
+    },
+    {
+      "legacy_tool": "calendar_delete_event",
+      "replacement": "m365_delete(resource='event')",
+      "behaviour_change": "organiser cancellation automatic; cancellation_message"
+    },
+    {
+      "legacy_tool": "calendar_respond_event",
+      "replacement": "calendar_respond",
+      "behaviour_change": "confirm when a response is sent"
+    },
+    {
+      "legacy_tool": "calendar_check_availability",
+      "replacement": "calendar_find_availability",
+      "behaviour_change": "own calendar only (Graph limitation for personal accounts)"
+    },
+    {
+      "legacy_tool": "calendar_forward_event",
+      "replacement": "calendar_forward",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "calendar_list_calendars",
+      "replacement": "m365_list(resource='calendar')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "calendar_create_calendar",
+      "replacement": "m365_create(resource='calendar')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "calendar_delete_calendar",
+      "replacement": "m365_delete(resource='calendar')",
+      "behaviour_change": "default calendar refused"
+    },
+    {
+      "legacy_tool": "calendar_propose_new_time",
+      "replacement": "calendar_respond(action='tentative'|'decline', proposed_start, proposed_end)",
+      "behaviour_change": "confirm when sending"
+    },
+    {
+      "legacy_tool": "calendar_get_free_busy",
+      "replacement": "calendar_find_availability",
+      "behaviour_change": "own calendar only; free slots added"
+    },
+    {
+      "legacy_tool": "contact_list",
+      "replacement": "m365_list(resource='contact')",
+      "behaviour_change": "optional contact folder"
+    },
+    {
+      "legacy_tool": "contact_get",
+      "replacement": "m365_get(resource='contact')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "contact_create",
+      "replacement": "m365_create(resource='contact')",
+      "behaviour_change": "more fields; optional folder"
+    },
+    {
+      "legacy_tool": "contact_update",
+      "replacement": "m365_update(resource='contact')",
+      "behaviour_change": "typed changes"
+    },
+    {
+      "legacy_tool": "contact_delete",
+      "replacement": "m365_delete(resource='contact')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "contact_create_list",
+      "replacement": "m365_create(resource='contact_folder')",
+      "behaviour_change": "named contact_folder"
+    },
+    {
+      "legacy_tool": "contact_add_to_list",
+      "replacement": "m365_move(resource='contact', destination_id)",
+      "behaviour_change": "real move instead of duplicate; new ID"
+    },
+    {
+      "legacy_tool": "contact_export",
+      "replacement": "m365_get_content(resource='contact', mode='vcard')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "emailfolders_list",
+      "replacement": "m365_list(resource='email_folder')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "emailfolders_get",
+      "replacement": "m365_get(resource='email_folder')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "emailfolders_get_tree",
+      "replacement": "m365_list(resource='email_folder', recursive=true)",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "emailfolders_create",
+      "replacement": "m365_create(resource='email_folder')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "emailfolders_rename",
+      "replacement": "m365_update(resource='email_folder')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "emailfolders_move",
+      "replacement": "m365_move(resource='email_folder')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "emailfolders_delete",
+      "replacement": "m365_delete(resource='email_folder')",
+      "behaviour_change": "well-known folders refused"
+    },
+    {
+      "legacy_tool": "emailfolders_mark_all_as_read",
+      "replacement": "email_folder_mark_all_read",
+      "behaviour_change": "batched; bounded per call"
+    },
+    {
+      "legacy_tool": "emailfolders_empty",
+      "replacement": "email_folder_empty",
+      "behaviour_change": "batched; bounded per call"
+    },
+    {
+      "legacy_tool": "emailrules_list",
+      "replacement": "m365_list(resource='email_rule')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "emailrules_get",
+      "replacement": "m365_get(resource='email_rule')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "emailrules_create",
+      "replacement": "email_rule_manage(action='create')",
+      "behaviour_change": "typed Graph predicate/action set; confirm for forward/redirect/delete"
+    },
+    {
+      "legacy_tool": "emailrules_update",
+      "replacement": "email_rule_manage(action='update')",
+      "behaviour_change": "as create"
+    },
+    {
+      "legacy_tool": "emailrules_delete",
+      "replacement": "m365_delete(resource='email_rule')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "emailrules_move_top",
+      "replacement": "email_rule_manage(action='reorder', position='top')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "emailrules_move_bottom",
+      "replacement": "email_rule_manage(action='reorder', position='bottom')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "emailrules_move_up",
+      "replacement": "email_rule_manage(action='reorder', position='up')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "emailrules_move_down",
+      "replacement": "email_rule_manage(action='reorder', position='down')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "email_list",
+      "replacement": "m365_list(resource='email')",
+      "behaviour_change": "preview instead of body; filters; cursor"
+    },
+    {
+      "legacy_tool": "email_get",
+      "replacement": "m365_get(resource='email')",
+      "behaviour_change": "default body cap 20k characters (was 50k)"
+    },
+    {
+      "legacy_tool": "email_create_draft",
+      "replacement": "email_create_draft",
+      "behaviour_change": "bcc, body_format, importance"
+    },
+    {
+      "legacy_tool": "email_send",
+      "replacement": "email_send(mode='new')",
+      "behaviour_change": "bcc; mode='draft' added"
+    },
+    {
+      "legacy_tool": "email_update",
+      "replacement": "m365_update(resource='email')",
+      "behaviour_change": "typed changes"
+    },
+    {
+      "legacy_tool": "email_delete",
+      "replacement": "m365_delete(resource='email')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "email_move",
+      "replacement": "m365_move(resource='email')",
+      "behaviour_change": "returns new ID"
+    },
+    {
+      "legacy_tool": "email_reply",
+      "replacement": "email_reply(mode='sender')",
+      "behaviour_change": "cc and attachments added"
+    },
+    {
+      "legacy_tool": "email_reply_all",
+      "replacement": "email_reply(mode='all')",
+      "behaviour_change": "cc and attachments added"
+    },
+    {
+      "legacy_tool": "email_forward",
+      "replacement": "email_forward",
+      "behaviour_change": "bcc and attachments added"
+    },
+    {
+      "legacy_tool": "email_get_attachment",
+      "replacement": "m365_get_content(resource='email', mode='download')",
+      "behaviour_change": "no silent overwrite"
+    },
+    {
+      "legacy_tool": "email_mark_read",
+      "replacement": "m365_update(resource='email', email_changes.is_read)",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "email_flag",
+      "replacement": "m365_update(resource='email', email_changes.flag)",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "email_add_category",
+      "replacement": "m365_update(resource='email', email_changes.categories_add)",
+      "behaviour_change": "remove/set also available"
+    },
+    {
+      "legacy_tool": "email_archive",
+      "replacement": "m365_move(resource='email', destination_id='archive')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "file_list",
+      "replacement": "m365_list(resource='drive_item', item_type='file')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "file_get",
+      "replacement": "m365_get(resource='drive_item') + m365_get_content(mode='download')",
+      "behaviour_change": "details and download split"
+    },
+    {
+      "legacy_tool": "file_create",
+      "replacement": "drive_upload(parent_id|parent_path, local_path)",
+      "behaviour_change": "if_exists default fail"
+    },
+    {
+      "legacy_tool": "file_update",
+      "replacement": "drive_upload(item_id, local_path)",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "file_delete",
+      "replacement": "m365_delete(resource='drive_item')",
+      "behaviour_change": "described as recycle bin"
+    },
+    {
+      "legacy_tool": "file_copy",
+      "replacement": "drive_copy",
+      "behaviour_change": "operation handle + status"
+    },
+    {
+      "legacy_tool": "file_move",
+      "replacement": "m365_move(resource='drive_item')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "file_rename",
+      "replacement": "m365_update(resource='drive_item', drive_item_changes.name)",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "file_share",
+      "replacement": "drive_share(mode='link')",
+      "behaviour_change": "confirm; no default scope; invite mode added"
+    },
+    {
+      "legacy_tool": "file_download_url",
+      "replacement": "m365_get_content(resource='drive_item', mode='download_url')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "folder_list",
+      "replacement": "m365_list(resource='drive_item', item_type='folder')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "folder_get",
+      "replacement": "m365_get(resource='drive_item')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "folder_get_tree",
+      "replacement": "m365_list(resource='drive_item', item_type='folder', recursive=true)",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "folder_create",
+      "replacement": "m365_create(resource='drive_item', drive_folder)",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "folder_delete",
+      "replacement": "m365_delete(resource='drive_item')",
+      "behaviour_change": "recycle bin"
+    },
+    {
+      "legacy_tool": "folder_rename",
+      "replacement": "m365_update(resource='drive_item')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "folder_move",
+      "replacement": "m365_move(resource='drive_item')",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "search_files",
+      "replacement": "m365_search(resources=['drive_item'])",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "search_emails",
+      "replacement": "m365_search(resources=['email'])",
+      "behaviour_change": "whole mailbox via server-side $search"
+    },
+    {
+      "legacy_tool": "search_events",
+      "replacement": "m365_search(resources=['event'])",
+      "behaviour_change": "explicit window"
+    },
+    {
+      "legacy_tool": "search_contacts",
+      "replacement": "m365_search(resources=['contact'])",
+      "behaviour_change": null
+    },
+    {
+      "legacy_tool": "search_unified",
+      "replacement": "m365_search(resources=[...])",
+      "behaviour_change": "Search API path removed"
+    },
+    {
+      "legacy_tool": "server_get_version",
+      "replacement": "admin_server_info",
+      "behaviour_change": null
+    }
+  ]
+}

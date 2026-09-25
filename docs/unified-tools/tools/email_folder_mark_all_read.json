@@ -1,0 +1,105 @@
+{
+  "spec_version": "1.0.0",
+  "name": "email_folder_mark_all_read",
+  "title": "Mark Folder Read",
+  "description": "Mark every unread message in one mail folder as read, up to max_messages per call. If remaining_unread is above zero, call again. Use m365_update for a single message.",
+  "annotations": {
+    "title": "Mark Folder Read",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "email",
+    "tier": "extended",
+    "safety_level": "moderate",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "folder_id": {
+        "type": "string",
+        "description": "Mail folder ID, or one of the aliases inbox, sent, drafts, deleted, junk, archive.",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "max_messages": {
+        "type": "integer",
+        "description": "Most messages to change in this call.",
+        "minimum": 1,
+        "maximum": 5000,
+        "default": 1000
+      }
+    },
+    "required": [
+      "folder_id"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Progress.",
+    "properties": {
+      "folder_id": {
+        "type": "string"
+      },
+      "marked": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "remaining_unread": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "folder_id",
+      "marked",
+      "remaining_unread",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "GET /me/mailFolders/{id}/messages?$filter=isRead eq false&$select=id (paged)",
+    "POST /$batch (20 × PATCH /me/messages/{id} {isRead:true} per batch)"
+  ],
+  "validation_rules": [
+    {
+      "rule": "Unknown aliases rejected.",
+      "error": "Invalid folder_id 'Inbx': unknown folder alias"
+    }
+  ],
+  "replaces": [
+    "emailfolders_mark_all_as_read"
+  ],
+  "examples": [
+    {
+      "title": "Mark junk read",
+      "input": {
+        "folder_id": "junk"
+      },
+      "output": {
+        "folder_id": "AQMkADAwATM3ZmYAZS1kJUNK",
+        "marked": 42,
+        "remaining_unread": 0,
+        "summary": "Marked 42 messages read in Junk Email."
+      }
+    }
+  ]
+}

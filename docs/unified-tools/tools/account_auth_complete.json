@@ -1,0 +1,112 @@
+{
+  "spec_version": "1.0.0",
+  "name": "account_auth_complete",
+  "title": "Finish Sign-in",
+  "description": "Finish a sign-in started with account_auth_begin, after the user has entered the code. Returns pending (try again shortly) or the signed-in account. Work or school accounts are rejected.",
+  "annotations": {
+    "title": "Finish Sign-in",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "account",
+    "tier": "admin",
+    "safety_level": "moderate",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "auth_session_id": {
+        "type": "string",
+        "description": "From account_auth_begin.",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "required": [
+      "auth_session_id"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Sign-in state.",
+    "properties": {
+      "status": {
+        "enum": [
+          "pending",
+          "success"
+        ]
+      },
+      "account": {
+        "anyOf": [
+          {
+            "type": "object",
+            "description": "Signed-in account.",
+            "properties": {
+              "account_id": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "account_id",
+              "email"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "status",
+      "account",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "MSAL acquire_token_by_device_flow (single poll, exit_condition=lambda f: True)"
+  ],
+  "validation_rules": [
+    {
+      "rule": "Unknown or expired sessions are rejected.",
+      "error": "Invalid auth_session_id: unknown or expired. Expected: start again with account_auth_begin"
+    },
+    {
+      "rule": "Work/school accounts are rejected.",
+      "error": "Only personal Microsoft accounts are supported"
+    }
+  ],
+  "replaces": [
+    "account_complete_auth"
+  ],
+  "examples": [
+    {
+      "title": "Still waiting",
+      "input": {
+        "auth_session_id": "as_91b2"
+      },
+      "output": {
+        "status": "pending",
+        "account": null,
+        "summary": "Waiting for the user to enter the code."
+      }
+    }
+  ]
+}

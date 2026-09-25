@@ -1,0 +1,170 @@
+{
+  "spec_version": "1.0.0",
+  "name": "email_forward",
+  "title": "Forward Email",
+  "description": "Forward an email to recipients the user names, with an optional note. Requires confirm=true after the user approves. Never infer recipients from other context.",
+  "annotations": {
+    "title": "Forward Email",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "email",
+    "tier": "core",
+    "safety_level": "dangerous",
+    "confirm": "always",
+    "confirm_rule": "Always required."
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "email_id": {
+        "type": "string",
+        "description": "Email to forward.",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "to": {
+        "type": "array",
+        "description": "Recipients.",
+        "items": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 320,
+          "description": "Email address, e.g. jane@example.com."
+        },
+        "maxItems": 500,
+        "uniqueItems": true,
+        "minItems": 1
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "cc": {
+        "type": "array",
+        "description": "Cc recipients.",
+        "items": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 320,
+          "description": "Email address, e.g. jane@example.com."
+        },
+        "maxItems": 500,
+        "uniqueItems": true
+      },
+      "bcc": {
+        "type": "array",
+        "description": "Bcc recipients.",
+        "items": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 320,
+          "description": "Email address, e.g. jane@example.com."
+        },
+        "maxItems": 500,
+        "uniqueItems": true
+      },
+      "comment": {
+        "type": "string",
+        "description": "Note above the forwarded message.",
+        "maxLength": 100000
+      },
+      "attachments": {
+        "type": "array",
+        "description": "Local files to attach: at most 10, each at most 25 MB.",
+        "items": {
+          "type": "string",
+          "description": "Local file path inside the server's allowed folders. Hidden and secret files are refused.",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "maxItems": 10,
+        "uniqueItems": true
+      },
+      "confirm": {
+        "type": "boolean",
+        "description": "Must be true to forward this email; set only after the user approves.",
+        "default": false
+      }
+    },
+    "required": [
+      "email_id",
+      "to",
+      "confirm"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Forward confirmation.",
+    "properties": {
+      "status": {
+        "const": "sent"
+      },
+      "forwarded_id": {
+        "type": "string"
+      },
+      "recipient_count": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "status",
+      "forwarded_id",
+      "recipient_count",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "plain: POST /me/messages/{id}/forward {toRecipients, comment}",
+    "with cc/bcc/attachments: POST /createForward → PATCH → attachments → POST /send"
+  ],
+  "validation_rules": [
+    {
+      "rule": "confirm must be true.",
+      "error": "Invalid confirm 'False': forward requires confirm=True to proceed. Expected: Explicit user confirmation"
+    },
+    {
+      "rule": "Never retried after an ambiguous failure.",
+      "error": "Outcome unknown: check Sent Items before retrying"
+    }
+  ],
+  "replaces": [
+    "email_forward"
+  ],
+  "examples": [
+    {
+      "title": "Forward with a note",
+      "input": {
+        "email_id": "AQMkADAwATM3ZmYAZS1k",
+        "to": [
+          "accountant@example.com"
+        ],
+        "comment": "For our records.",
+        "confirm": true
+      },
+      "output": {
+        "status": "sent",
+        "forwarded_id": "AQMkADAwATM3ZmYAZS1k",
+        "recipient_count": 1,
+        "summary": "Forwarded 'Your September invoice' to 1 recipient."
+      }
+    }
+  ]
+}

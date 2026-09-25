@@ -1,0 +1,221 @@
+{
+  "spec_version": "1.0.0",
+  "name": "email_create_draft",
+  "title": "Create Email Draft",
+  "description": "Create an unsent email draft to review, then send later with email_send(mode='draft'). Sends nothing. Returns the draft ID.",
+  "annotations": {
+    "title": "Create Email Draft",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "email",
+    "tier": "core",
+    "safety_level": "moderate",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "to": {
+        "type": "array",
+        "description": "Recipients (To).",
+        "items": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 320,
+          "description": "Email address, e.g. jane@example.com."
+        },
+        "maxItems": 500,
+        "uniqueItems": true,
+        "minItems": 1
+      },
+      "cc": {
+        "type": "array",
+        "description": "Cc recipients.",
+        "items": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 320,
+          "description": "Email address, e.g. jane@example.com."
+        },
+        "maxItems": 500,
+        "uniqueItems": true
+      },
+      "bcc": {
+        "type": "array",
+        "description": "Bcc recipients.",
+        "items": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 320,
+          "description": "Email address, e.g. jane@example.com."
+        },
+        "maxItems": 500,
+        "uniqueItems": true
+      },
+      "subject": {
+        "type": "string",
+        "description": "Subject line.",
+        "minLength": 1,
+        "maxLength": 998
+      },
+      "body": {
+        "type": "string",
+        "description": "Message body.",
+        "maxLength": 1000000
+      },
+      "body_format": {
+        "type": "string",
+        "enum": [
+          "text",
+          "html"
+        ],
+        "description": "Format of the body text you supply.",
+        "default": "text"
+      },
+      "attachments": {
+        "type": "array",
+        "description": "Local files to attach: at most 10, each at most 25 MB.",
+        "items": {
+          "type": "string",
+          "description": "Local file path inside the server's allowed folders. Hidden and secret files are refused.",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "maxItems": 10,
+        "uniqueItems": true
+      },
+      "importance": {
+        "type": "string",
+        "enum": [
+          "low",
+          "normal",
+          "high"
+        ],
+        "description": "Message importance."
+      }
+    },
+    "required": [
+      "to",
+      "subject",
+      "body"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "The created draft.",
+    "properties": {
+      "draft_id": {
+        "type": "string"
+      },
+      "subject": {
+        "type": "string"
+      },
+      "to": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "cc": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "bcc": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "attachment_count": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "web_link": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "draft_id",
+      "subject",
+      "to",
+      "cc",
+      "bcc",
+      "attachment_count",
+      "web_link",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "POST /me/messages (draft)",
+    "attachments < 3 MB: POST /me/messages/{id}/attachments",
+    "attachments ≥ 3 MB: POST /me/messages/{id}/attachments/createUploadSession then chunked PUT (no Authorization header)"
+  ],
+  "validation_rules": [
+    {
+      "rule": "At most 500 unique recipients across to, cc and bcc.",
+      "error": "Invalid to: more than 500 recipients in total"
+    },
+    {
+      "rule": "Attachments: at most 10 files, 25 MB each, inside allowed roots.",
+      "error": "Invalid attachments: 'report.zip' is 31 MB. Expected: at most 25 MB"
+    }
+  ],
+  "replaces": [
+    "email_create_draft"
+  ],
+  "examples": [
+    {
+      "title": "Draft a note",
+      "input": {
+        "to": [
+          "jane@example.com"
+        ],
+        "subject": "Weekend",
+        "body": "Are you free Saturday?"
+      },
+      "output": {
+        "draft_id": "AQMkADAwATM3ZmYAZS1kDRFT",
+        "subject": "Weekend",
+        "to": [
+          "jane@example.com"
+        ],
+        "cc": [],
+        "bcc": [],
+        "attachment_count": 0,
+        "web_link": "https://outlook.live.com/owa/?ItemID=AQMkADAwATM3ZmYAZS1kDRFT",
+        "summary": "Draft 'Weekend' created for jane@example.com (not sent)."
+      }
+    }
+  ]
+}

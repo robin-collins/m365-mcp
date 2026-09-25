@@ -1,0 +1,175 @@
+{
+  "spec_version": "1.0.0",
+  "name": "email_reply",
+  "title": "Reply to Email",
+  "description": "Reply to an email, either to the sender only (mode='sender') or to everyone on it (mode='all'). Requires confirm=true after the user approves the reply. Returns the conversation the reply joined.",
+  "annotations": {
+    "title": "Reply to Email",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "email",
+    "tier": "core",
+    "safety_level": "dangerous",
+    "confirm": "always",
+    "confirm_rule": "Always required."
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "email_id": {
+        "type": "string",
+        "description": "Email to reply to.",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "sender",
+          "all"
+        ],
+        "description": "sender: reply to the sender. all: reply all."
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "body": {
+        "type": "string",
+        "description": "Reply text.",
+        "minLength": 1,
+        "maxLength": 1000000
+      },
+      "body_format": {
+        "type": "string",
+        "enum": [
+          "text",
+          "html"
+        ],
+        "description": "Format of the body text you supply.",
+        "default": "text"
+      },
+      "cc": {
+        "type": "array",
+        "description": "Extra Cc recipients.",
+        "items": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 320,
+          "description": "Email address, e.g. jane@example.com."
+        },
+        "maxItems": 500,
+        "uniqueItems": true
+      },
+      "attachments": {
+        "type": "array",
+        "description": "Local files to attach: at most 10, each at most 25 MB.",
+        "items": {
+          "type": "string",
+          "description": "Local file path inside the server's allowed folders. Hidden and secret files are refused.",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "maxItems": 10,
+        "uniqueItems": true
+      },
+      "confirm": {
+        "type": "boolean",
+        "description": "Must be true to send this reply; set only after the user approves.",
+        "default": false
+      }
+    },
+    "required": [
+      "email_id",
+      "mode",
+      "body",
+      "confirm"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Reply confirmation.",
+    "properties": {
+      "status": {
+        "const": "sent"
+      },
+      "mode": {
+        "enum": [
+          "sender",
+          "all"
+        ]
+      },
+      "in_reply_to": {
+        "type": "string"
+      },
+      "conversation_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "status",
+      "mode",
+      "in_reply_to",
+      "conversation_id",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "plain: POST /me/messages/{id}/reply or /replyAll {comment}",
+    "with cc/attachments: POST /createReply or /createReplyAll → PATCH → attachments → POST /send"
+  ],
+  "validation_rules": [
+    {
+      "rule": "confirm must be true.",
+      "error": "Invalid confirm 'False': reply requires confirm=True to proceed. Expected: Explicit user confirmation"
+    },
+    {
+      "rule": "Never retried after an ambiguous failure.",
+      "error": "Outcome unknown: check Sent Items before retrying"
+    }
+  ],
+  "replaces": [
+    "email_reply",
+    "email_reply_all"
+  ],
+  "examples": [
+    {
+      "title": "Reply all",
+      "input": {
+        "email_id": "AQMkADAwATM3ZmYAZS1k",
+        "mode": "all",
+        "body": "Tuesday works for me.",
+        "confirm": true
+      },
+      "output": {
+        "status": "sent",
+        "mode": "all",
+        "in_reply_to": "AQMkADAwATM3ZmYAZS1k",
+        "conversation_id": "AQQkADAwATM3ZmYAZS1",
+        "summary": "Replied to all on 'Planning meeting'."
+      }
+    }
+  ]
+}

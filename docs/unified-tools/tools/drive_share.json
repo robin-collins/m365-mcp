@@ -1,0 +1,246 @@
+{
+  "spec_version": "1.0.0",
+  "name": "drive_share",
+  "title": "Share File",
+  "description": "Share a OneDrive file or folder by link (mode='link') or by inviting named people (mode='invite'). A view or edit link works for anyone who has it. Always requires confirm=true after the user approves who gets access. Returns the link or the invitation results.",
+  "annotations": {
+    "title": "Share File",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "drive",
+    "tier": "extended",
+    "safety_level": "dangerous",
+    "confirm": "always",
+    "confirm_rule": "Always required."
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "item_id": {
+        "type": "string",
+        "description": "File or folder to share (not the OneDrive root).",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "link",
+          "invite"
+        ],
+        "description": "Share by link or invite specific people."
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "link_type": {
+        "type": "string",
+        "enum": [
+          "view",
+          "edit",
+          "embed"
+        ],
+        "description": "link: view (read-only), edit, or embed (files only)."
+      },
+      "recipients": {
+        "type": "array",
+        "description": "invite: people to share with.",
+        "items": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 320,
+          "description": "Email address, e.g. jane@example.com."
+        },
+        "maxItems": 50,
+        "uniqueItems": true,
+        "minItems": 1
+      },
+      "role": {
+        "type": "string",
+        "enum": [
+          "read",
+          "write"
+        ],
+        "description": "invite: access level."
+      },
+      "message": {
+        "type": "string",
+        "description": "invite: note in the invitation email.",
+        "maxLength": 2000
+      },
+      "send_invitation": {
+        "type": "boolean",
+        "description": "invite: email the recipients.",
+        "default": true
+      },
+      "require_sign_in": {
+        "type": "boolean",
+        "description": "invite: recipients must sign in.",
+        "default": true
+      },
+      "password": {
+        "type": "string",
+        "description": "Optional password for the link or invitation.",
+        "minLength": 4,
+        "maxLength": 256
+      },
+      "expires_at": {
+        "type": "string",
+        "description": "Optional expiry (invite expiry needs a premium OneDrive).",
+        "format": "date-time"
+      },
+      "confirm": {
+        "type": "boolean",
+        "description": "Must be true to grant this access; set only after the user approves.",
+        "default": false
+      }
+    },
+    "required": [
+      "item_id",
+      "mode",
+      "confirm"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Sharing result. created=false means an existing link of that type was returned.",
+    "properties": {
+      "mode": {
+        "enum": [
+          "link",
+          "invite"
+        ]
+      },
+      "permission_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "link_url": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "created": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "recipients": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "description": "Per-recipient result.",
+          "properties": {
+            "email": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "granted",
+                "failed"
+              ]
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "email",
+            "status",
+            "error"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "mode",
+      "permission_ids",
+      "link_url",
+      "created",
+      "recipients",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "link: POST /me/drive/items/{id}/createLink {type, scope:'anonymous', password?, expirationDateTime?}",
+    "invite: POST /me/drive/items/{id}/invite {recipients, roles, message, sendInvitation, requireSignIn, password?, expirationDateTime?} (207 partial success mapped per recipient)"
+  ],
+  "validation_rules": [
+    {
+      "rule": "link needs link_type; invite needs recipients and role; fields of the other mode are rejected.",
+      "error": "Invalid recipients: only valid with mode='invite'"
+    },
+    {
+      "rule": "embed links only for files.",
+      "error": "Invalid link_type 'embed': only files can be embedded"
+    },
+    {
+      "rule": "The OneDrive root cannot be shared.",
+      "error": "Invalid item_id: the OneDrive root cannot be shared"
+    },
+    {
+      "rule": "confirm must be true.",
+      "error": "Invalid confirm 'False': sharing requires confirm=True to proceed. Expected: Explicit user confirmation"
+    }
+  ],
+  "replaces": [
+    "file_share"
+  ],
+  "examples": [
+    {
+      "title": "View-only link",
+      "input": {
+        "item_id": "01ABCDEF6789",
+        "mode": "link",
+        "link_type": "view",
+        "confirm": true
+      },
+      "output": {
+        "mode": "link",
+        "permission_ids": [
+          "aTowIy5mfG1lbWJlcnNoaXA"
+        ],
+        "link_url": "https://1drv.ms/x/s!AbCdEf",
+        "created": true,
+        "recipients": [],
+        "summary": "Created a view-only link to budget.xlsx (anyone with the link can open it)."
+      }
+    }
+  ]
+}

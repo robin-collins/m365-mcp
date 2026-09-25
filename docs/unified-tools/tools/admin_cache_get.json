@@ -1,0 +1,321 @@
+{
+  "spec_version": "1.0.0",
+  "name": "admin_cache_get",
+  "title": "Cache Status",
+  "description": "Inspect the local encrypted cache: overall statistics (view='stats'), background tasks (view='tasks'), one task (view='task') or cache warming progress (view='warming').",
+  "annotations": {
+    "title": "Cache Status",
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "admin",
+    "tier": "admin",
+    "safety_level": "safe",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "view": {
+        "type": "string",
+        "enum": [
+          "stats",
+          "tasks",
+          "task",
+          "warming"
+        ],
+        "description": "What to show."
+      },
+      "task_id": {
+        "type": "string",
+        "description": "view='task': task ID.",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "failed"
+        ],
+        "description": "view='tasks': filter by status."
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "limit": {
+        "type": "integer",
+        "description": "view='tasks': most tasks to return.",
+        "minimum": 1,
+        "maximum": 200,
+        "default": 50
+      }
+    },
+    "required": [
+      "view"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Cache information; fields for other views are null. view='task' returns a one-element tasks list.",
+    "properties": {
+      "view": {
+        "enum": [
+          "stats",
+          "tasks",
+          "task",
+          "warming"
+        ]
+      },
+      "stats": {
+        "anyOf": [
+          {
+            "type": "object",
+            "description": "Cache statistics.",
+            "properties": {
+              "entry_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "total_bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "usage_percent": {
+                "type": "number",
+                "minimum": 0
+              },
+              "total_hits": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "by_resource": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object"
+                }
+              }
+            },
+            "required": [
+              "entry_count",
+              "total_bytes",
+              "max_bytes",
+              "usage_percent",
+              "total_hits",
+              "by_resource"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "tasks": {
+        "anyOf": [
+          {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Background task.",
+              "properties": {
+                "task_id": {
+                  "type": "string"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "queued",
+                    "running",
+                    "completed",
+                    "failed"
+                  ]
+                },
+                "priority": {
+                  "type": "integer"
+                },
+                "retry_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "started_at": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "completed_at": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "error": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "task_id",
+                "operation",
+                "status",
+                "priority",
+                "retry_count",
+                "created_at",
+                "started_at",
+                "completed_at",
+                "error"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "warming": {
+        "anyOf": [
+          {
+            "type": "object",
+            "description": "Warming progress.",
+            "properties": {
+              "status": {
+                "type": "string"
+              },
+              "is_warming": {
+                "type": "boolean"
+              },
+              "operations_total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "operations_completed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "operations_skipped": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "operations_failed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "progress_percent": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              }
+            },
+            "required": [
+              "status",
+              "is_warming",
+              "operations_total",
+              "operations_completed",
+              "operations_skipped",
+              "operations_failed",
+              "progress_percent"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "view",
+      "stats",
+      "tasks",
+      "warming",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "None (local cache database)."
+  ],
+  "validation_rules": [
+    {
+      "rule": "view='task' requires task_id.",
+      "error": "Invalid task_id: required for view='task'"
+    }
+  ],
+  "replaces": [
+    "cache_get_stats",
+    "cache_task_list",
+    "cache_task_get_status",
+    "cache_warming_status"
+  ],
+  "examples": [
+    {
+      "title": "Warming status",
+      "input": {
+        "view": "warming"
+      },
+      "output": {
+        "view": "warming",
+        "stats": null,
+        "tasks": null,
+        "warming": {
+          "status": "disabled",
+          "is_warming": false,
+          "operations_total": 0,
+          "operations_completed": 0,
+          "operations_skipped": 0,
+          "operations_failed": 0,
+          "progress_percent": 0.0
+        },
+        "summary": "Cache warming is disabled."
+      }
+    }
+  ]
+}

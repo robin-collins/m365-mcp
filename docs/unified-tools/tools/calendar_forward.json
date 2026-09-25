@@ -1,0 +1,126 @@
+{
+  "spec_version": "1.0.0",
+  "name": "calendar_forward",
+  "title": "Forward Invitation",
+  "description": "Forward a meeting invitation to people the user names, with an optional note. Requires confirm=true after the user approves.",
+  "annotations": {
+    "title": "Forward Invitation",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "calendar",
+    "tier": "extended",
+    "safety_level": "dangerous",
+    "confirm": "always",
+    "confirm_rule": "Always required."
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "event_id": {
+        "type": "string",
+        "description": "Event to forward.",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "to": {
+        "type": "array",
+        "description": "Recipients.",
+        "items": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 320,
+          "description": "Email address, e.g. jane@example.com."
+        },
+        "maxItems": 100,
+        "uniqueItems": true,
+        "minItems": 1
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "comment": {
+        "type": "string",
+        "description": "Note to include.",
+        "maxLength": 2000
+      },
+      "confirm": {
+        "type": "boolean",
+        "description": "Must be true to forward this invitation; set only after the user approves.",
+        "default": false
+      }
+    },
+    "required": [
+      "event_id",
+      "to",
+      "confirm"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Forward result.",
+    "properties": {
+      "event_id": {
+        "type": "string"
+      },
+      "status": {
+        "const": "forwarded"
+      },
+      "recipient_count": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "event_id",
+      "status",
+      "recipient_count",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "POST /me/events/{id}/forward {toRecipients, comment}"
+  ],
+  "validation_rules": [
+    {
+      "rule": "confirm must be true.",
+      "error": "Invalid confirm 'False': forward invitation requires confirm=True to proceed. Expected: Explicit user confirmation"
+    }
+  ],
+  "replaces": [
+    "calendar_forward_event"
+  ],
+  "examples": [
+    {
+      "title": "Forward to a friend",
+      "input": {
+        "event_id": "AAMkADAwATM3INV",
+        "to": [
+          "sam@example.com"
+        ],
+        "confirm": true
+      },
+      "output": {
+        "event_id": "AAMkADAwATM3INV",
+        "status": "forwarded",
+        "recipient_count": 1,
+        "summary": "Forwarded 'Book club' to 1 recipient."
+      }
+    }
+  ]
+}

@@ -1,0 +1,225 @@
+{
+  "spec_version": "1.0.0",
+  "name": "m365_get_content",
+  "title": "Get Content",
+  "description": "Get the content of an item rather than its details: save a OneDrive file or an email attachment to a local file (mode='download'), get a temporary download link for a OneDrive file (mode='download_url'), or export a contact as a vCard (mode='vcard'). Writes to the local disk only inside the allowed folders. Use m365_get for item details.",
+  "annotations": {
+    "title": "Get Content",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "m365",
+    "tier": "core",
+    "safety_level": "moderate",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "resource": {
+        "type": "string",
+        "enum": [
+          "drive_item",
+          "email",
+          "contact"
+        ],
+        "description": "Type of item."
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "id": {
+        "type": "string",
+        "description": "OneDrive item ID, email ID or contact ID.",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "download",
+          "download_url",
+          "vcard"
+        ],
+        "description": "download: drive_item file or email attachment to save_path. download_url: drive_item file only. vcard: contact only."
+      },
+      "attachment_id": {
+        "type": "string",
+        "description": "email + download only: attachment ID from m365_get(resource='email').",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "save_path": {
+        "type": "string",
+        "description": "Local file path inside the server's allowed folders. Hidden and secret files are refused.",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "overwrite": {
+        "type": "boolean",
+        "description": "Replace save_path if it already exists.",
+        "default": false
+      }
+    },
+    "required": [
+      "resource",
+      "id",
+      "mode"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Content result; fields that do not apply to the mode are null. download_url is a short-lived pre-authenticated link: treat it as a secret.",
+    "properties": {
+      "resource": {
+        "enum": [
+          "drive_item",
+          "email",
+          "contact"
+        ]
+      },
+      "id": {
+        "type": "string"
+      },
+      "mode": {
+        "enum": [
+          "download",
+          "download_url",
+          "vcard"
+        ]
+      },
+      "saved_path": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "size": {
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 0
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "mime_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "download_url": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "vcard": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "resource",
+      "id",
+      "mode",
+      "saved_path",
+      "size",
+      "mime_type",
+      "download_url",
+      "vcard",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "drive_item download: GET /me/drive/items/{id} then stream @microsoft.graph.downloadUrl to save_path (≤ MCP_FILE_DOWNLOAD_MAX_MB)",
+    "drive_item download_url: GET /me/drive/items/{id}?$select=id,name,size,@microsoft.graph.downloadUrl",
+    "email download: GET /me/messages/{id}/attachments/{attachment_id} (fileAttachment, ≤ 25 MB)",
+    "contact vcard: GET /me/contacts/{id}, rendered as vCard 3.0"
+  ],
+  "validation_rules": [
+    {
+      "rule": "mode must suit the resource (download: drive_item or email; download_url: drive_item; vcard: contact).",
+      "error": "Invalid mode 'vcard': not valid for resource 'drive_item'. Expected: download or download_url"
+    },
+    {
+      "rule": "save_path is required for download and must be inside the allowed roots and not deny-listed.",
+      "error": "Invalid save_path: outside allowed folders. Expected: a path under the working directory, temp directory or MCP_FILE_ALLOWED_ROOTS"
+    },
+    {
+      "rule": "attachment_id is required for email download.",
+      "error": "Invalid attachment_id: required for resource='email'"
+    },
+    {
+      "rule": "Existing files are not replaced unless overwrite=true.",
+      "error": "Invalid save_path: file exists. Expected: overwrite=true or another path"
+    },
+    {
+      "rule": "Folders cannot be downloaded.",
+      "error": "Invalid id: item is a folder. Expected: a file"
+    }
+  ],
+  "replaces": [
+    "file_get (download)",
+    "file_download_url",
+    "email_get_attachment",
+    "contact_export"
+  ],
+  "examples": [
+    {
+      "title": "Export a contact",
+      "input": {
+        "resource": "contact",
+        "id": "AQMkADAwATM3ZmYAZS1kCON",
+        "mode": "vcard"
+      },
+      "output": {
+        "resource": "contact",
+        "id": "AQMkADAwATM3ZmYAZS1kCON",
+        "mode": "vcard",
+        "saved_path": null,
+        "size": null,
+        "mime_type": "text/vcard",
+        "download_url": null,
+        "vcard": "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Jane Citizen\r\nEND:VCARD",
+        "summary": "Exported Jane Citizen as vCard."
+      }
+    }
+  ]
+}

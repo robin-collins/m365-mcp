@@ -1,0 +1,174 @@
+{
+  "spec_version": "1.0.0",
+  "name": "calendar_respond",
+  "title": "Respond to Invitation",
+  "description": "Accept, tentatively accept or decline a meeting invitation, optionally proposing a new time (with tentative or decline). When a response is emailed to the organiser (the default), confirm=true is required.",
+  "annotations": {
+    "title": "Respond to Invitation",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "calendar",
+    "tier": "core",
+    "safety_level": "dangerous",
+    "confirm": "conditional",
+    "confirm_rule": "Required when send_response is true (the organiser is emailed)."
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "event_id": {
+        "type": "string",
+        "description": "Invitation's event ID.",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "action": {
+        "type": "string",
+        "enum": [
+          "accept",
+          "tentative",
+          "decline"
+        ],
+        "description": "Your response."
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "comment": {
+        "type": "string",
+        "description": "Message to the organiser.",
+        "maxLength": 2000
+      },
+      "send_response": {
+        "type": "boolean",
+        "description": "Email the response to the organiser.",
+        "default": true
+      },
+      "proposed_start": {
+        "type": "string",
+        "description": "Proposed new start (tentative or decline only).",
+        "format": "date-time"
+      },
+      "proposed_end": {
+        "type": "string",
+        "description": "Proposed new end (tentative or decline only).",
+        "format": "date-time"
+      },
+      "confirm": {
+        "type": "boolean",
+        "description": "Must be true to send this response to the organiser; set only after the user approves.",
+        "default": false
+      }
+    },
+    "required": [
+      "event_id",
+      "action"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Response result.",
+    "properties": {
+      "event_id": {
+        "type": "string"
+      },
+      "action": {
+        "enum": [
+          "accept",
+          "tentative",
+          "decline"
+        ]
+      },
+      "response_sent": {
+        "type": "boolean"
+      },
+      "proposed_start": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "date-time"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "proposed_end": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "date-time"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "event_id",
+      "action",
+      "response_sent",
+      "proposed_start",
+      "proposed_end",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "POST /me/events/{id}/accept | /tentativelyAccept | /decline {comment, sendResponse, proposedNewTime?}"
+  ],
+  "validation_rules": [
+    {
+      "rule": "proposed_start and proposed_end come together, only with tentative or decline, end after start.",
+      "error": "Invalid proposed_end: required with proposed_start"
+    },
+    {
+      "rule": "You cannot respond to your own meeting.",
+      "error": "You organise this meeting; there is nothing to respond to"
+    },
+    {
+      "rule": "confirm required when send_response is true.",
+      "error": "Invalid confirm 'False': sending a response requires confirm=True to proceed. Expected: Explicit user confirmation"
+    }
+  ],
+  "replaces": [
+    "calendar_respond_event",
+    "calendar_propose_new_time"
+  ],
+  "examples": [
+    {
+      "title": "Decline and propose another time",
+      "input": {
+        "event_id": "AAMkADAwATM3INV",
+        "action": "decline",
+        "comment": "Can we do Thursday?",
+        "proposed_start": "2026-10-08T14:00:00+09:30",
+        "proposed_end": "2026-10-08T15:00:00+09:30",
+        "confirm": true
+      },
+      "output": {
+        "event_id": "AAMkADAwATM3INV",
+        "action": "decline",
+        "response_sent": true,
+        "proposed_start": "2026-10-08T14:00:00+09:30",
+        "proposed_end": "2026-10-08T15:00:00+09:30",
+        "summary": "Declined 'Book club' and proposed 8 Oct 14:00–15:00."
+      }
+    }
+  ]
+}

@@ -1,0 +1,116 @@
+{
+  "spec_version": "1.0.0",
+  "name": "email_folder_empty",
+  "title": "Empty Mail Folder",
+  "description": "Delete all messages in one mail folder, such as Junk Email or Deleted Items, up to max_messages per call. Subfolders are kept. Requires confirm=true after the user approves. Deleted messages cannot be restored with these tools.",
+  "annotations": {
+    "title": "Empty Mail Folder",
+    "readOnlyHint": false,
+    "destructiveHint": true,
+    "idempotentHint": true,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "email",
+    "tier": "extended",
+    "safety_level": "critical",
+    "confirm": "always",
+    "confirm_rule": "Always required."
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "folder_id": {
+        "type": "string",
+        "description": "Mail folder ID, or one of the aliases inbox, sent, drafts, deleted, junk, archive.",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "max_messages": {
+        "type": "integer",
+        "description": "Most messages to delete in this call.",
+        "minimum": 1,
+        "maximum": 5000,
+        "default": 1000
+      },
+      "confirm": {
+        "type": "boolean",
+        "description": "Must be true to delete every message in this folder; set only after the user approves.",
+        "default": false
+      }
+    },
+    "required": [
+      "folder_id",
+      "confirm"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Progress.",
+    "properties": {
+      "folder_id": {
+        "type": "string"
+      },
+      "deleted": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "remaining": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "folder_id",
+      "deleted",
+      "remaining",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "GET /me/mailFolders/{id}/messages?$select=id (paged)",
+    "POST /$batch (20 × DELETE /me/messages/{id} per batch)"
+  ],
+  "validation_rules": [
+    {
+      "rule": "confirm must be true.",
+      "error": "Invalid confirm 'False': empty folder requires confirm=True to proceed. Expected: Explicit user confirmation"
+    },
+    {
+      "rule": "Partial batch failures are reported, not retried blindly.",
+      "error": "Deleted 180 of 200; 20 failed (see remaining). Call again to retry the rest"
+    }
+  ],
+  "replaces": [
+    "emailfolders_empty"
+  ],
+  "examples": [
+    {
+      "title": "Empty Deleted Items",
+      "input": {
+        "folder_id": "deleted",
+        "confirm": true
+      },
+      "output": {
+        "folder_id": "AQMkADAwATM3ZmYAZS1kDEL",
+        "deleted": 318,
+        "remaining": 0,
+        "summary": "Deleted 318 messages from Deleted Items."
+      }
+    }
+  ]
+}

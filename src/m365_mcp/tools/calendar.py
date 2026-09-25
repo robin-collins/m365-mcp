@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from typing import Any
-from zoneinfo import ZoneInfo
 
-from .. import graph
 from ..mcp_instance import mcp
-from .cache_tools import get_cache_manager
+from ..services import calendar as calendar_service
 from ..validators import (
     ValidationError,
     format_validation_error,
@@ -36,59 +33,6 @@ ALLOWED_CALENDAR_UPDATE_KEYS = (
     "body",
     "attendees",
 )
-
-
-def _get_user_email_with_fallback(account_id: str) -> str:
-    """Get user email with fallback chain for profiles missing mail field.
-
-    Implements a fallback strategy:
-    1. Try mail field (primary email)
-    2. Fallback to userPrincipalName (usually email-like)
-    3. Fallback to first item in otherMails array
-    4. Raise ValueError if no email found
-
-    Args:
-        account_id: Microsoft account identifier.
-
-    Returns:
-        User email address.
-
-    Raises:
-        ValueError: If no email address can be determined from user profile.
-    """
-    # Request user info with all possible email fields
-    user_info = graph.request(
-        "GET",
-        "/me?$select=mail,userPrincipalName,otherMails",
-        account_id,
-    )
-
-    if not user_info:
-        raise ValueError("Failed to retrieve user profile information")
-
-    # Try mail field first (primary email)
-    mail = user_info.get("mail")
-    if mail and isinstance(mail, str) and mail.strip():
-        return mail.strip()
-
-    # Fallback to userPrincipalName (usually email format)
-    upn = user_info.get("userPrincipalName")
-    if upn and isinstance(upn, str) and upn.strip():
-        return upn.strip()
-
-    # Fallback to first item in otherMails array
-    other_mails = user_info.get("otherMails")
-    if other_mails and isinstance(other_mails, list) and len(other_mails) > 0:
-        first_other = other_mails[0]
-        if first_other and isinstance(first_other, str) and first_other.strip():
-            return first_other.strip()
-
-    # No email found in any field
-    raise ValueError(
-        "Unable to determine user email address. "
-        "The user profile is missing mail, userPrincipalName, "
-        "and otherMails fields."
-    )
 
 
 # calendar_list_events
@@ -139,77 +83,14 @@ def calendar_list_events(
 
     limit = validate_limit(limit, 1, 200, "limit")
 
-    # Calculate time window
-    now = datetime.now(timezone.utc)
-    end_time = now + timedelta(days=days_ahead)
-
-    # Build cache parameters
-    cache_params = {
-        "days_ahead": days_ahead,
-        "include_details": include_details,
-        "limit": limit,
-    }
-
-    # Check cache if enabled
-    if use_cache and not force_refresh:
-        try:
-            cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(
-                account_id, "calendar_list_events", cache_params
-            )
-
-            if cached_result:
-                data, state = cached_result
-                # Add cache status to each event
-                for event in data:
-                    event["_cache_status"] = state.value
-                return data
-        except Exception:
-            # If cache fails, continue to API call
-            pass
-
-    # Build select fields based on include_details
-    if include_details:
-        select_fields = "id,subject,start,end,location,body,attendees,organizer,isAllDay,isCancelled,recurrence,onlineMeeting"
-    else:
-        select_fields = "id,subject,start,end,location,organizer,isAllDay,isCancelled"
-
-    # Query parameters
-    params = {
-        "$filter": f"start/dateTime ge '{now.isoformat()}' and start/dateTime le '{end_time.isoformat()}'",
-        "$select": select_fields,
-        "$orderby": "start/dateTime",
-        "$top": limit,
-    }
-
-    # Fetch from API
-    events = list(
-        graph.request_paginated(
-            "/me/calendar/events",
-            account_id,
-            params=params,
-            limit=limit,
-        )
+    return calendar_service.list_events(
+        account_id,
+        days_ahead=days_ahead,
+        include_details=include_details,
+        limit=limit,
+        use_cache=use_cache,
+        force_refresh=force_refresh,
     )
-
-    # Add cache metadata to each event
-    cached_at = datetime.now(timezone.utc).isoformat()
-    for event in events:
-        event["_cache_status"] = "fresh"
-        event["_cached_at"] = cached_at
-
-    # Store in cache
-    if use_cache:
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.set_cached(
-                account_id, "calendar_list_events", cache_params, events
-            )
-        except Exception:
-            # If cache storage fails, still return the result
-            pass
-
-    return events
 
 
 # calendar_get_event
@@ -243,46 +124,9 @@ def calendar_get_event(
     Returns:
         Complete event object with all metadata
     """
-    # Build cache parameters
-    cache_params = {"event_id": event_id}
-
-    # Check cache if enabled
-    if use_cache and not force_refresh:
-        try:
-            cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(
-                account_id, "calendar_get_event", cache_params
-            )
-
-            if cached_result:
-                data, state = cached_result
-                data["_cache_status"] = state.value
-                return data
-        except Exception:
-            # If cache fails, continue to API call
-            pass
-
-    # Fetch from API
-    result = graph.request("GET", f"/me/events/{event_id}", account_id)
-    if not result:
-        raise ValueError(f"Event with ID {event_id} not found")
-
-    # Add cache metadata
-    result["_cache_status"] = "fresh"
-    result["_cached_at"] = datetime.now(timezone.utc).isoformat()
-
-    # Store in cache
-    if use_cache:
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.set_cached(
-                account_id, "calendar_get_event", cache_params, result
-            )
-        except Exception:
-            # If cache storage fails, still return the result
-            pass
-
-    return result
+    return calendar_service.get_event(
+        account_id, event_id, use_cache=use_cache, force_refresh=force_refresh
+    )
 
 
 # calendar_create_event
@@ -332,9 +176,6 @@ def calendar_create_event(
     """
     start_dt, end_dt = validate_datetime_window(start, end)
     timezone_normalized = validate_timezone(timezone)
-    tzinfo = ZoneInfo(timezone_normalized)
-    start_local = start_dt.astimezone(tzinfo)
-    end_local = end_dt.astimezone(tzinfo)
 
     attendees_deduped: list[str] = []
     if attendees:
@@ -359,38 +200,16 @@ def calendar_create_event(
                 )
             )
 
-    event = {
-        "subject": subject,
-        "start": {
-            "dateTime": start_local.isoformat(),
-            "timeZone": timezone_normalized,
-        },
-        "end": {
-            "dateTime": end_local.isoformat(),
-            "timeZone": timezone_normalized,
-        },
-    }
-
-    if location:
-        event["location"] = {"displayName": location}
-
-    if body:
-        event["body"] = {"contentType": "Text", "content": body}
-
-    if attendees_deduped:
-        event["attendees"] = [
-            {"emailAddress": {"address": address}, "type": "required"}
-            for address in attendees_deduped
-        ]
-
-    result = graph.request("POST", "/me/events", account_id, json=event)
-    if not result:
-        raise ValueError("Failed to create event")
-
-    # Note: Cache invalidation for calendar events happens automatically via TTL
-    # No manual invalidation needed as calendar list caches are short-lived (5min)
-
-    return result
+    return calendar_service.create_event(
+        account_id,
+        subject=subject,
+        start=start_dt,
+        end=end_dt,
+        timezone_name=timezone_normalized,
+        location=location,
+        body=body,
+        attendees=attendees_deduped,
+    )
 
 
 # calendar_update_event
@@ -485,8 +304,7 @@ def calendar_update_event(
     if start_value and end_value:
         validate_datetime_window(start_value, end_value)
 
-    formatted_updates: dict[str, Any] = {}
-
+    subject_value: str | None = None
     if "subject" in payload:
         subject_value = payload["subject"]
         if not isinstance(subject_value, str):
@@ -498,22 +316,8 @@ def calendar_update_event(
                     "Subject string",
                 )
             )
-        formatted_updates["subject"] = subject_value
 
-    timezone_for_dates = timezone_override or "UTC"
-
-    if start_value is not None:
-        formatted_updates["start"] = {
-            "dateTime": start_value,
-            "timeZone": timezone_for_dates,
-        }
-
-    if end_value is not None:
-        formatted_updates["end"] = {
-            "dateTime": end_value,
-            "timeZone": timezone_for_dates,
-        }
-
+    location_value: str | None = None
     if "location" in payload:
         location_value = payload["location"]
         if not isinstance(location_value, str):
@@ -525,8 +329,8 @@ def calendar_update_event(
                     "Location name string",
                 )
             )
-        formatted_updates["location"] = {"displayName": location_value.strip()}
 
+    body_value: str | None = None
     if "body" in payload:
         body_value = payload["body"]
         if not isinstance(body_value, str):
@@ -538,12 +342,12 @@ def calendar_update_event(
                     "Event description string",
                 )
             )
-        formatted_updates["body"] = {"contentType": "Text", "content": body_value}
 
+    attendees_update: list[str] | None = None
     if "attendees" in payload:
         attendees_value = payload["attendees"]
         if isinstance(attendees_value, list) and not attendees_value:
-            formatted_updates["attendees"] = []
+            attendees_update = []
         else:
             attendee_candidates = normalize_recipients(
                 attendees_value,
@@ -566,18 +370,19 @@ def calendar_update_event(
                         f"≤ {MAX_CALENDAR_ATTENDEES}",
                     )
                 )
-            formatted_updates["attendees"] = [
-                {"emailAddress": {"address": address}, "type": "required"}
-                for address in deduped
-            ]
+            attendees_update = deduped
 
-    result = graph.request(
-        "PATCH", f"/me/events/{event_id}", account_id, json=formatted_updates
+    return calendar_service.update_event(
+        account_id,
+        event_id,
+        subject=subject_value,
+        start=start_value,
+        end=end_value,
+        timezone_name=timezone_override or "UTC",
+        location=location_value,
+        body=body_value,
+        attendees=attendees_update,
     )
-
-    # Note: Cache invalidation happens automatically via TTL (5min for calendar_list_events)
-
-    return result or {"status": "updated"}
 
 
 # calendar_delete_event
@@ -617,14 +422,9 @@ def calendar_delete_event(
         Status confirmation
     """
     require_confirm(confirm, "delete calendar event")
-    if send_cancellation:
-        graph.request("POST", f"/me/events/{event_id}/cancel", account_id, json={})
-    else:
-        graph.request("DELETE", f"/me/events/{event_id}", account_id)
-
-    # Note: Cache invalidation happens automatically via TTL (5min for calendar_list_events)
-
-    return {"status": "deleted"}
+    return calendar_service.delete_event(
+        account_id, event_id, send_cancellation=send_cancellation
+    )
 
 
 # calendar_respond_event
@@ -674,7 +474,7 @@ def calendar_respond_event(
     )
     resolved_response = CALENDAR_RESPONSE_ALIASES[canonical_key]
 
-    payload: dict[str, Any] = {"sendResponse": True}
+    comment: str | None = None
 
     if message is not None:
         if not isinstance(message, str):
@@ -698,15 +498,11 @@ def calendar_respond_event(
                     "Non-empty response message or omit parameter",
                 )
             )
-        payload["comment"] = message_trimmed
+        comment = message_trimmed
 
-    graph.request(
-        "POST",
-        f"/me/events/{event_id}/{resolved_response}",
-        account_id,
-        json=payload,
+    return calendar_service.respond_event(
+        account_id, event_id, response=resolved_response, comment=comment
     )
-    return {"status": resolved_response}
 
 
 # calendar_check_availability
@@ -771,34 +567,9 @@ def calendar_check_availability(
                 )
             )
 
-    # Get user email with fallback chain
-    user_email = _get_user_email_with_fallback(account_id)
-    schedules = [user_email]
-    current_keys = {user_email.casefold()}
-    for address in attendee_addresses:
-        key = address.casefold()
-        if key in current_keys:
-            continue
-        current_keys.add(key)
-        schedules.append(address)
-
-    payload = {
-        "schedules": schedules,
-        "startTime": {
-            "dateTime": start_dt.astimezone(timezone.utc).isoformat(),
-            "timeZone": "UTC",
-        },
-        "endTime": {
-            "dateTime": end_dt.astimezone(timezone.utc).isoformat(),
-            "timeZone": "UTC",
-        },
-        "availabilityViewInterval": 30,
-    }
-
-    result = graph.request("POST", "/me/calendar/getSchedule", account_id, json=payload)
-    if not result:
-        raise ValueError("Failed to check availability")
-    return result
+    return calendar_service.check_availability(
+        account_id, start=start_dt, end=end_dt, attendees=attendee_addresses
+    )
 
 
 # calendar_forward_event
@@ -883,24 +654,9 @@ def calendar_forward_event(
 
     require_confirm(confirm, "forward calendar event")
 
-    payload: dict[str, Any] = {
-        "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_unique],
-    }
-
-    if cc_unique:
-        payload["ccRecipients"] = [
-            {"emailAddress": {"address": addr}} for addr in cc_unique
-        ]
-
-    if message:
-        message_stripped = message.strip()
-        if message_stripped:
-            payload["comment"] = message_stripped
-
-    endpoint = f"/me/events/{event_id}/forward"
-    graph.request("POST", endpoint, account_id, json=payload)
-
-    return {"status": "forwarded"}
+    return calendar_service.forward_event(
+        account_id, event_id, to=to_unique, cc=cc_unique, message=message
+    )
 
 
 # calendar_list_calendars
@@ -937,56 +693,9 @@ def calendar_list_calendars(
         List of calendar objects with metadata.
         Each calendar includes _cache_status and _cached_at fields.
     """
-    # Build cache parameters
-    cache_params = {}
-
-    # Check cache if enabled
-    if use_cache and not force_refresh:
-        try:
-            cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(
-                account_id, "calendar_list_calendars", cache_params
-            )
-
-            if cached_result:
-                data, state = cached_result
-                # Add cache status to each calendar
-                for calendar in data:
-                    calendar["_cache_status"] = state.value
-                return data
-        except Exception:
-            # If cache fails, continue to API call
-            pass
-
-    # Fetch from API
-    calendars = list(
-        graph.request_paginated(
-            "/me/calendars",
-            account_id,
-            params={
-                "$select": "id,name,color,canEdit,canShare,canViewPrivateItems,owner,isDefaultCalendar"
-            },
-        )
+    return calendar_service.list_calendars(
+        account_id, use_cache=use_cache, force_refresh=force_refresh
     )
-
-    # Add cache metadata to each calendar
-    cached_at = datetime.now(timezone.utc).isoformat()
-    for calendar in calendars:
-        calendar["_cache_status"] = "fresh"
-        calendar["_cached_at"] = cached_at
-
-    # Store in cache
-    if use_cache:
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.set_cached(
-                account_id, "calendar_list_calendars", cache_params, calendars
-            )
-        except Exception:
-            # If cache storage fails, still return the result
-            pass
-
-    return calendars
 
 
 # calendar_create_calendar
@@ -1042,26 +751,7 @@ def calendar_create_calendar(
             )
         )
 
-    # Create calendar payload
-    payload = {"name": name_stripped}
-
-    # Create calendar
-    result = graph.request("POST", "/me/calendars", account_id, json=payload)
-    if not result:
-        raise ValueError("Failed to create calendar")
-
-    # Invalidate calendar list cache
-    try:
-        cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern(
-            f"calendar_list_calendars:{account_id}:*",
-            reason="calendar_created",
-        )
-    except Exception:
-        # If cache invalidation fails, continue
-        pass
-
-    return result
+    return calendar_service.create_calendar(account_id, name=name_stripped)
 
 
 # calendar_delete_calendar
@@ -1106,31 +796,7 @@ def calendar_delete_calendar(
     """
     require_confirm(confirm, "delete calendar")
 
-    # Check if this is the default calendar (cannot be deleted)
-    calendar_info = graph.request(
-        "GET",
-        f"/me/calendars/{calendar_id}?$select=isDefaultCalendar",
-        account_id,
-    )
-
-    if calendar_info and calendar_info.get("isDefaultCalendar"):
-        raise ValueError("Cannot delete the default calendar")
-
-    # Delete calendar
-    graph.request("DELETE", f"/me/calendars/{calendar_id}", account_id)
-
-    # Invalidate calendar list cache
-    try:
-        cache_manager = get_cache_manager()
-        cache_manager.invalidate_pattern(
-            f"calendar_list_calendars:{account_id}:*",
-            reason="calendar_deleted",
-        )
-    except Exception:
-        # If cache invalidation fails, continue
-        pass
-
-    return {"status": "deleted"}
+    return calendar_service.delete_calendar(account_id, calendar_id)
 
 
 # calendar_propose_new_time
@@ -1175,35 +841,9 @@ def calendar_propose_new_time(
     # Validate datetime window
     start_dt, end_dt = validate_datetime_window(proposed_start, proposed_end)
 
-    # Build payload
-    payload: dict[str, Any] = {
-        "proposedNewTime": {
-            "start": {
-                "dateTime": start_dt.astimezone(timezone.utc).isoformat(),
-                "timeZone": "UTC",
-            },
-            "end": {
-                "dateTime": end_dt.astimezone(timezone.utc).isoformat(),
-                "timeZone": "UTC",
-            },
-        },
-        "sendResponse": True,
-    }
-
-    if message:
-        message_stripped = message.strip()
-        if message_stripped:
-            payload["comment"] = message_stripped
-
-    # Send tentative response with proposed new time
-    graph.request(
-        "POST",
-        f"/me/events/{event_id}/tentativelyAccept",
-        account_id,
-        json=payload,
+    return calendar_service.propose_new_time(
+        account_id, event_id, start=start_dt, end=end_dt, message=message
     )
-
-    return {"status": "proposed_new_time"}
 
 
 # calendar_get_free_busy
@@ -1280,23 +920,10 @@ def calendar_get_free_busy(
             )
         )
 
-    # Build payload
-    payload = {
-        "schedules": attendee_addresses,
-        "startTime": {
-            "dateTime": start_dt.astimezone(timezone.utc).isoformat(),
-            "timeZone": "UTC",
-        },
-        "endTime": {
-            "dateTime": end_dt.astimezone(timezone.utc).isoformat(),
-            "timeZone": "UTC",
-        },
-        "availabilityViewInterval": time_interval,
-    }
-
-    # Make API request
-    result = graph.request("POST", "/me/calendar/getSchedule", account_id, json=payload)
-    if not result:
-        raise ValueError("Failed to get free/busy information")
-
-    return result
+    return calendar_service.get_free_busy(
+        account_id,
+        attendees=attendee_addresses,
+        start=start_dt,
+        end=end_dt,
+        time_interval=time_interval,
+    )

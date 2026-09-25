@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 
+from src.m365_mcp.services import calendar as calendar_service
 from src.m365_mcp.tools import calendar as calendar_tools
 from src.m365_mcp.validators import ValidationError
 
@@ -39,7 +40,7 @@ def test_calendar_respond_event_accepts_alias_and_trims_message(
         captured["json"] = kwargs.get("json")
         return {"status": "sent"}
 
-    monkeypatch.setattr(calendar_tools.graph, "request", fake_request)
+    monkeypatch.setattr(calendar_service.graph, "request", fake_request)
 
     result = calendar_tools.calendar_respond_event.fn(
         account_id=mock_account_id,
@@ -120,7 +121,7 @@ def test_calendar_create_event_deduplicates_attendees(
         captured["json"] = kwargs.get("json")
         return {"id": "event-123"}
 
-    monkeypatch.setattr(calendar_tools.graph, "request", fake_request)
+    monkeypatch.setattr(calendar_service.graph, "request", fake_request)
 
     result = calendar_tools.calendar_create_event.fn(
         account_id=mock_account_id,
@@ -186,7 +187,7 @@ def test_calendar_check_availability_deduplicates_schedules(
         captured["json"] = kwargs.get("json")
         return {"value": []}
 
-    monkeypatch.setattr(calendar_tools.graph, "request", fake_request)
+    monkeypatch.setattr(calendar_service.graph, "request", fake_request)
 
     result = calendar_tools.calendar_check_availability.fn(
         account_id=mock_account_id,
@@ -230,7 +231,7 @@ def test_calendar_update_event_normalises_attendees(
         captured["json"] = kwargs.get("json") or {}
         return {"status": "updated"}
 
-    monkeypatch.setattr(calendar_tools.graph, "request", fake_request)
+    monkeypatch.setattr(calendar_service.graph, "request", fake_request)
 
     result = calendar_tools.calendar_update_event.fn(
         event_id="event-1",

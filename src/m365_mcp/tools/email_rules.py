@@ -1,6 +1,7 @@
 from typing import Any
+
 from ..mcp_instance import mcp
-from .. import graph
+from ..services import mail_rules as mail_rules_service
 from ..validators import (
     ValidationError,
     format_validation_error,
@@ -372,22 +373,6 @@ def _validate_rule_actions(
     return validated
 
 
-def _emailrules_list_impl(account_id: str) -> list[dict[str, Any]]:
-    result = graph.request("GET", "/me/mailFolders/inbox/messageRules", account_id)
-    if not result or "value" not in result:
-        return []
-    return list(result["value"])
-
-
-def _emailrules_get_impl(rule_id: str, account_id: str) -> dict[str, Any]:
-    result = graph.request(
-        "GET", f"/me/mailFolders/inbox/messageRules/{rule_id}", account_id
-    )
-    if not result:
-        raise ValueError(f"Message rule with ID {rule_id} not found")
-    return result
-
-
 # emailrules_list
 @mcp.tool(
     name="emailrules_list",
@@ -412,7 +397,7 @@ def emailrules_list(account_id: str) -> list[dict[str, Any]]:
     Returns:
         List of rules with: id, displayName, sequence, isEnabled, conditions, actions
     """
-    return _emailrules_list_impl(account_id)
+    return mail_rules_service.list_rules(account_id)
 
 
 # emailrules_get
@@ -439,7 +424,7 @@ def emailrules_get(rule_id: str, account_id: str) -> dict[str, Any]:
     Returns:
         Rule details including conditions, actions, sequence, and enabled status
     """
-    return _emailrules_get_impl(rule_id, account_id)
+    return mail_rules_service.get_rule(account_id, rule_id=rule_id)
 
 
 # emailrules_create
@@ -503,12 +488,7 @@ def emailrules_create(
     if exceptions is not None:
         rule_data["exceptions"] = _validate_rule_predicates(exceptions, "exceptions")
 
-    result = graph.request(
-        "POST", "/me/mailFolders/inbox/messageRules", account_id, json=rule_data
-    )
-    if not result:
-        raise ValueError("Failed to create message rule")
-    return result
+    return mail_rules_service.create_rule(account_id, rule=rule_data)
 
 
 # emailrules_update
@@ -587,15 +567,7 @@ def emailrules_update(
             )
         )
 
-    result = graph.request(
-        "PATCH",
-        f"/me/mailFolders/inbox/messageRules/{rule_id}",
-        account_id,
-        json=updates,
-    )
-    if not result:
-        raise ValueError(f"Failed to update message rule {rule_id}")
-    return result
+    return mail_rules_service.update_rule(account_id, rule_id=rule_id, updates=updates)
 
 
 # emailrules_delete
@@ -631,8 +603,7 @@ def emailrules_delete(
         Status confirmation
     """
     require_confirm(confirm, "delete email rule")
-    graph.request("DELETE", f"/me/mailFolders/inbox/messageRules/{rule_id}", account_id)
-    return {"status": "deleted", "rule_id": rule_id}
+    return mail_rules_service.delete_rule(account_id, rule_id=rule_id)
 
 
 # emailrules_move_top
@@ -660,15 +631,7 @@ def emailrules_move_top(rule_id: str, account_id: str) -> dict[str, Any]:
     Returns:
         Updated rule with new sequence number
     """
-    result = graph.request(
-        "PATCH",
-        f"/me/mailFolders/inbox/messageRules/{rule_id}",
-        account_id,
-        json={"sequence": 1},
-    )
-    if not result:
-        raise ValueError(f"Failed to move rule {rule_id} to top")
-    return result
+    return mail_rules_service.move_rule_to_top(account_id, rule_id=rule_id)
 
 
 # emailrules_move_bottom
@@ -695,23 +658,7 @@ def emailrules_move_bottom(rule_id: str, account_id: str) -> dict[str, Any]:
     Returns:
         Updated rule with new sequence number
     """
-    # Get all rules to find the highest sequence number
-    all_rules = _emailrules_list_impl(account_id)
-    if not all_rules:
-        raise ValueError("No rules found")
-
-    max_sequence = max(rule.get("sequence", 1) for rule in all_rules)
-    new_sequence = max_sequence + 1
-
-    result = graph.request(
-        "PATCH",
-        f"/me/mailFolders/inbox/messageRules/{rule_id}",
-        account_id,
-        json={"sequence": new_sequence},
-    )
-    if not result:
-        raise ValueError(f"Failed to move rule {rule_id} to bottom")
-    return result
+    return mail_rules_service.move_rule_to_bottom(account_id, rule_id=rule_id)
 
 
 # emailrules_move_up
@@ -739,24 +686,7 @@ def emailrules_move_up(rule_id: str, account_id: str) -> dict[str, Any]:
     Returns:
         Updated rule with new sequence number
     """
-    # Get current rule
-    current_rule = _emailrules_get_impl(rule_id, account_id)
-    current_sequence = current_rule.get("sequence", 1)
-
-    if current_sequence <= 1:
-        raise ValueError("Rule is already at the top (sequence = 1)")
-
-    new_sequence = current_sequence - 1
-
-    result = graph.request(
-        "PATCH",
-        f"/me/mailFolders/inbox/messageRules/{rule_id}",
-        account_id,
-        json={"sequence": new_sequence},
-    )
-    if not result:
-        raise ValueError(f"Failed to move rule {rule_id} up")
-    return result
+    return mail_rules_service.move_rule_up(account_id, rule_id=rule_id)
 
 
 # emailrules_move_down
@@ -784,18 +714,4 @@ def emailrules_move_down(rule_id: str, account_id: str) -> dict[str, Any]:
     Returns:
         Updated rule with new sequence number
     """
-    # Get current rule
-    current_rule = _emailrules_get_impl(rule_id, account_id)
-    current_sequence = current_rule.get("sequence", 1)
-
-    new_sequence = current_sequence + 1
-
-    result = graph.request(
-        "PATCH",
-        f"/me/mailFolders/inbox/messageRules/{rule_id}",
-        account_id,
-        json={"sequence": new_sequence},
-    )
-    if not result:
-        raise ValueError(f"Failed to move rule {rule_id} down")
-    return result
+    return mail_rules_service.move_rule_down(account_id, rule_id=rule_id)

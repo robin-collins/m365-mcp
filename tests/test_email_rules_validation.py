@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 
+from src.m365_mcp.services import mail_rules as mail_rules_service
 from src.m365_mcp.tools import email_rules as email_rules_tools
 from src.m365_mcp.validators import ValidationError
 
@@ -26,7 +27,7 @@ def test_emailrules_create_normalises_payload(
         captured["json"] = kwargs.get("json") or {}
         return {"id": "rule-1"}
 
-    monkeypatch.setattr(email_rules_tools.graph, "request", fake_request)
+    monkeypatch.setattr(mail_rules_service.graph, "request", fake_request)
 
     result = email_rules_tools.emailrules_create.fn(
         account_id=mock_account_id,
@@ -87,7 +88,7 @@ def test_emailrules_create_rejects_invalid_payloads_locally(
     def fail_request(*args: Any, **kwargs: Any) -> None:
         pytest.fail("Graph should not be called for invalid create payloads")
 
-    monkeypatch.setattr(email_rules_tools.graph, "request", fail_request)
+    monkeypatch.setattr(mail_rules_service.graph, "request", fail_request)
 
     payload = {
         "account_id": mock_account_id,
@@ -135,7 +136,7 @@ def test_emailrules_update_normalises_payload(
         captured["json"] = kwargs.get("json") or {}
         return {"id": "rule-1"}
 
-    monkeypatch.setattr(email_rules_tools.graph, "request", fake_request)
+    monkeypatch.setattr(mail_rules_service.graph, "request", fake_request)
 
     result = email_rules_tools.emailrules_update.fn(
         rule_id="rule-1",

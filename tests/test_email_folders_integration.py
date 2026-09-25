@@ -14,6 +14,13 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# These tests create, rename, move and delete folders in a real mailbox.
+# They run only when explicitly enabled.
+pytestmark = pytest.mark.skipif(
+    os.getenv("M365_MCP_LIVE_TESTS") != "1",
+    reason="live mailbox test; set M365_MCP_LIVE_TESTS=1 to run",
+)
+
 
 def parse_result(result, tool_name=None):
     """Helper to parse MCP tool results consistently"""

@@ -65,3 +65,24 @@ def test_cache_manager_singleton_lives_outside_tools():
         assert cache_tools.get_cache_manager() is sentinel
     finally:
         cache._cache_manager = None
+
+
+def test_importing_services_does_not_load_fastmcp():
+    import subprocess
+    import sys
+
+    code = (
+        "import sys\n"
+        "import m365_mcp.services.mail, m365_mcp.services.mail_folders\n"
+        "import m365_mcp.services.mail_rules, m365_mcp.services.calendar\n"
+        "import m365_mcp.services.contacts, m365_mcp.services.drive\n"
+        "import m365_mcp.services.search, m365_mcp.services.accounts\n"
+        "import m365_mcp.projections, m365_mcp.cursors, m365_mcp.errors\n"
+        "loaded = sorted(m for m in sys.modules if m.split('.')[0] in "
+        "('fastmcp', 'mcp') or m.startswith('m365_mcp.tools'))\n"
+        "print(','.join(loaded))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == ""

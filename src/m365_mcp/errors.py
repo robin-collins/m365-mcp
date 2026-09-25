@@ -13,12 +13,14 @@ from __future__ import annotations
 import logging
 import math
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
-from fastmcp.exceptions import ToolError
 
 from .validators import ValidationError
+
+if TYPE_CHECKING:
+    from fastmcp.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
@@ -264,6 +266,9 @@ def to_tool_error(
         whether retrying helps, without URLs, request IDs, raw codes or
         stack traces.
     """
+    # Imported here so graph.py and the services never load FastMCP.
+    from fastmcp.exceptions import ToolError
+
     if isinstance(exc, ValidationError):
         return ToolError(str(exc))
 

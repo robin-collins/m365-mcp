@@ -27,6 +27,11 @@ move it here in the same commit, under its programme heading, with:
 | U1.7 | `services/search.py` folds in `search_router.py` (now a re-export shim until U5.1), current behaviour kept | 2026-09-26 | `2688257` | 25 service tests |
 | U1.8 | `services/accounts.py`: account listing and device-flow orchestration over `auth.py` (resolution deferred to U2.10) | 2026-09-26 | `f4d9642` | 6 service tests |
 | U1.9 | Phase 1 gate. Cache-manager singleton moved from `tools/cache_tools.py` to `cache.py` (re-exported); `tests/test_services_boundaries.py` AST-checks that services import no FastMCP, `mcp_instance` or `tools` (nested imports included) | 2026-09-26 | this commit | Suite 544 → 710 passed; `generate_tools_doc.py --check` (85 tools) and `build_unified_tool_specs.py --check` pass; pyright 25 errors, identical to the pre-Phase-1 baseline (`tests/test_email_folders_integration.py`, `tests/test_account_validation.py`); ruff: no new findings |
+| U2.6 | `cursors.py`: HMAC-protected opaque base64url cursors (version, keyed account hash, resource, request hash, nextLink/offset/per-resource sub-cursors, issued-at); checks MAC, request, 24 h expiry, Graph host allowlist. Key from `M365_MCP_CURSOR_KEY` or per-process random | 2026-09-26 | `fbc29bf` | `tests/test_cursors.py`: round-trip, tamper, expiry (fake clock), wrong request/resource/account, bad host |
+| U2.13 | `local_files.py`: allowed roots (cwd, temp, `MCP_FILE_ALLOWED_ROOTS`), deny-list for read and write, symlink resolution, `overwrite=False`, file-name sanitisation | 2026-09-26 | `5217df7` | `tests/test_local_files.py`: traversal, real and patched symlinks, 11 deny-list cases, overwrite, sanitisation |
+| U2.14 | `rate_limit.py`: per-account token buckets, sensitive ≤ 20/min, all ≤ 300/min, actionable error | 2026-09-26 | `e19ab1a` | `tests/test_rate_limit.py` (fake clock) |
+| U2.16 | `operations.py`: `drive_copy` monitor URLs stored server-side (24 h TTL, account-bound), polled without `Authorization`, mapped to the spec operation shape | 2026-09-26 | `737b3a3` | `tests/test_operations.py`: in_progress → completed / failed, 303 completion, no Authorization header |
+| — | Live mailbox test guarded: `tests/test_email_folders_integration.py` wrote to the real mailbox during the unit gate; now needs `M365_MCP_LIVE_TESTS=1` | 2026-09-26 | `36b0114` | 7 skipped by default |
 
 ---
 

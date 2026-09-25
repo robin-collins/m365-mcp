@@ -1,0 +1,43 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#drives('abc123')/items(children())/$entity",
+  "@microsoft.graph.downloadUrl": null,
+  "id": "01ABCDEF0001",
+  "name": "Tax",
+  "createdDateTime": "2025-07-01T01:00:00Z",
+  "lastModifiedDateTime": "2026-08-30T00:30:00Z",
+  "eTag": "\"{0001},3\"",
+  "cTag": "\"c:{0001},0\"",
+  "size": 482113,
+  "webUrl": "https://onedrive.live.com/?id=01ABCDEF0001",
+  "createdBy": {"user": {"displayName": "Robin Collins", "id": "abc123"}},
+  "lastModifiedBy": {"user": {"displayName": "Robin Collins", "id": "abc123"}},
+  "parentReference": {"driveId": "abc123", "driveType": "personal", "id": "01ABCDEF0000", "name": "Documents", "path": "/drive/root:/Documents"},
+  "fileSystemInfo": {"createdDateTime": "2025-07-01T01:00:00Z", "lastModifiedDateTime": "2026-08-30T00:30:00Z"},
+  "folder": {"childCount": 2, "view": {"viewType": "thumbnails", "sortBy": "name", "sortOrder": "ascending"}},
+  "children@odata.context": "https://graph.microsoft.com/v1.0/$metadata#drives('abc123')/items('01ABCDEF0001')/children",
+  "children": [
+    {
+      "@microsoft.graph.downloadUrl": "https://public.am.files.1drv.com/y4mSECRET?download=1",
+      "id": "01ABCDEF2345",
+      "name": "Tax return 2026.pdf",
+      "createdDateTime": "2026-08-30T00:30:00Z",
+      "lastModifiedDateTime": "2026-08-30T00:30:00Z",
+      "size": 482113,
+      "webUrl": "https://onedrive.live.com/?id=01ABCDEF2345",
+      "parentReference": {"driveId": "abc123", "driveType": "personal", "id": "01ABCDEF0001", "name": "Tax", "path": "/drive/root:/Documents/Tax"},
+      "file": {"mimeType": "application/pdf", "hashes": {"sha1Hash": "0000000000000000000000000000000000000000"}},
+      "shared": {"scope": "users", "owner": {"user": {"displayName": "Robin Collins"}}}
+    },
+    {
+      "id": "01ABCDEF0003",
+      "name": "Receipts 2026",
+      "createdDateTime": "2026-01-02T00:00:00Z",
+      "lastModifiedDateTime": "2026-03-04T05:06:07Z",
+      "size": 0,
+      "webUrl": "https://onedrive.live.com/?id=01ABCDEF0003",
+      "parentReference": {"driveId": "abc123", "driveType": "personal", "id": "01ABCDEF0001", "path": "/drive/root:/Documents/Tax"},
+      "folder": {"childCount": 0},
+      "children": []
+    }
+  ]
+}

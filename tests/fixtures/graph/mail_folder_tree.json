@@ -1,0 +1,37 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('me')/mailFolders(childFolders(childFolders()))/$entity",
+  "id": "AQMkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgAuAAADLuyhVHZrsEWyINBOX",
+  "displayName": "Inbox",
+  "parentFolderId": "AQMkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgAuAAADLuyhVHZrsEWyROOT",
+  "childFolderCount": 1,
+  "unreadItemCount": 12,
+  "totalItemCount": 348,
+  "sizeInBytes": 10485760,
+  "isHidden": false,
+  "childFolders@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('me')/mailFolders('inbox')/childFolders",
+  "childFolders": [
+    {
+      "id": "AQMkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgAuAAADLuyhVHZrsEWyBILLS",
+      "displayName": "Bills",
+      "parentFolderId": "AQMkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgAuAAADLuyhVHZrsEWyINBOX",
+      "childFolderCount": 1,
+      "unreadItemCount": 2,
+      "totalItemCount": 40,
+      "sizeInBytes": 204800,
+      "isHidden": false,
+      "childFolders": [
+        {
+          "id": "AQMkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgAuAAADLuyhVHZrsEWyPOWER",
+          "displayName": "Power",
+          "parentFolderId": "AQMkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgAuAAADLuyhVHZrsEWyBILLS",
+          "childFolderCount": 0,
+          "unreadItemCount": 0,
+          "totalItemCount": 11,
+          "sizeInBytes": 51200,
+          "isHidden": false,
+          "childFolders": []
+        }
+      ]
+    }
+  ]
+}

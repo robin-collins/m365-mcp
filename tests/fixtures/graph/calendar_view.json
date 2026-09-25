@@ -1,0 +1,58 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('me')/calendars('AAMkADAwATM3CAL')/calendarView(id,subject,start,end,isAllDay,location,organizer,isOrganizer,responseStatus,showAs,attendees,bodyPreview)",
+  "value": [
+    {
+      "@odata.etag": "W/\"DwAAABYAAAAiIsqMbYjsT5e/T7KzowPTAAABvQ01\"",
+      "id": "AAMkADAwATM3OCCURRENCE1",
+      "subject": "Physio",
+      "bodyPreview": "Bring the exercise sheet.",
+      "isAllDay": false,
+      "isOrganizer": true,
+      "showAs": "busy",
+      "type": "occurrence",
+      "seriesMasterId": "AAMkADAwATM3SERIES",
+      "start": {"dateTime": "2026-09-30T23:30:00.0000000", "timeZone": "UTC"},
+      "end": {"dateTime": "2026-10-01T01:00:00.0000000", "timeZone": "UTC"},
+      "location": {"displayName": "Clinic, 1 Main St", "locationType": "default", "uniqueIdType": "unknown"},
+      "responseStatus": {"response": "organizer", "time": "0001-01-01T00:00:00Z"},
+      "organizer": {"emailAddress": {"name": "Robin Collins", "address": "robin@example.com"}},
+      "attendees": []
+    },
+    {
+      "@odata.etag": "W/\"DwAAABYAAAAiIsqMbYjsT5e/T7KzowPTAAABvQ02\"",
+      "id": "AAMkADAwATM3ALLDAY",
+      "subject": "School holidays",
+      "bodyPreview": "",
+      "isAllDay": true,
+      "isOrganizer": true,
+      "showAs": "free",
+      "type": "singleInstance",
+      "start": {"dateTime": "2026-10-03T00:00:00.0000000", "timeZone": "Australia/Adelaide"},
+      "end": {"dateTime": "2026-10-04T00:00:00.0000000", "timeZone": "Australia/Adelaide"},
+      "location": {"displayName": "", "locationType": "default"},
+      "responseStatus": {"response": "none", "time": "0001-01-01T00:00:00Z"},
+      "organizer": {"emailAddress": {"name": "Robin Collins", "address": "robin@example.com"}},
+      "attendees": []
+    },
+    {
+      "@odata.etag": "W/\"DwAAABYAAAAiIsqMbYjsT5e/T7KzowPTAAABvQ03\"",
+      "id": "AAMkADAwATM3INVITE",
+      "subject": "Book club",
+      "bodyPreview": "This month: \u202eevil\u202c",
+      "isAllDay": false,
+      "isOrganizer": false,
+      "showAs": "tentative",
+      "type": "singleInstance",
+      "start": {"dateTime": "2026-10-02T08:00:00.0000000", "timeZone": "UTC"},
+      "end": {"dateTime": "2026-10-02T09:30:00.0000000", "timeZone": "UTC"},
+      "location": null,
+      "responseStatus": {"response": "tentativelyAccepted", "time": "2026-09-20T01:00:00Z"},
+      "organizer": {"emailAddress": {"name": "Sam", "address": "sam@example.org"}},
+      "attendees": [
+        {"type": "required", "status": {"response": "accepted", "time": "2026-09-20T00:00:00Z"}, "emailAddress": {"name": "Robin Collins", "address": "robin@example.com"}},
+        {"type": "optional", "status": {"response": "none", "time": "0001-01-01T00:00:00Z"}, "emailAddress": {"name": "Alex", "address": "alex@example.org"}}
+      ]
+    }
+  ],
+  "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/calendars/AAMkADAwATM3CAL/calendarView?startDateTime=2026-09-26T00:00:00Z&endDateTime=2026-10-03T00:00:00Z&$skip=3"
+}

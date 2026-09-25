@@ -1,0 +1,37 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('me')/calendars",
+  "value": [
+    {
+      "id": "AAMkADAwATM3CAL",
+      "name": "Calendar",
+      "color": "auto",
+      "hexColor": "",
+      "isDefaultCalendar": true,
+      "changeKey": "DxYSthXJXEWwAQSYQnXvIgAAAAAAAg==",
+      "canShare": true,
+      "canViewPrivateItems": true,
+      "canEdit": true,
+      "allowedOnlineMeetingProviders": [],
+      "defaultOnlineMeetingProvider": "none",
+      "isTallyingResponses": true,
+      "isRemovable": false,
+      "owner": {"name": "Robin Collins", "address": "robin@example.com"}
+    },
+    {
+      "id": "AAMkADAwATM3BIRTHDAYS",
+      "name": "Birthdays",
+      "color": "lightGreen",
+      "hexColor": "#87d28e",
+      "isDefaultCalendar": false,
+      "canEdit": false,
+      "owner": {"name": "Robin Collins", "address": "robin@example.com"}
+    },
+    {
+      "id": "AAMkADAwATM3FAMILY",
+      "name": "Family",
+      "color": "lightBlue",
+      "hexColor": "",
+      "canEdit": true
+    }
+  ]
+}

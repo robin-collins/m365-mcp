@@ -1,0 +1,45 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('me')/mailFolders('inbox')/messages(id,conversationId,subject,from,toRecipients,ccRecipients,receivedDateTime,isRead,hasAttachments,importance,flag,categories,bodyPreview,parentFolderId)",
+  "value": [
+    {
+      "@odata.etag": "W/\"CQAAABYAAAAiIsqMbYjsT5e/T7KzowPTAAABvPc8\"",
+      "id": "AAMkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgBGAAADLuyhVHZrsEWy",
+      "conversationId": "AAQkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgAQAJlc4vtRiUpMm0e",
+      "subject": "Your September invoice",
+      "from": {"emailAddress": {"name": "Billing Team", "address": "billing@example.com"}},
+      "toRecipients": [
+        {"emailAddress": {"name": "Robin Collins", "address": "robin@example.com"}}
+      ],
+      "ccRecipients": [
+        {"emailAddress": {"name": "Accounts", "address": "accounts@example.com"}},
+        {"emailAddress": {"address": "noname@example.com"}}
+      ],
+      "receivedDateTime": "2026-09-19T22:45:00Z",
+      "isRead": false,
+      "hasAttachments": true,
+      "importance": "normal",
+      "flag": {"flagStatus": "flagged", "dueDateTime": {"dateTime": "2026-09-30T00:00:00.0000000", "timeZone": "UTC"}},
+      "categories": ["Bills", "Home"],
+      "bodyPreview": "Your invoice for September is attached. The amount due is $42.00 and will be charged on 1 October.",
+      "parentFolderId": "AQMkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgAuAAADLuyhVHZrsEWyINBOX"
+    },
+    {
+      "@odata.etag": "W/\"CQAAABYAAAAiIsqMbYjsT5e/T7KzowPTAAABvPc9\"",
+      "id": "AAMkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgBGAAADLuyhVHZrsEWz",
+      "conversationId": null,
+      "subject": null,
+      "from": null,
+      "toRecipients": [],
+      "ccRecipients": [],
+      "receivedDateTime": "2026-09-18T03:00:00Z",
+      "isRead": true,
+      "hasAttachments": false,
+      "importance": "low",
+      "flag": {"flagStatus": "complete"},
+      "categories": [],
+      "bodyPreview": "",
+      "parentFolderId": "AQMkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgAuAAADLuyhVHZrsEWyINBOX"
+    }
+  ],
+  "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$top=2&$skip=2"
+}

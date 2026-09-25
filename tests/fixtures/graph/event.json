@@ -1,0 +1,50 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('me')/events/$entity",
+  "@odata.etag": "W/\"DwAAABYAAAAiIsqMbYjsT5e/T7KzowPTAAABvQ10\"",
+  "id": "AAMkADAwATM3SERIES",
+  "createdDateTime": "2026-09-01T02:00:00.1234567Z",
+  "lastModifiedDateTime": "2026-09-02T02:00:00.7654321Z",
+  "changeKey": "DwAAABYAAAAiIsqMbYjsT5e/T7KzowPTAAABvQ10",
+  "categories": [],
+  "transactionId": null,
+  "originalStartTimeZone": "Cen. Australia Standard Time",
+  "originalEndTimeZone": "Cen. Australia Standard Time",
+  "iCalUId": "040000008200E00074C5B7101A82E0080000000012345",
+  "reminderMinutesBeforeStart": 15,
+  "isReminderOn": true,
+  "hasAttachments": false,
+  "subject": "Team sync",
+  "bodyPreview": "Agenda: roadmap, hiring.",
+  "importance": "normal",
+  "sensitivity": "normal",
+  "isAllDay": false,
+  "isCancelled": false,
+  "isOrganizer": false,
+  "responseRequested": true,
+  "seriesMasterId": null,
+  "showAs": "busy",
+  "type": "seriesMaster",
+  "webLink": "https://outlook.live.com/owa/?itemid=AAMkADAwATM3SERIES&exvsurl=1&path=/calendar/item",
+  "onlineMeetingUrl": null,
+  "isOnlineMeeting": false,
+  "responseStatus": {"response": "accepted", "time": "2026-09-01T03:00:00Z"},
+  "body": {
+    "contentType": "html",
+    "content": "<html><body><p>Agenda:</p><ul><li>roadmap</li><li>hiring</li></ul></body></html>"
+  },
+  "start": {"dateTime": "2026-10-05T23:30:00.0000000", "timeZone": "UTC"},
+  "end": {"dateTime": "2026-10-06T00:00:00.0000000", "timeZone": "UTC"},
+  "location": {"displayName": "Room 4", "locationType": "default"},
+  "locations": [{"displayName": "Room 4", "locationType": "default"}],
+  "recurrence": {
+    "pattern": {"type": "weekly", "interval": 1, "month": 0, "dayOfMonth": 0, "daysOfWeek": ["monday", "wednesday"], "firstDayOfWeek": "sunday", "index": "first"},
+    "range": {"type": "endDate", "startDate": "2026-10-05", "endDate": "2026-12-21", "recurrenceTimeZone": "Cen. Australia Standard Time", "numberOfOccurrences": 0}
+  },
+  "attendees": [
+    {"type": "required", "status": {"response": "accepted", "time": "2026-09-01T03:00:00Z"}, "emailAddress": {"name": "Robin Collins", "address": "robin@example.com"}},
+    {"type": "optional", "status": {"response": "declined", "time": "2026-09-01T04:00:00Z"}, "emailAddress": {"name": "Alex", "address": "alex@example.org"}},
+    {"type": "resource", "status": {"response": "notResponded", "time": "0001-01-01T00:00:00Z"}, "emailAddress": {"name": "Room 4", "address": "room4@example.org"}}
+  ],
+  "organizer": {"emailAddress": {"name": "Sam", "address": "sam@example.org"}},
+  "onlineMeeting": null
+}

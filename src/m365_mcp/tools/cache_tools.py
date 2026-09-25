@@ -1,9 +1,9 @@
 """Cache management tools for M365 MCP Server."""
 
-import atexit
 from datetime import datetime
 from typing import Any, Optional, Protocol
 from ..mcp_instance import mcp
+from .. import cache
 from ..cache import CacheManager
 from ..cache_warming import get_inactive_warming_status
 
@@ -16,16 +16,7 @@ class WarmingStatusProvider(Protocol):
         ...
 
 
-# Global cache manager instance (lazy-initialized)
-_cache_manager: Optional[CacheManager] = None
 _warming_status_provider: Optional[WarmingStatusProvider] = None
-_cache_manager_atexit_registered = False
-
-
-def _close_cache_manager() -> None:
-    """Close the singleton cache manager during process shutdown."""
-    if _cache_manager is not None:
-        _cache_manager.close()
 
 
 def get_cache_manager() -> CacheManager:
@@ -35,14 +26,7 @@ def get_cache_manager() -> CacheManager:
     Returns:
         CacheManager: The global cache manager instance.
     """
-    global _cache_manager
-    global _cache_manager_atexit_registered
-    if _cache_manager is None:
-        _cache_manager = CacheManager()
-        if not _cache_manager_atexit_registered:
-            atexit.register(_close_cache_manager)
-            _cache_manager_atexit_registered = True
-    return _cache_manager
+    return cache.get_cache_manager()
 
 
 def set_warming_status_provider(provider: Optional[WarmingStatusProvider]) -> None:

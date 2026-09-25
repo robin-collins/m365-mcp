@@ -18,6 +18,15 @@ move it here in the same commit, under its programme heading, with:
 | ID | Task | Completed | Commit | Evidence |
 |---|---|---|---|---|
 | U0.1 | Merge `202609` into `master` (PR #21) and tag `v0.2.3-final` before any surface change | 2026-09-26 | `706c8c3` (merge) | Tag pushed; `generate_tools_doc.py --check` on a clean worktree of the tag: up to date (85 tools); suite 544 passed before merge |
+| U1.1 | `services/mail.py` from `tools/email.py` (list, get, draft, send, update, delete, move, reply, reply-all, forward, attachments) | 2026-09-26 | `5d6a097` | 22 service tests; tool surface unchanged |
+| U1.2 | `services/mail_folders.py` from `tools/email_folders.py` | 2026-09-26 | `9ae8696` | Service tests added; tool surface unchanged |
+| U1.3 | `services/mail_rules.py` from `tools/email_rules.py`, including reorder | 2026-09-26 | `c970d90` | 22 service tests |
+| U1.4 | `services/calendar.py` from `tools/calendar.py` | 2026-09-26 | `9b48c6b` | 17 service tests |
+| U1.5 | `services/contacts.py` from `tools/contact.py` | 2026-09-26 | `2ff3663` | 17 service tests |
+| U1.6 | `services/drive.py` from `tools/file.py` + `tools/folder.py` | 2026-09-26 | `65f122b` | 25 service tests |
+| U1.7 | `services/search.py` folds in `search_router.py` (now a re-export shim until U5.1), current behaviour kept | 2026-09-26 | `2688257` | 25 service tests |
+| U1.8 | `services/accounts.py`: account listing and device-flow orchestration over `auth.py` (resolution deferred to U2.10) | 2026-09-26 | `f4d9642` | 6 service tests |
+| U1.9 | Phase 1 gate. Cache-manager singleton moved from `tools/cache_tools.py` to `cache.py` (re-exported); `tests/test_services_boundaries.py` AST-checks that services import no FastMCP, `mcp_instance` or `tools` (nested imports included) | 2026-09-26 | this commit | Suite 544 → 710 passed; `generate_tools_doc.py --check` (85 tools) and `build_unified_tool_specs.py --check` pass; pyright 25 errors, identical to the pre-Phase-1 baseline (`tests/test_email_folders_integration.py`, `tests/test_account_validation.py`); ruff: no new findings |
 
 ---
 

@@ -5,6 +5,7 @@ This module provides a comprehensive caching system with encryption, compression
 TTL management, and automatic cleanup for Microsoft 365 data.
 """
 
+import atexit
 import json
 import gzip
 import logging
@@ -836,3 +837,31 @@ class CacheManager:
                 }
                 for row in cursor
             ]
+
+
+# Process-wide cache manager (lazy-initialised). It lives here, outside the
+# tool layer, so the Graph services can use it without importing FastMCP.
+_cache_manager: CacheManager | None = None
+_cache_manager_atexit_registered = False
+
+
+def _close_cache_manager() -> None:
+    """Close the singleton cache manager during process shutdown."""
+    if _cache_manager is not None:
+        _cache_manager.close()
+
+
+def get_cache_manager() -> CacheManager:
+    """Get or create the process-wide cache manager.
+
+    Returns:
+        The shared ``CacheManager`` instance.
+    """
+    global _cache_manager
+    global _cache_manager_atexit_registered
+    if _cache_manager is None:
+        _cache_manager = CacheManager()
+        if not _cache_manager_atexit_registered:
+            atexit.register(_close_cache_manager)
+            _cache_manager_atexit_registered = True
+    return _cache_manager

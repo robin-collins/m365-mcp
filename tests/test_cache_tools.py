@@ -31,10 +31,11 @@ def cache_manager(temp_cache_db: Path) -> Generator[CacheManager, None, None]:
 # Test 1: Test get_cache_manager helper function
 def test_get_cache_manager_creates_instance(tmp_path):
     """Test that get_cache_manager creates and returns a cache manager instance."""
+    from src.m365_mcp import cache
     from src.m365_mcp.tools import cache_tools
 
     # Reset global instance
-    cache_tools._cache_manager = None
+    cache._cache_manager = None
     manager = None
 
     try:
@@ -43,7 +44,7 @@ def test_get_cache_manager_creates_instance(tmp_path):
         manager = CacheManager(db_path=str(db_path), encryption_enabled=False)
 
         # Set it as the global instance
-        cache_tools._cache_manager = manager
+        cache._cache_manager = manager
 
         # Verify get_cache_manager returns the same instance
         manager2 = cache_tools.get_cache_manager()
@@ -54,7 +55,7 @@ def test_get_cache_manager_creates_instance(tmp_path):
         # Cleanup
         if manager is not None:
             manager.close()
-        cache_tools._cache_manager = None
+        cache._cache_manager = None
 
 
 # Test 2: Test cache task operations through CacheManager

@@ -21,7 +21,7 @@ def _cache_manager() -> CacheManager:
     The singleton currently lives in ``tools.cache_tools``; it is imported
     lazily so this module does not import the tool layer at load time.
     """
-    from ..tools.cache_tools import get_cache_manager
+    from ..cache import get_cache_manager
 
     return get_cache_manager()
 

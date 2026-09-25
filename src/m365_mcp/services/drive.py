@@ -52,7 +52,7 @@ def get_cache_manager() -> CacheManager:
     Returns:
         The process-wide cache manager instance.
     """
-    from ..tools.cache_tools import get_cache_manager as _get_cache_manager
+    from ..cache import get_cache_manager as _get_cache_manager
 
     return _get_cache_manager()
 

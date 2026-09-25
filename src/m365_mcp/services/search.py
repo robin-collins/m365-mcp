@@ -43,7 +43,7 @@ def _get_cache_manager() -> CacheManager:
     The singleton still lives in ``tools.cache_tools``; it is imported lazily
     so this service has no import-time dependency on the tool layer.
     """
-    from ..tools.cache_tools import get_cache_manager
+    from ..cache import get_cache_manager
 
     return get_cache_manager()
 

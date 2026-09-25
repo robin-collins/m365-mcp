@@ -1,9 +1,6 @@
-import datetime as dt
-from datetime import datetime, timezone
 from typing import Any, Sequence
 from ..mcp_instance import mcp
-from .. import graph, auth, search_router
-from .cache_tools import get_cache_manager
+from ..services import search as search_service
 from ..validators import (
     ValidationError,
     format_validation_error,
@@ -17,38 +14,6 @@ from .email import EMAIL_FOLDER_NAMES, FOLDERS
 
 MAX_SEARCH_QUERY_LENGTH = 512
 ALLOWED_SEARCH_ENTITY_TYPES: Sequence[str] = ("message", "event", "driveItem")
-
-
-def _get_account_type(account_id: str) -> str:
-    """Get account type for the given account_id.
-
-    If account type is "unknown", triggers detection by getting a fresh token.
-
-    Args:
-        account_id: Microsoft account identifier.
-
-    Returns:
-        Account type: "personal", "work_school", or "unknown"
-    """
-    accounts = auth.list_accounts()
-    for account in accounts:
-        if account.account_id == account_id:
-            account_type = account.account_type
-            # If unknown, trigger detection by getting token
-            if account_type == "unknown":
-                try:
-                    # Getting token triggers account type detection
-                    auth.get_token(account_id)
-                    # Re-fetch accounts to get updated type
-                    accounts = auth.list_accounts()
-                    for account in accounts:
-                        if account.account_id == account_id:
-                            return account.account_type
-                except Exception:
-                    # If detection fails, return unknown
-                    pass
-            return account_type
-    return "unknown"
 
 
 def _validate_search_query(query: str, param_name: str = "query") -> str:
@@ -156,62 +121,13 @@ def search_files(
     """
     limit = validate_limit(limit, 1, 500, "limit")
     search_query = _validate_search_query(query)
-
-    # Build cache parameters
-    cache_params = {
-        "query": search_query,
-        "limit": limit,
-    }
-
-    # Check cache if enabled
-    if use_cache and not force_refresh:
-        try:
-            cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(
-                account_id, "search_files", cache_params
-            )
-            if cached_result:
-                data, state = cached_result
-                # Add cache status to each file
-                for file in data:
-                    file["_cache_status"] = state.value
-                return data
-        except Exception:
-            # If cache fails, continue to API call
-            pass
-
-    # Get account type and route to appropriate search API
-    account_type = _get_account_type(account_id)
-    items = search_router.search_files(account_id, account_type, search_query, limit)
-
-    results = [
-        {
-            "id": item["id"],
-            "name": item["name"],
-            "type": "folder" if "folder" in item else "file",
-            "size": item.get("size", 0),
-            "modified": item.get("lastModifiedDateTime"),
-            "download_url": item.get("@microsoft.graph.downloadUrl"),
-        }
-        for item in items
-    ]
-
-    # Add cache metadata to each file
-    cached_at = datetime.now(timezone.utc).isoformat()
-    for file in results:
-        file["_cache_status"] = "fresh"
-        file["_cached_at"] = cached_at
-
-    # Store in cache
-    if use_cache:
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.set_cached(account_id, "search_files", cache_params, results)
-        except Exception:
-            # If cache storage fails, still return the result
-            pass
-
-    return results
+    return search_service.find_files(
+        account_id,
+        query=search_query,
+        limit=limit,
+        use_cache=use_cache,
+        force_refresh=force_refresh,
+    )
 
 
 # search_emails
@@ -254,70 +170,19 @@ def search_emails(
     """
     limit = validate_limit(limit, 1, 500, "limit")
     search_query = _validate_search_query(query)
-
-    # Build cache parameters
-    cache_params = {
-        "query": search_query,
-        "limit": limit,
-        "folder": folder,
-    }
-
-    # Check cache if enabled
-    if use_cache and not force_refresh:
-        try:
-            cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(
-                account_id, "search_emails", cache_params
-            )
-            if cached_result:
-                data, state = cached_result
-                # Add cache status to each email
-                for email in data:
-                    email["_cache_status"] = state.value
-                return data
-        except Exception:
-            # If cache fails, continue to API call
-            pass
-
-    # Fetch from API
+    folder_path = None
     if folder:
-        # For folder-specific search, use the traditional endpoint
         folder_key = validate_folder_choice(folder, EMAIL_FOLDER_NAMES, "folder")
         folder_path = FOLDERS[folder_key.casefold()]
-        endpoint = f"/me/mailFolders/{folder_path}/messages"
-
-        params = {
-            "$search": f'"{search_query}"',
-            "$top": limit,
-            "$select": "id,subject,from,toRecipients,receivedDateTime,hasAttachments,body,conversationId,isRead",
-        }
-
-        results = list(
-            graph.request_paginated(endpoint, account_id, params=params, limit=limit)
-        )
-    else:
-        # Get account type and route to appropriate search API
-        account_type = _get_account_type(account_id)
-        results = search_router.search_emails(
-            account_id, account_type, search_query, limit
-        )
-
-    # Add cache metadata to each email
-    cached_at = datetime.now(timezone.utc).isoformat()
-    for email in results:
-        email["_cache_status"] = "fresh"
-        email["_cached_at"] = cached_at
-
-    # Store in cache
-    if use_cache:
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.set_cached(account_id, "search_emails", cache_params, results)
-        except Exception:
-            # If cache storage fails, still return the result
-            pass
-
-    return results
+    return search_service.find_emails(
+        account_id,
+        query=search_query,
+        limit=limit,
+        folder=folder,
+        folder_path=folder_path,
+        use_cache=use_cache,
+        force_refresh=force_refresh,
+    )
 
 
 # search_events
@@ -364,81 +229,15 @@ def search_events(
     days_back = validate_limit(days_back, 0, 730, "days_back")
     limit = validate_limit(limit, 1, 500, "limit")
     search_query = _validate_search_query(query)
-
-    # Build cache parameters
-    cache_params = {
-        "query": search_query,
-        "days_ahead": days_ahead,
-        "days_back": days_back,
-        "limit": limit,
-    }
-
-    # Check cache if enabled
-    if use_cache and not force_refresh:
-        try:
-            cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(
-                account_id, "search_events", cache_params
-            )
-            if cached_result:
-                data, state = cached_result
-                # Add cache status to each event
-                for event in data:
-                    event["_cache_status"] = state.value
-                return data
-        except Exception:
-            # If cache fails, continue to API call
-            pass
-
-    # Get account type and route to appropriate search API
-    account_type = _get_account_type(account_id)
-    events = search_router.search_events(account_id, account_type, search_query, limit)
-
-    # Filter by date range if needed
-    if days_ahead != 365 or days_back != 365:
-        now = dt.datetime.now(dt.timezone.utc)
-        start = now - dt.timedelta(days=days_back)
-        end = now + dt.timedelta(days=days_ahead)
-
-        filtered_events = []
-        for event in events:
-            start_info = event.get("start", {})
-            end_info = event.get("end", {})
-            if not isinstance(start_info, dict) or not isinstance(end_info, dict):
-                continue
-            start_raw = start_info.get("dateTime")
-            end_raw = end_info.get("dateTime")
-            if not isinstance(start_raw, str) or not isinstance(end_raw, str):
-                continue
-            try:
-                event_start = dt.datetime.fromisoformat(
-                    start_raw.replace("Z", "+00:00")
-                )
-                event_end = dt.datetime.fromisoformat(end_raw.replace("Z", "+00:00"))
-            except ValueError:
-                continue
-
-            if event_start <= end and event_end >= start:
-                filtered_events.append(event)
-
-        events = filtered_events
-
-    # Add cache metadata to each event
-    cached_at = datetime.now(timezone.utc).isoformat()
-    for event in events:
-        event["_cache_status"] = "fresh"
-        event["_cached_at"] = cached_at
-
-    # Store in cache
-    if use_cache:
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.set_cached(account_id, "search_events", cache_params, events)
-        except Exception:
-            # If cache storage fails, still return the result
-            pass
-
-    return events
+    return search_service.find_events(
+        account_id,
+        query=search_query,
+        days_ahead=days_ahead,
+        days_back=days_back,
+        limit=limit,
+        use_cache=use_cache,
+        force_refresh=force_refresh,
+    )
 
 
 # search_contacts
@@ -481,54 +280,13 @@ def search_contacts(
     """
     limit = validate_limit(limit, 1, 500, "limit")
     search_query = _validate_search_query(query)
-
-    # Build cache parameters
-    cache_params = {
-        "query": search_query,
-        "limit": limit,
-    }
-
-    # Check cache if enabled
-    if use_cache and not force_refresh:
-        try:
-            cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(
-                account_id, "search_contacts", cache_params
-            )
-            if cached_result:
-                data, state = cached_result
-                # Add cache status to each contact
-                for contact in data:
-                    contact["_cache_status"] = state.value
-                return data
-        except Exception:
-            # If cache fails, continue to API call
-            pass
-
-    # Get account type and route to appropriate search API
-    account_type = _get_account_type(account_id)
-    contacts = search_router.search_contacts(
-        account_id, account_type, search_query, limit
+    return search_service.find_contacts(
+        account_id,
+        query=search_query,
+        limit=limit,
+        use_cache=use_cache,
+        force_refresh=force_refresh,
     )
-
-    # Add cache metadata to each contact
-    cached_at = datetime.now(timezone.utc).isoformat()
-    for contact in contacts:
-        contact["_cache_status"] = "fresh"
-        contact["_cached_at"] = cached_at
-
-    # Store in cache
-    if use_cache:
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.set_cached(
-                account_id, "search_contacts", cache_params, contacts
-            )
-        except Exception:
-            # If cache storage fails, still return the result
-            pass
-
-    return contacts
 
 
 # search_unified
@@ -572,54 +330,11 @@ def search_unified(
     validated_entity_types = _validate_entity_types(entity_types)
     limit = validate_limit(limit, 1, 500, "limit")
     search_query = _validate_search_query(query)
-
-    # Build cache parameters
-    cache_params = {
-        "query": search_query,
-        "entity_types": sorted(validated_entity_types),
-        "limit": limit,
-    }
-
-    # Check cache if enabled
-    if use_cache and not force_refresh:
-        try:
-            cache_manager = get_cache_manager()
-            cached_result = cache_manager.get_cached(
-                account_id, "search_unified", cache_params
-            )
-            if cached_result:
-                data, state = cached_result
-                # Add cache status to items in each category
-                for category, items in data.items():
-                    for item in items:
-                        item["_cache_status"] = state.value
-                return data
-        except Exception:
-            # If cache fails, continue to API call
-            pass
-
-    # Get account type and route to appropriate search API
-    account_type = _get_account_type(account_id)
-    filtered_results = search_router.unified_search(
-        account_id, account_type, search_query, validated_entity_types, limit
+    return search_service.find_unified(
+        account_id,
+        query=search_query,
+        entity_types=validated_entity_types,
+        limit=limit,
+        use_cache=use_cache,
+        force_refresh=force_refresh,
     )
-
-    # Add cache metadata to each item
-    cached_at = datetime.now(timezone.utc).isoformat()
-    for category, items in filtered_results.items():
-        for item in items:
-            item["_cache_status"] = "fresh"
-            item["_cached_at"] = cached_at
-
-    # Store in cache
-    if use_cache:
-        try:
-            cache_manager = get_cache_manager()
-            cache_manager.set_cached(
-                account_id, "search_unified", cache_params, filtered_results
-            )
-        except Exception:
-            # If cache storage fails, still return the result
-            pass
-
-    return filtered_results

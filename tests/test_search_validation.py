@@ -106,12 +106,11 @@ def test_search_events_filters_by_range(
             {"start": {}, "end": {}},
         ]
 
-    # Import search_router to mock it
-    from src.m365_mcp import search_router
+    from src.m365_mcp.services import search as search_service
 
-    monkeypatch.setattr(search_router, "search_events", fake_search_events)
+    monkeypatch.setattr(search_service, "search_events", fake_search_events)
     monkeypatch.setattr(
-        search_tools, "_get_account_type", lambda account_id: "personal"
+        search_service, "get_account_type", lambda account_id: "personal"
     )
 
     results = search_tools.search_events.fn(
@@ -163,12 +162,11 @@ def test_search_files_trims_query(
         captured["limit"] = limit
         return []
 
-    # Import search_router to mock it
-    from src.m365_mcp import search_router
+    from src.m365_mcp.services import search as search_service
 
-    monkeypatch.setattr(search_router, "search_files", fake_search_files)
+    monkeypatch.setattr(search_service, "search_files", fake_search_files)
     monkeypatch.setattr(
-        search_tools, "_get_account_type", lambda account_id: "personal"
+        search_service, "get_account_type", lambda account_id: "personal"
     )
 
     search_tools.search_files.fn(

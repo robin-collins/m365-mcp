@@ -1,0 +1,460 @@
+{
+  "spec_version": "1.0.0",
+  "name": "calendar_create_event",
+  "title": "Create Event",
+  "description": "Add an event to your calendar. With attendees, Outlook emails them an invitation, so confirm=true is then required. Without attendees it is a private appointment and needs no confirmation. Returns the event.",
+  "annotations": {
+    "title": "Create Event",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "calendar",
+    "tier": "core",
+    "safety_level": "dangerous",
+    "confirm": "conditional",
+    "confirm_rule": "Required when attendees is non-empty (Outlook emails each attendee an invitation)."
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "subject": {
+        "type": "string",
+        "description": "Title.",
+        "minLength": 1,
+        "maxLength": 255
+      },
+      "start": {
+        "type": "string",
+        "description": "RFC 3339 date-time with offset, e.g. 2026-10-01T09:00:00+09:30.",
+        "format": "date-time"
+      },
+      "end": {
+        "type": "string",
+        "description": "RFC 3339 date-time with offset, e.g. 2026-10-01T09:00:00+09:30.",
+        "format": "date-time"
+      },
+      "time_zone": {
+        "type": "string",
+        "description": "IANA time-zone name, e.g. Australia/Adelaide. Defaults to the mailbox time zone.",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "is_all_day": {
+        "type": "boolean",
+        "description": "All-day event (start and end at midnight in time_zone)."
+      },
+      "location": {
+        "type": "string",
+        "description": "Location text.",
+        "maxLength": 255
+      },
+      "body": {
+        "type": "string",
+        "description": "Description.",
+        "maxLength": 100000
+      },
+      "body_format": {
+        "type": "string",
+        "enum": [
+          "text",
+          "html"
+        ],
+        "description": "Format of the body text you supply.",
+        "default": "text"
+      },
+      "reminder_minutes": {
+        "type": "integer",
+        "description": "Reminder before start, in minutes.",
+        "minimum": 0,
+        "maximum": 40320
+      },
+      "show_as": {
+        "type": "string",
+        "enum": [
+          "free",
+          "tentative",
+          "busy",
+          "oof",
+          "workingElsewhere"
+        ],
+        "description": "How the time shows in your calendar."
+      },
+      "attendees": {
+        "type": "array",
+        "description": "People to invite.",
+        "items": {
+          "type": "object",
+          "description": "Meeting attendee.",
+          "properties": {
+            "address": {
+              "type": "string",
+              "format": "email",
+              "minLength": 3,
+              "maxLength": 320,
+              "description": "Email address, e.g. jane@example.com."
+            },
+            "name": {
+              "type": "string",
+              "description": "Display name.",
+              "maxLength": 255
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "required",
+                "optional"
+              ],
+              "description": "Attendance type.",
+              "default": "required"
+            }
+          },
+          "required": [
+            "address"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 500
+      },
+      "calendar_id": {
+        "type": "string",
+        "description": "Calendar ID (default: your default calendar).",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "confirm": {
+        "type": "boolean",
+        "description": "Must be true to send invitations to the attendees; set only after the user approves.",
+        "default": false
+      }
+    },
+    "required": [
+      "subject",
+      "start",
+      "end"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "The created event.",
+    "properties": {
+      "event": {
+        "$ref": "#/$defs/event_detail"
+      },
+      "invitations_sent": {
+        "type": "boolean"
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "event",
+      "invitations_sent",
+      "summary"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+      "attendee": {
+        "type": "object",
+        "description": "Event attendee and their response.",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "address": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "required",
+              "optional",
+              "resource"
+            ]
+          },
+          "response": {
+            "enum": [
+              "none",
+              "organizer",
+              "tentativelyAccepted",
+              "accepted",
+              "declined",
+              "notResponded"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "address",
+          "type",
+          "response"
+        ],
+        "additionalProperties": false
+      },
+      "event_detail": {
+        "type": "object",
+        "description": "Event from m365_get. recurrence is a read-only human summary.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "time_zone": {
+            "type": "string"
+          },
+          "is_all_day": {
+            "type": "boolean"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "organizer": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/recipient"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_organizer": {
+            "type": "boolean"
+          },
+          "my_response": {
+            "enum": [
+              "none",
+              "organizer",
+              "tentativelyAccepted",
+              "accepted",
+              "declined",
+              "notResponded"
+            ]
+          },
+          "show_as": {
+            "enum": [
+              "free",
+              "tentative",
+              "busy",
+              "oof",
+              "workingElsewhere",
+              "unknown"
+            ]
+          },
+          "attendee_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "calendar_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "body_truncated": {
+            "type": "boolean"
+          },
+          "attendees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/attendee"
+            }
+          },
+          "web_link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recurrence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "subject",
+          "start",
+          "end",
+          "time_zone",
+          "is_all_day",
+          "location",
+          "organizer",
+          "is_organizer",
+          "my_response",
+          "show_as",
+          "attendee_count",
+          "calendar_id",
+          "preview",
+          "body",
+          "body_truncated",
+          "attendees",
+          "web_link",
+          "recurrence"
+        ],
+        "additionalProperties": false
+      },
+      "recipient": {
+        "type": "object",
+        "description": "A person's name and address.",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "address": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "address"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "graph_calls": [
+    "POST /me/events or /me/calendars/{id}/events (Prefer: outlook.timezone)"
+  ],
+  "validation_rules": [
+    {
+      "rule": "end must be after start.",
+      "error": "Invalid end: must be after start"
+    },
+    {
+      "rule": "confirm required when attendees is non-empty.",
+      "error": "Invalid confirm 'False': inviting attendees requires confirm=True to proceed. Expected: Explicit user confirmation"
+    },
+    {
+      "rule": "Never retried after an ambiguous failure.",
+      "error": "Outcome unknown: check your calendar before retrying"
+    }
+  ],
+  "replaces": [
+    "calendar_create_event"
+  ],
+  "examples": [
+    {
+      "title": "Private appointment",
+      "input": {
+        "subject": "Dentist",
+        "start": "2026-10-02T09:00:00+09:30",
+        "end": "2026-10-02T10:00:00+09:30",
+        "location": "City Dental"
+      },
+      "output": {
+        "event": {
+          "id": "AAMkADAwATM3EVT",
+          "subject": "Dentist",
+          "start": "2026-10-02T09:00:00+09:30",
+          "end": "2026-10-02T10:00:00+09:30",
+          "time_zone": "Australia/Adelaide",
+          "is_all_day": false,
+          "location": "City Dental",
+          "organizer": {
+            "name": "Robin",
+            "address": "robin@example.com"
+          },
+          "is_organizer": true,
+          "my_response": "organizer",
+          "show_as": "busy",
+          "attendee_count": 0,
+          "calendar_id": "AAMkADAwATM3CAL",
+          "preview": null,
+          "body": null,
+          "body_truncated": false,
+          "attendees": [],
+          "web_link": "https://outlook.live.com/calendar/item/AAMkADAwATM3EVT",
+          "recurrence": null
+        },
+        "invitations_sent": false,
+        "summary": "Created 'Dentist' on 2 Oct 09:00–10:00 (no invitations sent)."
+      }
+    }
+  ]
+}

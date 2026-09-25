@@ -1,0 +1,101 @@
+{
+  "spec_version": "1.0.0",
+  "name": "admin_cache_invalidate",
+  "title": "Clear Cache",
+  "description": "Remove cached results so the next call fetches fresh data: for one resource type or all, for one account or all.",
+  "annotations": {
+    "title": "Clear Cache",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "admin",
+    "tier": "admin",
+    "safety_level": "moderate",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "scope": {
+        "type": "string",
+        "enum": [
+          "email",
+          "email_folder",
+          "email_rule",
+          "event",
+          "calendar",
+          "contact",
+          "contact_folder",
+          "drive_item",
+          "all"
+        ],
+        "description": "Resource type to clear, or all."
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "reason": {
+        "type": "string",
+        "description": "Why (recorded in the audit log).",
+        "maxLength": 500
+      }
+    },
+    "required": [
+      "scope"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Invalidation result.",
+    "properties": {
+      "scope": {
+        "type": "string"
+      },
+      "entries_removed": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "scope",
+      "entries_removed",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "None (local cache database)."
+  ],
+  "validation_rules": [],
+  "replaces": [
+    "cache_invalidate"
+  ],
+  "examples": [
+    {
+      "title": "Clear email cache",
+      "input": {
+        "scope": "email",
+        "reason": "stale inbox"
+      },
+      "output": {
+        "scope": "email",
+        "entries_removed": 12,
+        "summary": "Removed 12 cached email entries."
+      }
+    }
+  ]
+}

@@ -1,0 +1,166 @@
+{
+  "spec_version": "1.0.0",
+  "name": "m365_delete",
+  "title": "Delete Item",
+  "description": "Delete one email, mail folder, inbox rule, event, calendar, contact, contact folder or OneDrive item. Always requires confirm=true after the user approves. Deleting a meeting you organise sends cancellations to its attendees. OneDrive items go to the recycle bin. Returns what happened and whether it can be recovered.",
+  "annotations": {
+    "title": "Delete Item",
+    "readOnlyHint": false,
+    "destructiveHint": true,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "m365",
+    "tier": "core",
+    "safety_level": "critical",
+    "confirm": "always",
+    "confirm_rule": "Always required."
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "resource": {
+        "type": "string",
+        "enum": [
+          "email",
+          "email_folder",
+          "email_rule",
+          "event",
+          "calendar",
+          "contact",
+          "contact_folder",
+          "drive_item"
+        ],
+        "description": "Type of item."
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "id": {
+        "type": "string",
+        "description": "Item ID. Aliases are not accepted.",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "cancellation_message": {
+        "type": "string",
+        "description": "event only: note sent with the cancellation when you organise the meeting.",
+        "maxLength": 2000
+      },
+      "confirm": {
+        "type": "boolean",
+        "description": "Must be true to delete this item; set only after the user approves.",
+        "default": false
+      }
+    },
+    "required": [
+      "resource",
+      "id",
+      "confirm"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Delete result. recoverable is true only where Graph documents recovery (OneDrive recycle bin).",
+    "properties": {
+      "resource": {
+        "enum": [
+          "email",
+          "email_folder",
+          "email_rule",
+          "event",
+          "calendar",
+          "contact",
+          "contact_folder",
+          "drive_item"
+        ]
+      },
+      "id": {
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "deleted",
+          "cancelled_and_deleted"
+        ]
+      },
+      "recoverable": {
+        "type": "boolean"
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "resource",
+      "id",
+      "status",
+      "recoverable",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "email: DELETE /me/messages/{id}",
+    "email_folder: DELETE /me/mailFolders/{id}",
+    "email_rule: DELETE /me/mailFolders/inbox/messageRules/{id}",
+    "event: organiser with attendees: POST /me/events/{id}/cancel {comment}; otherwise DELETE /me/events/{id}",
+    "calendar: DELETE /me/calendars/{id}",
+    "contact: DELETE /me/contacts/{id}",
+    "contact_folder: DELETE /me/contactFolders/{id}",
+    "drive_item: DELETE /me/drive/items/{id} (recycle bin)"
+  ],
+  "validation_rules": [
+    {
+      "rule": "confirm must be true.",
+      "error": "Invalid confirm 'False': delete requires confirm=True to proceed. Expected: Explicit user confirmation"
+    },
+    {
+      "rule": "Aliases and protected items are refused: well-known mail folders, the default calendar, the OneDrive root.",
+      "error": "Invalid id: the default calendar cannot be deleted"
+    },
+    {
+      "rule": "cancellation_message only for resource='event'.",
+      "error": "Invalid cancellation_message: only valid for resource='event'"
+    },
+    {
+      "rule": "Never retried after an ambiguous failure.",
+      "error": "Outcome unknown: check whether the item still exists before retrying"
+    }
+  ],
+  "replaces": [
+    "email_delete",
+    "emailfolders_delete",
+    "emailrules_delete",
+    "calendar_delete_event",
+    "calendar_delete_calendar",
+    "contact_delete",
+    "file_delete",
+    "folder_delete"
+  ],
+  "examples": [
+    {
+      "title": "Delete a OneDrive file",
+      "input": {
+        "resource": "drive_item",
+        "id": "01ABCDEF2345",
+        "confirm": true
+      },
+      "output": {
+        "resource": "drive_item",
+        "id": "01ABCDEF2345",
+        "status": "deleted",
+        "recoverable": true,
+        "summary": "Moved 'Tax return 2026.pdf' to the OneDrive recycle bin."
+      }
+    }
+  ]
+}

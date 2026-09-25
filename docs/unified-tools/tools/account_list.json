@@ -1,0 +1,96 @@
+{
+  "spec_version": "1.0.0",
+  "name": "account_list",
+  "title": "List Accounts",
+  "description": "List the Microsoft accounts signed in to this server. Needed only when more than one account is signed in, to choose account_id.",
+  "annotations": {
+    "title": "List Accounts",
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "account",
+    "tier": "admin",
+    "safety_level": "safe",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Signed-in accounts.",
+    "properties": {
+      "accounts": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "description": "Signed-in account.",
+          "properties": {
+            "account_id": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string"
+            },
+            "display_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "account_id",
+            "email",
+            "display_name"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "accounts",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "None (local MSAL token cache)."
+  ],
+  "validation_rules": [],
+  "replaces": [
+    "account_list"
+  ],
+  "examples": [
+    {
+      "title": "One account",
+      "input": {},
+      "output": {
+        "accounts": [
+          {
+            "account_id": "00000000-0000-0000-d16c-ebaa65a1624c.9188040d-6c67-4c5b-b112-36a304b66dad",
+            "email": "robin@example.com",
+            "display_name": "Robin"
+          }
+        ],
+        "summary": "1 account signed in."
+      }
+    }
+  ]
+}

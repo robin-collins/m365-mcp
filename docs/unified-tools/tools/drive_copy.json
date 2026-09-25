@@ -1,0 +1,109 @@
+{
+  "spec_version": "1.0.0",
+  "name": "drive_copy",
+  "title": "Copy File",
+  "description": "Copy a OneDrive file or folder to another folder. Copying runs in the background: this returns an operation_id to check with m365_get(resource='operation').",
+  "annotations": {
+    "title": "Copy File",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "drive",
+    "tier": "extended",
+    "safety_level": "moderate",
+    "confirm": "never",
+    "confirm_rule": null
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "item_id": {
+        "type": "string",
+        "description": "File or folder to copy.",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "account_id": {
+        "type": "string",
+        "description": "Account ID or email address. Omit when only one account is signed in.",
+        "minLength": 1,
+        "maxLength": 320
+      },
+      "destination_id": {
+        "type": "string",
+        "description": "Destination folder ID ('root' allowed).",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "destination_path": {
+        "type": "string",
+        "description": "Destination folder path instead of destination_id.",
+        "minLength": 1,
+        "maxLength": 2048
+      },
+      "new_name": {
+        "type": "string",
+        "description": "Name for the copy (default: same name).",
+        "minLength": 1,
+        "maxLength": 255
+      }
+    },
+    "required": [
+      "item_id"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Started copy.",
+    "properties": {
+      "operation_id": {
+        "type": "string"
+      },
+      "status": {
+        "const": "in_progress"
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary; also returned as the text content."
+      }
+    },
+    "required": [
+      "operation_id",
+      "status",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "POST /me/drive/items/{id}/copy {parentReference, name} → 202 + Location monitor URL (stored server-side for 24 hours)"
+  ],
+  "validation_rules": [
+    {
+      "rule": "Exactly one of destination_id or destination_path.",
+      "error": "Invalid destination_path: cannot be combined with destination_id"
+    }
+  ],
+  "replaces": [
+    "file_copy"
+  ],
+  "examples": [
+    {
+      "title": "Copy a file",
+      "input": {
+        "item_id": "01ABCDEF6789",
+        "destination_path": "/Backups"
+      },
+      "output": {
+        "operation_id": "op_7f3c2a",
+        "status": "in_progress",
+        "summary": "Copy started; check with m365_get(resource='operation', id='op_7f3c2a')."
+      }
+    }
+  ]
+}

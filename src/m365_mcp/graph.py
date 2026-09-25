@@ -1,13 +1,167 @@
-import httpx
+import email.utils
 import time
+from datetime import UTC, datetime
 from typing import Any, Iterator
+
+import httpx
+
 from .auth import get_token
 
 BASE_URL = "https://graph.microsoft.com/v1.0"
 # 15 x 320 KiB = 4,915,200 bytes
 UPLOAD_CHUNK_SIZE = 15 * 320 * 1024
+MAX_RETRY_WAIT_SECONDS = 60
+
+# Methods that are safe to resend when the outcome of an attempt is unknown.
+_IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
 
 _client = httpx.Client(timeout=30.0, follow_redirects=True)
+
+
+def _retry_after_seconds(response: httpx.Response, default: float) -> float:
+    """Return the server-requested retry delay, capped, or ``default``.
+
+    Retry-After may be delta-seconds or an HTTP date.
+    """
+    value = response.headers.get("Retry-After")
+    if not value:
+        return min(default, MAX_RETRY_WAIT_SECONDS)
+    try:
+        delay = float(value)
+    except ValueError:
+        try:
+            retry_at = email.utils.parsedate_to_datetime(value)
+        except (TypeError, ValueError):
+            retry_at = None
+        if retry_at is not None and retry_at.tzinfo is not None:
+            delay = (retry_at - datetime.now(UTC)).total_seconds()
+        else:
+            delay = default
+    return min(max(delay, 0.0), MAX_RETRY_WAIT_SECONDS)
+
+
+def _should_retry_status(method: str, status_code: int) -> bool:
+    """Decide whether an error status is worth retrying.
+
+    429 and 503 mean the request was not processed. Other 5xx responses may
+    arrive after a write took effect, so they are only retried for
+    idempotent methods (never, for example, a POST that sends an email).
+    """
+    if status_code in (429, 503):
+        return True
+    return status_code >= 500 and method in _IDEMPOTENT_METHODS
+
+
+def _should_retry_transport(method: str, exc: httpx.TransportError) -> bool:
+    """Decide whether a network error is worth retrying.
+
+    Connection failures mean the request never reached Graph. Timeouts and
+    dropped connections may happen after Graph acted, so they are only
+    retried for idempotent methods.
+    """
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+        return True
+    return method in _IDEMPOTENT_METHODS
+
+
+def _send(
+    method: str,
+    url: str,
+    account_id: str | None,
+    headers: dict[str, str] | None = None,
+    max_retries: int = 3,
+    authenticate: bool = True,
+    **kwargs: Any,
+) -> httpx.Response:
+    """Send an HTTP request with auth, retries and backoff.
+
+    A token is fetched for every attempt, so long throttling waits never
+    reuse an expired token. A 401 triggers one forced token refresh.
+
+    Args:
+        method: HTTP method.
+        url: Absolute URL.
+        account_id: Account whose token authorises the request.
+        headers: Extra request headers.
+        max_retries: Retries for throttling, server and network errors.
+        authenticate: Add a bearer token. Disable for pre-authenticated
+            upload session URLs.
+        **kwargs: Passed through to ``httpx.Client.request``.
+
+    Returns:
+        The successful response.
+
+    Raises:
+        httpx.HTTPStatusError: If the final response is an error status.
+        httpx.TransportError: If the network error cannot be retried.
+    """
+    method = method.upper()
+    retry_count = 0
+    force_refresh = False
+    refreshed_after_401 = False
+
+    while True:
+        request_headers = dict(headers or {})
+        if authenticate:
+            token = get_token(account_id, force_refresh=force_refresh)
+            request_headers["Authorization"] = f"Bearer {token}"
+            force_refresh = False
+
+        try:
+            response = _client.request(
+                method=method, url=url, headers=request_headers, **kwargs
+            )
+        except httpx.TransportError as exc:
+            if retry_count < max_retries and _should_retry_transport(method, exc):
+                time.sleep(2**retry_count)
+                retry_count += 1
+                continue
+            raise
+
+        if response.status_code == 401 and authenticate and not refreshed_after_401:
+            # The access token was rejected (revoked or expired early);
+            # redeem the refresh token once and try again.
+            force_refresh = True
+            refreshed_after_401 = True
+            continue
+
+        if retry_count < max_retries and _should_retry_status(
+            method, response.status_code
+        ):
+            time.sleep(_retry_after_seconds(response, 2**retry_count))
+            retry_count += 1
+            continue
+
+        response.raise_for_status()
+        return response
+
+
+def _query_headers(
+    method: str, params: dict[str, Any] | None
+) -> tuple[dict[str, str], dict[str, Any] | None]:
+    """Build Graph query headers and the params to send.
+
+    Returns a copy of ``params`` so the caller's dict is never mutated.
+    """
+    params = dict(params) if params else params
+    headers: dict[str, str] = {}
+
+    if (
+        method == "GET"
+        and params
+        and ("$search" in params or "body" in params.get("$select", ""))
+    ):
+        headers["Prefer"] = 'outlook.body-content-type="text"'
+
+    if params and (
+        "$search" in params
+        or "contains(" in params.get("$filter", "")
+        or "/any(" in params.get("$filter", "")
+    ):
+        headers["ConsistencyLevel"] = "eventual"
+        params.setdefault("$count", "true")
+
+    return headers, params
 
 
 def request(
@@ -18,68 +172,28 @@ def request(
     json: dict[str, Any] | None = None,
     data: bytes | None = None,
     max_retries: int = 3,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any] | None:
-    headers = {
-        "Authorization": f"Bearer {get_token(account_id)}",
-    }
-
-    if method == "GET":
-        if "$search" in (params or {}):
-            headers["Prefer"] = 'outlook.body-content-type="text"'
-        elif "body" in (params or {}).get("$select", ""):
-            headers["Prefer"] = 'outlook.body-content-type="text"'
-    else:
-        headers["Content-Type"] = (
+    request_headers, params = _query_headers(method, params)
+    if method != "GET":
+        request_headers["Content-Type"] = (
             "application/json" if json else "application/octet-stream"
         )
+    if headers:
+        request_headers.update(headers)
 
-    if params and (
-        "$search" in params
-        or "contains(" in params.get("$filter", "")
-        or "/any(" in params.get("$filter", "")
-    ):
-        headers["ConsistencyLevel"] = "eventual"
-        params.setdefault("$count", "true")
-
-    retry_count = 0
-    while retry_count <= max_retries:
-        try:
-            response = _client.request(
-                method=method,
-                url=f"{BASE_URL}{path}",
-                headers=headers,
-                params=params,
-                json=json,
-                content=data,
-            )
-
-            if response.status_code == 429:
-                retry_after = int(response.headers.get("Retry-After", "5"))
-                if retry_count < max_retries:
-                    time.sleep(min(retry_after, 60))
-                    retry_count += 1
-                    continue
-
-            if response.status_code >= 500 and retry_count < max_retries:
-                wait_time = (2**retry_count) * 1
-                time.sleep(wait_time)
-                retry_count += 1
-                continue
-
-            response.raise_for_status()
-
-            if response.content:
-                return response.json()
-            return None
-
-        except httpx.HTTPStatusError as e:
-            if retry_count < max_retries and e.response.status_code >= 500:
-                wait_time = (2**retry_count) * 1
-                time.sleep(wait_time)
-                retry_count += 1
-                continue
-            raise
-
+    response = _send(
+        method,
+        f"{BASE_URL}{path}",
+        account_id,
+        headers=request_headers,
+        max_retries=max_retries,
+        params=params,
+        json=json,
+        content=data,
+    )
+    if response.content:
+        return response.json()
     return None
 
 
@@ -89,13 +203,23 @@ def request_paginated(
     params: dict[str, Any] | None = None,
     limit: int | None = None,
 ) -> Iterator[dict[str, Any]]:
-    """Make paginated requests following @odata.nextLink"""
+    """Make paginated requests following @odata.nextLink.
+
+    The nextLink already encodes the query, but the headers the first page
+    needed (plain-text bodies, eventual consistency) must be sent again.
+    """
+    page_headers, _ = _query_headers("GET", params)
     items_returned = 0
     next_link = None
 
     while True:
         if next_link:
-            result = request("GET", next_link.replace(BASE_URL, ""), account_id)
+            result = request(
+                "GET",
+                next_link.replace(BASE_URL, ""),
+                account_id,
+                headers=page_headers,
+            )
         else:
             result = request("GET", path, account_id, params=params)
 
@@ -117,83 +241,38 @@ def request_paginated(
 def download_raw(
     path: str, account_id: str | None = None, max_retries: int = 3
 ) -> bytes:
-    headers = {"Authorization": f"Bearer {get_token(account_id)}"}
-
-    retry_count = 0
-    while retry_count <= max_retries:
-        try:
-            response = _client.get(f"{BASE_URL}{path}", headers=headers)
-
-            if response.status_code == 429:
-                retry_after = int(response.headers.get("Retry-After", "5"))
-                if retry_count < max_retries:
-                    time.sleep(min(retry_after, 60))
-                    retry_count += 1
-                    continue
-
-            if response.status_code >= 500 and retry_count < max_retries:
-                wait_time = (2**retry_count) * 1
-                time.sleep(wait_time)
-                retry_count += 1
-                continue
-
-            response.raise_for_status()
-            return response.content
-
-        except httpx.HTTPStatusError as e:
-            if retry_count < max_retries and e.response.status_code >= 500:
-                wait_time = (2**retry_count) * 1
-                time.sleep(wait_time)
-                retry_count += 1
-                continue
-            raise
-
-    raise ValueError("Failed to download file after all retries")
+    response = _send("GET", f"{BASE_URL}{path}", account_id, max_retries=max_retries)
+    return response.content
 
 
-def _do_chunked_upload(
-    upload_url: str,
-    data: bytes,
-    headers: dict[str, str],
-) -> dict[str, Any]:
-    """Internal helper for chunked uploads"""
+def _do_chunked_upload(upload_url: str, data: bytes) -> dict[str, Any]:
+    """Upload data to a pre-authenticated upload session URL in chunks.
+
+    The upload URL embeds its own credential; Microsoft documents that
+    sending an Authorization header to it can cause 401 responses.
+    """
     file_size = len(data)
 
-    for i in range(0, file_size, UPLOAD_CHUNK_SIZE):
-        chunk_start = i
-        chunk_end = min(i + UPLOAD_CHUNK_SIZE, file_size)
+    for chunk_start in range(0, file_size, UPLOAD_CHUNK_SIZE):
+        chunk_end = min(chunk_start + UPLOAD_CHUNK_SIZE, file_size)
         chunk = data[chunk_start:chunk_end]
 
-        chunk_headers = headers.copy()
-        chunk_headers["Content-Length"] = str(len(chunk))
-        chunk_headers["Content-Range"] = (
-            f"bytes {chunk_start}-{chunk_end - 1}/{file_size}"
+        chunk_headers = {
+            "Content-Length": str(len(chunk)),
+            "Content-Range": f"bytes {chunk_start}-{chunk_end - 1}/{file_size}",
+        }
+        response = _send(
+            "PUT",
+            upload_url,
+            None,
+            headers=chunk_headers,
+            authenticate=False,
+            content=chunk,
         )
 
-        retry_count = 0
-        while retry_count <= 3:
-            try:
-                response = _client.put(upload_url, content=chunk, headers=chunk_headers)
-
-                if response.status_code == 429:
-                    retry_after = int(response.headers.get("Retry-After", "5"))
-                    if retry_count < 3:
-                        time.sleep(min(retry_after, 60))
-                        retry_count += 1
-                        continue
-
-                response.raise_for_status()
-
-                if response.status_code in (200, 201):
-                    return response.json()
-                break
-
-            except httpx.HTTPStatusError as e:
-                if retry_count < 3 and e.response.status_code >= 500:
-                    time.sleep((2**retry_count) * 1)
-                    retry_count += 1
-                    continue
-                raise
+        if response.status_code in (200, 201):
+            # Mail attachment sessions finish with an empty 201 body.
+            return response.json() if response.content else {}
 
     raise ValueError("Upload completed but no final response received")
 
@@ -227,10 +306,7 @@ def upload_large_file(
         return result
 
     session = create_upload_session(path, account_id, item_properties)
-    upload_url = session["uploadUrl"]
-
-    headers = {"Authorization": f"Bearer {get_token(account_id)}"}
-    return _do_chunked_upload(upload_url, data, headers)
+    return _do_chunked_upload(session["uploadUrl"], data)
 
 
 def create_mail_upload_session(
@@ -268,10 +344,7 @@ def upload_large_mail_attachment(
     }
 
     session = create_mail_upload_session(message_id, attachment_item, account_id)
-    upload_url = session["uploadUrl"]
-
-    headers = {"Authorization": f"Bearer {get_token(account_id)}"}
-    return _do_chunked_upload(upload_url, data, headers)
+    return _do_chunked_upload(session["uploadUrl"], data)
 
 
 def search_query(

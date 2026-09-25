@@ -5,11 +5,11 @@ legacy 85-tool surface now, and the unified 29-tool surface once it exists.
 
 ## How it works
 
-- **Cases** (`cases.py`): 105 prompts in five categories: direct,
+- **Cases** (`cases.py`): 115 prompts in five categories: direct,
   indirect, ambiguous, competing-tool (list vs search, mail folder vs
   OneDrive folder, update vs move) and no-tool. Each case states the
   acceptable first tools and the successful calls for each surface. Every
-  fourth case is held out (26 cases, about 25%); do not tune descriptions
+  fourth case is held out (28 cases, about 25%); do not tune descriptions
   against it. `SMOKE_IDS` is a fixed 10-case smoke set.
 - **Fake Graph** (`fake_graph.py`, `fixtures.py`): an in-memory personal
   mailbox, calendar, address book and OneDrive served through

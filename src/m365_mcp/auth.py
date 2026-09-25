@@ -3,9 +3,11 @@ import json
 import logging
 import os
 import sys
+import threading
 from typing import Any, NamedTuple
 
 import msal
+import msal_extensions
 
 # Note: Environment variables should be loaded by the caller (server.py or authenticate.py)
 # before importing this module
@@ -19,8 +21,28 @@ METADATA_FILE = pl.Path.home() / ".m365_mcp_account_metadata.json"
 SCOPES = ["https://graph.microsoft.com/.default"]
 DEVICE_FLOW_SCOPES = SCOPES
 INTERACTIVE_AUTH_ENV_VAR = "M365_MCP_INTERACTIVE_AUTH"
+# Flow key recording which tenant authority issued a device code, so the
+# code is redeemed against the same authority.
+DEVICE_FLOW_TENANT_KEY = "_m365_tenant_id"
+
+# MSAL error codes meaning the refresh token can no longer be used and the
+# user must sign in again (expired, revoked, or new consent required).
+SIGN_IN_REQUIRED_ERRORS = frozenset(
+    {"invalid_grant", "interaction_required", "consent_required", "login_required"}
+)
 
 logger = logging.getLogger(__name__)
+
+# MSAL apps are reused across requests: constructing one performs a network
+# tenant discovery call. The persisted cache reloads itself when another
+# process (authenticate.py or a second server) updates the cache file.
+_APP_LOCK = threading.Lock()
+_APPS: dict[tuple[str, str], msal.PublicClientApplication] = {}
+_TOKEN_CACHE: msal_extensions.PersistedTokenCache | None = None
+
+
+class SignInRequiredError(RuntimeError):
+    """Raised when an account has no usable refresh token and must sign in."""
 
 
 class Account(NamedTuple):
@@ -63,62 +85,73 @@ def _select_account(
     return accounts[0] if accounts else None
 
 
-def _read_cache() -> str | None:
-    try:
-        return CACHE_FILE.read_text()
-    except FileNotFoundError:
-        return None
+def _get_token_cache() -> msal_extensions.PersistedTokenCache:
+    """Return the shared file-backed token cache.
 
-
-def _write_cache(content: str) -> None:
-    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    CACHE_FILE.write_text(content)
+    The cache takes a cross-process file lock for every write and reloads
+    from disk whenever the file was changed by another process, so refreshed
+    (rotated) refresh tokens are never lost to a concurrent writer.
+    """
+    global _TOKEN_CACHE
+    if _TOKEN_CACHE is None:
+        CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        persistence = msal_extensions.FilePersistence(str(CACHE_FILE))
+        _TOKEN_CACHE = msal_extensions.PersistedTokenCache(persistence)
+    return _TOKEN_CACHE
 
 
 def _interactive_auth_enabled() -> bool:
     return os.getenv(INTERACTIVE_AUTH_ENV_VAR, "false").lower() == "true"
 
 
-def _raise_interactive_auth_required(account_id: str | None) -> None:
-    account_hint = f" for account_id '{account_id}'" if account_id else ""
-    raise RuntimeError(
-        f"No cached Microsoft access token is available{account_hint}. "
-        "Run `uv run authenticate.py` to authenticate interactively before "
-        "using MCP tools, or set M365_MCP_INTERACTIVE_AUTH=true only for an "
-        "intentional interactive authentication process."
+def _raise_interactive_auth_required(
+    account_id: str | None, reason: str | None = None
+) -> None:
+    account_hint = f" for '{account_id}'" if account_id else ""
+    reason_hint = f" Microsoft reported: {reason}." if reason else ""
+    raise SignInRequiredError(
+        f"Microsoft sign-in has expired or is missing{account_hint}."
+        f"{reason_hint} Run `uv run authenticate.py` and sign in again "
+        "before using MCP tools, or set M365_MCP_INTERACTIVE_AUTH=true only "
+        "for an intentional interactive authentication process."
     )
 
 
-def _build_app(
-    tenant_id: str, cache: msal.SerializableTokenCache | None = None
-) -> msal.PublicClientApplication:
-    """Construct an MSAL PublicClientApplication with the shared cache.
+def _describe_error(result: dict[str, Any]) -> str:
+    """Return a one-line summary of an MSAL error result."""
+    description = str(result.get("error_description", "no description"))
+    return f"{result.get('error')} - {description.splitlines()[0]}"
+
+
+def _build_app(tenant_id: str) -> msal.PublicClientApplication:
+    """Return the shared MSAL PublicClientApplication for a tenant.
+
+    Apps are created once per (client ID, tenant) and reused, because MSAL
+    performs a network authority discovery each time an app is constructed.
 
     Args:
         tenant_id: Tenant segment for the authority (for example, "common",
             "consumers", or a specific directory ID).
-        cache: Reusable token cache. If omitted, the cache will be hydrated
-            from disk.
 
     Returns:
-        Initialized PublicClientApplication.
+        Initialized PublicClientApplication using the shared token cache.
     """
 
     client_id = os.getenv("M365_MCP_CLIENT_ID")
     if not client_id:
         raise ValueError("M365_MCP_CLIENT_ID environment variable is required")
 
-    cache_instance = cache or msal.SerializableTokenCache()
-    if cache is None:
-        cache_content = _read_cache()
-        if cache_content:
-            cache_instance.deserialize(cache_content)
-
-    authority = f"https://login.microsoftonline.com/{tenant_id}"
-
-    return msal.PublicClientApplication(
-        client_id, authority=authority, token_cache=cache_instance
-    )
+    key = (client_id, tenant_id)
+    with _APP_LOCK:
+        app = _APPS.get(key)
+        if app is None:
+            app = msal.PublicClientApplication(
+                client_id,
+                authority=f"https://login.microsoftonline.com/{tenant_id}",
+                token_cache=_get_token_cache(),
+            )
+            _APPS[key] = app
+        return app
 
 
 def _read_metadata() -> dict[str, dict]:
@@ -154,9 +187,12 @@ def _initiate_device_flow(
     while reusing the same token cache.
     """
 
-    def _start(current_app: msal.PublicClientApplication) -> dict[str, Any]:
+    def _start(
+        current_app: msal.PublicClientApplication, current_tenant: str
+    ) -> dict[str, Any]:
         flow = current_app.initiate_device_flow(scopes=DEVICE_FLOW_SCOPES)
         if "user_code" in flow:
+            flow[DEVICE_FLOW_TENANT_KEY] = current_tenant
             return flow
 
         error_message = flow.get(
@@ -165,7 +201,7 @@ def _initiate_device_flow(
         raise Exception(error_message)
 
     try:
-        return app, _start(app)
+        return app, _start(app, tenant_id)
     except Exception as exc:
         message = str(exc).lower()
         if "reserved" not in message and "offline_access" not in message:
@@ -179,13 +215,8 @@ def _initiate_device_flow(
             "retrying with the consumers authority",
         )
 
-        cache = (
-            app.token_cache
-            if isinstance(app.token_cache, msal.SerializableTokenCache)
-            else None
-        )
-        consumer_app = _build_app("consumers", cache=cache)
-        return consumer_app, _start(consumer_app)
+        consumer_app = _build_app("consumers")
+        return consumer_app, _start(consumer_app, "consumers")
 
 
 def _get_account_type(account_id: str, username: str) -> str:
@@ -318,16 +349,26 @@ def _account_from_msal(account: dict[str, str], detect_type: bool = True) -> Acc
     )
 
 
-def _save_token_cache_if_changed(app: msal.PublicClientApplication) -> bool:
-    """Persist the MSAL token cache when it has changed."""
-    cache = app.token_cache
-    if isinstance(cache, msal.SerializableTokenCache) and cache.has_state_changed:
-        _write_cache(cache.serialize())
-        return True
-    return False
-
-
 def get_token(account_id: str | None = None, force_refresh: bool = False) -> str:
+    """Return a Graph access token, silently refreshing it when needed.
+
+    MSAL returns the cached access token while it is valid and otherwise
+    redeems the cached refresh token, persisting the rotated tokens.
+
+    Args:
+        account_id: Optional account ID or username. Defaults to the first
+            cached account.
+        force_refresh: Skip the cached access token and redeem the refresh
+            token (used after Graph rejects a token with 401).
+
+    Returns:
+        A bearer access token for Microsoft Graph.
+
+    Raises:
+        SignInRequiredError: If the account must sign in again and
+            interactive auth is disabled.
+        RuntimeError: If the token service fails for another reason.
+    """
     app, tenant_id = get_app()
 
     accounts = app.get_accounts()
@@ -341,23 +382,29 @@ def get_token(account_id: str | None = None, force_refresh: bool = False) -> str
     elif accounts:
         account = accounts[0]
 
-    if account_id and account is None:
-        _raise_interactive_auth_required(account_id)
-
-    silent_kwargs = {"force_refresh": True} if force_refresh else {}
-    result = app.acquire_token_silent(SCOPES, account=account, **silent_kwargs)
-
-    if result and "error" in result:
-        logger.warning(
-            "Silent token acquisition failed: %s - %s",
-            result.get("error"),
-            result.get("error_description", "no description"),
+    result = None
+    if account is not None:
+        result = app.acquire_token_silent_with_error(
+            SCOPES, account=account, force_refresh=force_refresh
         )
+
+    reason = None
+    if result and "error" in result:
+        reason = _describe_error(result)
+        logger.warning("Silent token acquisition failed: %s", reason)
+        if result.get("error") not in SIGN_IN_REQUIRED_ERRORS:
+            # Transient/service errors: signing in again would not help.
+            raise RuntimeError(
+                f"Microsoft token refresh failed: {reason}. "
+                "This is usually temporary; retry shortly."
+            )
         result = None
 
     if not result:
         if not _interactive_auth_enabled():
-            _raise_interactive_auth_required(account_id)
+            _raise_interactive_auth_required(
+                account["username"] if account else account_id, reason
+            )
 
         app, flow = _initiate_device_flow(app, tenant_id)
         verification_uri = flow.get(
@@ -378,8 +425,6 @@ def get_token(account_id: str | None = None, force_refresh: bool = False) -> str
         raise Exception(
             f"Auth failed: {result.get('error_description', result['error'])}"
         )
-
-    _save_token_cache_if_changed(app)
 
     # Detect and cache account type for this account
     if account:
@@ -425,8 +470,10 @@ def reauthenticate_account(account_id: str | None = None) -> ReauthenticationRes
         Account details and the token lifetime in seconds, when provided by MSAL.
 
     Raises:
-        RuntimeError: If no refresh token is available or Microsoft rejects the
-            silent refresh.
+        SignInRequiredError: If no refresh token is available or Microsoft
+            reports that it has expired or been revoked.
+        RuntimeError: If Microsoft rejects the silent refresh for another
+            (usually transient) reason.
         ValueError: If the account cannot be selected.
     """
     app, _tenant_id = get_app()
@@ -438,20 +485,21 @@ def reauthenticate_account(account_id: str | None = None) -> ReauthenticationRes
         force_refresh=True,
     )
     if not result:
-        raise RuntimeError(
+        raise SignInRequiredError(
             f"No cached refresh token is available for {account['username']}. "
-            "Run `uv run authenticate.py --remove` for this account, then "
-            "`uv run authenticate.py` to sign in again."
+            "Run `uv run authenticate.py` and sign in again."
         )
 
     if "error" in result:
-        error = result.get("error")
-        description = result.get("error_description", "no description")
-        raise RuntimeError(
-            f"Token refresh failed for {account['username']}: {error} - {description}"
-        )
+        reason = _describe_error(result)
+        if result.get("error") in SIGN_IN_REQUIRED_ERRORS:
+            raise SignInRequiredError(
+                f"Sign-in for {account['username']} has expired or been "
+                f"revoked ({reason}). Run `uv run authenticate.py` and sign "
+                "in again."
+            )
+        raise RuntimeError(f"Token refresh failed for {account['username']}: {reason}")
 
-    _save_token_cache_if_changed(app)
     refreshed_account = _account_from_msal(account)
     expires_in = result.get("expires_in")
     return ReauthenticationResult(
@@ -497,8 +545,9 @@ def remove_account(account_id: str) -> AccountRemovalResult:
     account = _find_cached_account(app, account_id)
     removed_account = _account_from_msal(account, detect_type=False)
 
+    # The persisted cache writes the removal to disk immediately.
     app.remove_account(account)
-    token_cache_removed = _save_token_cache_if_changed(app)
+    token_cache_removed = True
 
     metadata = _read_metadata()
     metadata_removed = metadata.pop(removed_account.account_id, None) is not None
@@ -542,10 +591,6 @@ def authenticate_new_account() -> Account | None:
         raise Exception(
             f"Auth failed: {result.get('error_description', result['error'])}"
         )
-
-    cache = app.token_cache
-    if isinstance(cache, msal.SerializableTokenCache) and cache.has_state_changed:
-        _write_cache(cache.serialize())
 
     # Get the newly added account
     accounts = app.get_accounts()

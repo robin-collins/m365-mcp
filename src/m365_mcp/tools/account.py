@@ -132,23 +132,25 @@ def account_complete_auth(flow_cache: str) -> dict[str, str]:
     except (ValueError, SyntaxError):
         raise ValueError("Invalid flow cache data")
 
-    app, _tenant_id = auth.get_app()
-    result = app.acquire_token_by_device_flow(flow)
+    # Redeem the code with the same authority that issued it (the device
+    # flow may have fallen back to the consumers authority).
+    flow_tenant = flow.get(auth.DEVICE_FLOW_TENANT_KEY)
+    if flow_tenant:
+        app = auth._build_app(flow_tenant)
+    else:
+        app, _tenant_id = auth.get_app()
+    # Poll once instead of blocking until the device code expires.
+    result = app.acquire_token_by_device_flow(flow, exit_condition=lambda _flow: True)
 
     if "error" in result:
         error_msg = result.get("error_description", result["error"])
-        if "authorization_pending" in error_msg:
+        if result["error"] == "authorization_pending":
             return {
                 "status": "pending",
                 "message": "Authentication is still pending. The user needs to complete the authentication process.",
                 "instructions": "Please ensure you've visited the URL and entered the code, then try again.",
             }
         raise Exception(f"Authentication failed: {error_msg}")
-
-    # Save the token cache
-    cache = app.token_cache
-    if isinstance(cache, auth.msal.SerializableTokenCache) and cache.has_state_changed:
-        auth._write_cache(cache.serialize())
 
     # Get the newly added account
     accounts = app.get_accounts()

@@ -116,6 +116,66 @@ def _select_account(auth_module: Any, selector: str, action: str) -> Any | None:
         print("Selection did not match a configured account.")
 
 
+def _ask_yes_no(prompt: str) -> bool:
+    """Ask a y/n question until the user answers."""
+    while True:
+        choice = input(prompt).strip().lower()
+        if choice in ("y", "n"):
+            return choice == "y"
+        print("Please enter 'y' or 'n'")
+
+
+def _check_accounts(auth_module: Any, accounts: list[Any]) -> dict[str, Exception]:
+    """Force-refresh each account's token and print whether it works.
+
+    A forced refresh proves the refresh token is still accepted, and also
+    restarts its 90-day inactivity window.
+
+    Returns:
+        Mapping of account ID to the error for accounts that are not usable.
+    """
+    problems: dict[str, Exception] = {}
+    if not accounts:
+        return problems
+
+    print("Checking sign-in status...")
+    for account in accounts:
+        try:
+            auth_module.reauthenticate_account(account.account_id)
+        except Exception as exc:  # noqa: BLE001 - report any failure per account
+            problems[account.account_id] = exc
+            print(f"  ✗ {account.username}: {exc}")
+        else:
+            print(f"  ✓ {account.username}: sign-in is valid")
+    print()
+    return problems
+
+
+def _sign_in(auth_module: Any, expected_username: str | None = None) -> bool:
+    """Run device-code sign-in. Return True if the expected account signed in."""
+    try:
+        new_account = auth_module.authenticate_new_account()
+    except Exception as e:
+        print(f"\n✗ Authentication failed: {e}")
+        return False
+
+    if not new_account:
+        print("\n✗ Authentication failed: Could not retrieve account information")
+        return False
+
+    print("\n✓ Authentication successful!")
+    print(f"Signed in as: {new_account.username}")
+    print(f"Account ID: {new_account.account_id}")
+
+    if expected_username and new_account.username.lower() != expected_username.lower():
+        print(
+            f"\n⚠ You signed in as {new_account.username}, not "
+            f"{expected_username}. {expected_username} still needs to sign in."
+        )
+        return False
+    return True
+
+
 def _handle_re_auth(auth_module: Any, selector: str) -> int:
     """Handle the --re-auth command."""
     account = _select_account(auth_module, selector, "re-authenticate")
@@ -123,7 +183,11 @@ def _handle_re_auth(auth_module: Any, selector: str) -> int:
         return 1
 
     print(f"Force-refreshing token for {account.username}...")
-    result = auth_module.reauthenticate_account(account.account_id)
+    try:
+        result = auth_module.reauthenticate_account(account.account_id)
+    except RuntimeError as exc:
+        print(f"\n✗ Authentication refresh failed: {exc}")
+        return 1
     print("\nAuthentication refresh successful!")
     print(f"Account: {result.account.username}")
     print(f"Account ID: {result.account.account_id}")
@@ -202,47 +266,46 @@ def main() -> int:
     if remove_selector is not None:
         return _handle_remove(auth, remove_selector, skip_confirmation)
 
-    # Authenticate new account
-    while True:
-        choice = input("Do you want to authenticate a new account? (y/n): ").lower()
-        if choice == "n":
-            break
-        elif choice == "y":
-            try:
-                # Use the new authentication function
-                new_account = auth.authenticate_new_account()
-
-                if new_account:
-                    print("\n✓ Authentication successful!")
-                    print(f"Signed in as: {new_account.username}")
-                    print(f"Account ID: {new_account.account_id}")
-                else:
-                    print(
-                        "\n✗ Authentication failed: Could not retrieve account information"
-                    )
-            except Exception as e:
-                print(f"\n✗ Authentication failed: {e}")
-                continue
-
+    # Verify existing accounts and offer to sign in again where needed
+    problems = _check_accounts(auth, accounts)
+    for account in accounts:
+        problem = problems.get(account.account_id)
+        if not isinstance(problem, auth.SignInRequiredError):
+            continue
+        if _ask_yes_no(f"Sign in again as {account.username} now? (y/n): "):
+            if _sign_in(auth, account.username):
+                problems.pop(account.account_id)
             print()
-        else:
-            print("Please enter 'y' or 'n'")
+
+    # Authenticate new account
+    while _ask_yes_no("Do you want to authenticate a new account? (y/n): "):
+        _sign_in(auth)
+        print()
 
     # Final account summary
     accounts = auth.list_accounts()
-    if accounts:
-        print("\nAuthenticated accounts summary:")
-        print("==============================")
-        for account in accounts:
-            print(f"• {account.username}")
-            print(f"  Account ID: {account.account_id}")
-
-        print(
-            "\nYou can use these account IDs with any MCP tool by passing account_id parameter."
-        )
-        print("Example: send_email(..., account_id='<account-id>')")
-    else:
+    if not accounts:
         print("\nNo accounts authenticated.")
+        return 1
+
+    print("\nAuthenticated accounts summary:")
+    print("==============================")
+    for account in accounts:
+        status = "✗ NOT USABLE" if account.account_id in problems else "✓ ready"
+        print(f"• {account.username} [{status}]")
+        print(f"  Account ID: {account.account_id}")
+
+    print(
+        "\nYou can use these account IDs with any MCP tool by passing account_id parameter."
+    )
+    print("Example: send_email(..., account_id='<account-id>')")
+
+    if problems:
+        print(
+            "\n⚠ Some accounts still need attention (see above). "
+            "Run this script again to retry."
+        )
+        return 1
 
     print("\nAuthentication complete!")
     return 0

@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Iterable
-from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
@@ -95,10 +94,11 @@ def test_get_token_accepts_username_identifier(
                 }
             ]
 
-        def acquire_token_silent(
+        def acquire_token_silent_with_error(
             self,
             scopes: list[str],
             account: dict[str, str] | None = None,
+            force_refresh: bool = False,
         ) -> dict[str, str]:
             captured["scopes"] = scopes
             captured["account"] = account
@@ -174,8 +174,11 @@ def test_account_complete_auth_returns_pending_status(
     class FakeApp:
         token_cache = object()
 
-        def acquire_token_by_device_flow(self, flow: dict[str, Any]) -> dict[str, str]:
+        def acquire_token_by_device_flow(
+            self, flow: dict[str, Any], **kwargs: Any
+        ) -> dict[str, str]:
             self.flow = flow  # type: ignore[attr-defined]
+            captured.update(kwargs)
             return {
                 "error": "authorization_pending",
                 "error_description": "authorization_pending",
@@ -184,43 +187,28 @@ def test_account_complete_auth_returns_pending_status(
         def get_accounts(self) -> list[dict[str, str]]:
             return []
 
+    captured: dict[str, Any] = {}
     monkeypatch.setattr(account_tools.auth, "get_app", lambda: (FakeApp(), "common"))
 
     result = account_tools.account_complete_auth.fn(str(flow_cache))
 
     assert result["status"] == "pending"
     assert "Authentication is still pending" in result["message"]
+    # Polls once instead of blocking until the device code expires.
+    assert captured["exit_condition"]({}) is True
 
 
-def test_account_complete_auth_returns_success_and_writes_cache(
+def test_account_complete_auth_returns_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Successful completion returns matched account details including account type."""
 
     flow_cache = {"device_code": "EFGH"}
 
-    class FakeCacheBase:
-        has_state_changed: bool = True
-
-        def serialize(self) -> str:
-            return "base-cache"
-
-    monkeypatch.setattr(
-        account_tools.auth.msal,
-        "SerializableTokenCache",
-        FakeCacheBase,
-    )
-
-    @dataclass
-    class FakeCache(FakeCacheBase):
-        def serialize(self) -> str:
-            return "cache"
-
     class FakeApp:
-        def __init__(self) -> None:
-            self.token_cache = FakeCache()
-
-        def acquire_token_by_device_flow(self, flow: dict[str, Any]) -> dict[str, Any]:
+        def acquire_token_by_device_flow(
+            self, flow: dict[str, Any], **kwargs: Any
+        ) -> dict[str, Any]:
             return {
                 "id_token_claims": {"preferred_username": "ada@example.com"},
                 "access_token": "fake-access-token",
@@ -232,16 +220,10 @@ def test_account_complete_auth_returns_success_and_writes_cache(
                 {"username": "grace@example.com", "home_account_id": "acc-2"},
             ]
 
-    writes: list[str] = []
-
-    def fake_write_cache(content: str) -> None:
-        writes.append(content)
-
     def fake_get_account_type(account_id: str, username: str) -> str:
         return "work_school"
 
     monkeypatch.setattr(account_tools.auth, "get_app", lambda: (FakeApp(), "common"))
-    monkeypatch.setattr(account_tools.auth, "_write_cache", fake_write_cache)
     monkeypatch.setattr(account_tools.auth, "_get_account_type", fake_get_account_type)
 
     result = account_tools.account_complete_auth.fn(str(flow_cache))
@@ -253,7 +235,6 @@ def test_account_complete_auth_returns_success_and_writes_cache(
         "account_type": "work_school",
         "message": "Successfully authenticated ada@example.com",
     }
-    assert writes == ["cache"]
 
 
 def test_get_token_fails_fast_when_interactive_auth_disabled(
@@ -265,10 +246,11 @@ def test_get_token_fails_fast_when_interactive_auth_disabled(
         def get_accounts(self) -> list[dict[str, str]]:
             return []
 
-        def acquire_token_silent(
+        def acquire_token_silent_with_error(
             self,
             scopes: list[str],
             account: dict[str, str] | None = None,
+            force_refresh: bool = False,
         ) -> None:
             return None
 
@@ -296,10 +278,11 @@ def test_get_token_allows_device_flow_when_interactive_auth_enabled(
         def get_accounts(self) -> list[dict[str, str]]:
             return [{"username": "ada@example.com", "home_account_id": "acc-1"}]
 
-        def acquire_token_silent(
+        def acquire_token_silent_with_error(
             self,
             scopes: list[str],
             account: dict[str, str] | None = None,
+            force_refresh: bool = False,
         ) -> None:
             return None
 
@@ -336,21 +319,123 @@ def test_get_token_allows_device_flow_when_interactive_auth_enabled(
     assert calls == ["device_flow"]
 
 
-def test_reauthenticate_account_force_refreshes_and_writes_cache(
+class _SilentErrorApp:
+    """Fake MSAL app whose silent acquisition returns a fixed result."""
+
+    def __init__(self, result: dict[str, Any] | None) -> None:
+        self.result = result
+        self.force_refresh: bool | None = None
+
+    def get_accounts(self) -> list[dict[str, str]]:
+        return [{"username": "ada@example.com", "home_account_id": "acc-1"}]
+
+    def acquire_token_silent_with_error(
+        self,
+        scopes: list[str],
+        account: dict[str, str] | None = None,
+        force_refresh: bool = False,
+    ) -> dict[str, Any] | None:
+        self.force_refresh = force_refresh
+        return self.result
+
+
+def test_get_token_reports_expired_sign_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An expired refresh token should say to sign in again, with the reason."""
+    app = _SilentErrorApp(
+        {
+            "error": "invalid_grant",
+            "error_description": "AADSTS70000: The grant is expired.\nTrace ID: x",
+        }
+    )
+    monkeypatch.delenv(account_tools.auth.INTERACTIVE_AUTH_ENV_VAR, raising=False)
+    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (app, "common"))
+
+    with pytest.raises(account_tools.auth.SignInRequiredError) as excinfo:
+        account_tools.auth.get_token("acc-1")
+
+    message = str(excinfo.value)
+    assert "ada@example.com" in message
+    assert "AADSTS70000" in message
+    assert "Trace ID" not in message
+    assert "uv run authenticate.py" in message
+
+
+def test_get_token_transient_error_is_not_sign_in_required(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Service errors must not tell the user to sign in or start device flow."""
+    app = _SilentErrorApp(
+        {"error": "temporarily_unavailable", "error_description": "busy"}
+    )
+
+    def fail_device_flow(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Device flow should not start for transient errors")
+
+    monkeypatch.setenv(account_tools.auth.INTERACTIVE_AUTH_ENV_VAR, "true")
+    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (app, "common"))
+    monkeypatch.setattr(account_tools.auth, "_initiate_device_flow", fail_device_flow)
+
+    with pytest.raises(RuntimeError, match="temporarily_unavailable") as excinfo:
+        account_tools.auth.get_token("acc-1")
+
+    assert not isinstance(excinfo.value, account_tools.auth.SignInRequiredError)
+
+
+def test_get_token_passes_force_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
+    """force_refresh must reach MSAL so a 401 retry redeems the refresh token."""
+    app = _SilentErrorApp({"access_token": "fresh"})
+    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (app, "common"))
+    monkeypatch.setattr(
+        account_tools.auth, "_get_account_type", lambda account_id, username: "personal"
+    )
+
+    assert account_tools.auth.get_token("acc-1", force_refresh=True) == "fresh"
+    assert app.force_refresh is True
+
+
+def test_build_app_reuses_app_per_tenant(monkeypatch: pytest.MonkeyPatch) -> None:
+    """MSAL apps are reused because construction performs network discovery."""
+    created: list[str] = []
+
+    def fake_app(client_id: str, authority: str, token_cache: Any) -> object:
+        created.append(authority)
+        return object()
+
+    monkeypatch.setenv("M365_MCP_CLIENT_ID", "client-id")
+    monkeypatch.setattr(account_tools.auth, "_APPS", {})
+    monkeypatch.setattr(account_tools.auth, "_get_token_cache", lambda: None)
+    monkeypatch.setattr(account_tools.auth.msal, "PublicClientApplication", fake_app)
+
+    first = account_tools.auth._build_app("common")
+    assert account_tools.auth._build_app("common") is first
+    assert account_tools.auth._build_app("consumers") is not first
+    assert created == [
+        "https://login.microsoftonline.com/common",
+        "https://login.microsoftonline.com/consumers",
+    ]
+
+
+def test_reauthenticate_account_reports_expired_sign_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--re-auth distinguishes an expired sign-in from other failures."""
+    app = _SilentErrorApp(
+        {"error": "invalid_grant", "error_description": "AADSTS70000: expired"}
+    )
+    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (app, "common"))
+
+    with pytest.raises(account_tools.auth.SignInRequiredError, match="AADSTS70000"):
+        account_tools.auth.reauthenticate_account("acc-1")
+
+
+def test_reauthenticate_account_force_refreshes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """--re-auth should exercise MSAL refresh-token renewal."""
 
-    class FakeCacheBase:
-        has_state_changed = True
-
-        def serialize(self) -> str:
-            return "cache"
-
     class FakeApp:
-        def __init__(self) -> None:
-            self.token_cache = FakeCacheBase()
-
         def get_accounts(self) -> list[dict[str, str]]:
             return [{"username": "ada@example.com", "home_account_id": "acc-1"}]
 
@@ -366,15 +451,8 @@ def test_reauthenticate_account_force_refreshes_and_writes_cache(
             return {"access_token": "new-token", "expires_in": 3600}
 
     captured: dict[str, Any] = {}
-    writes: list[str] = []
 
-    monkeypatch.setattr(
-        account_tools.auth.msal,
-        "SerializableTokenCache",
-        FakeCacheBase,
-    )
     monkeypatch.setattr(account_tools.auth, "get_app", lambda: (FakeApp(), "common"))
-    monkeypatch.setattr(account_tools.auth, "_write_cache", writes.append)
     monkeypatch.setattr(
         account_tools.auth,
         "_get_account_type",
@@ -386,7 +464,6 @@ def test_reauthenticate_account_force_refreshes_and_writes_cache(
     assert captured["scopes"] == account_tools.auth.SCOPES
     assert captured["account"]["home_account_id"] == "acc-1"
     assert captured["force_refresh"] is True
-    assert writes == ["cache"]
     assert result.expires_in == 3600
     assert result.account.account_id == "acc-1"
     assert result.account.account_type == "work_school"
@@ -397,16 +474,7 @@ def test_remove_account_clears_tokens_metadata_and_database_cache(
 ) -> None:
     """Removing an account should clear every local cache layer."""
 
-    class FakeCacheBase:
-        has_state_changed = True
-
-        def serialize(self) -> str:
-            return "cache"
-
     class FakeApp:
-        def __init__(self) -> None:
-            self.token_cache = FakeCacheBase()
-
         def get_accounts(self) -> list[dict[str, str]]:
             return [
                 {"username": "ada@example.com", "home_account_id": "acc-1"},
@@ -417,7 +485,6 @@ def test_remove_account_clears_tokens_metadata_and_database_cache(
             removed_accounts.append(account)
 
     removed_accounts: list[dict[str, str]] = []
-    writes: list[str] = []
     metadata_writes: list[dict[str, dict[str, str]]] = []
     metadata = {
         "acc-1": {"account_type": "personal"},
@@ -429,13 +496,7 @@ def test_remove_account_clears_tokens_metadata_and_database_cache(
         "cache_invalidation": 1,
     }
 
-    monkeypatch.setattr(
-        account_tools.auth.msal,
-        "SerializableTokenCache",
-        FakeCacheBase,
-    )
     monkeypatch.setattr(account_tools.auth, "get_app", lambda: (FakeApp(), "common"))
-    monkeypatch.setattr(account_tools.auth, "_write_cache", writes.append)
     monkeypatch.setattr(account_tools.auth, "_read_metadata", lambda: metadata.copy())
     monkeypatch.setattr(account_tools.auth, "_write_metadata", metadata_writes.append)
     monkeypatch.setattr(
@@ -449,7 +510,6 @@ def test_remove_account_clears_tokens_metadata_and_database_cache(
     assert removed_accounts == [
         {"username": "ada@example.com", "home_account_id": "acc-1"}
     ]
-    assert writes == ["cache"]
     assert metadata_writes == [{"acc-2": {"account_type": "work_school"}}]
     assert result.account.username == "ada@example.com"
     assert result.account.account_id == "acc-1"
@@ -582,3 +642,103 @@ def test_authenticate_script_remove_option(
 
     assert authenticate.main() == 0
     assert calls == ["acc-1"]
+
+
+def _install_fake_auth(monkeypatch: pytest.MonkeyPatch, fake_auth: ModuleType) -> None:
+    fake_package = ModuleType("m365_mcp")
+    fake_package.auth = fake_auth  # type: ignore[attr-defined]
+    monkeypatch.setenv("M365_MCP_CLIENT_ID", "client-id")
+    monkeypatch.setitem(sys.modules, "m365_mcp", fake_package)
+    monkeypatch.setitem(sys.modules, "m365_mcp.auth", fake_auth)
+
+
+def _expired_account_auth(signed_in: list[str]) -> ModuleType:
+    """Fake auth module with one account whose refresh token has expired."""
+    account = SimpleNamespace(
+        username="ada@example.com", account_id="acc-1", account_type="personal"
+    )
+    fake_auth = ModuleType("m365_mcp.auth")
+    fake_auth.SignInRequiredError = account_tools.auth.SignInRequiredError  # type: ignore[attr-defined]
+    fake_auth.list_accounts = lambda: [account]  # type: ignore[attr-defined]
+
+    def fake_reauthenticate_account(account_id: str) -> Any:
+        if not signed_in:
+            raise account_tools.auth.SignInRequiredError("grant is expired")
+        return SimpleNamespace(account=account, expires_in=3600)
+
+    def fake_authenticate_new_account() -> Any:
+        signed_in.append("ada@example.com")
+        return account
+
+    fake_auth.reauthenticate_account = fake_reauthenticate_account  # type: ignore[attr-defined]
+    fake_auth.authenticate_new_account = fake_authenticate_new_account  # type: ignore[attr-defined]
+    return fake_auth
+
+
+def _run_default_script(monkeypatch: pytest.MonkeyPatch, answers: list[str]) -> int:
+    import authenticate
+
+    monkeypatch.setattr(
+        authenticate,
+        "_parse_arguments",
+        lambda: SimpleNamespace(
+            env_file=Path("__missing_env__"), re_auth=None, remove=None, yes=False
+        ),
+    )
+    replies = iter(answers)
+    monkeypatch.setattr("builtins.input", lambda prompt: next(replies))
+    return authenticate.main()
+
+
+def test_authenticate_script_offers_sign_in_for_expired_account(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An expired account is detected and can be re-signed in directly."""
+    signed_in: list[str] = []
+    _install_fake_auth(monkeypatch, _expired_account_auth(signed_in))
+
+    # "y" to re-sign-in ada, "n" to adding another account.
+    assert _run_default_script(monkeypatch, ["y", "n"]) == 0
+
+    output = capsys.readouterr().out
+    assert signed_in == ["ada@example.com"]
+    assert "✗ ada@example.com: grant is expired" in output
+    assert "[✓ ready]" in output
+    assert "Authentication complete!" in output
+
+
+def test_authenticate_script_does_not_report_success_for_expired_account(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Declining to sign in again must not print a success message."""
+    signed_in: list[str] = []
+    _install_fake_auth(monkeypatch, _expired_account_auth(signed_in))
+
+    assert _run_default_script(monkeypatch, ["n", "n"]) == 1
+
+    output = capsys.readouterr().out
+    assert signed_in == []
+    assert "[✗ NOT USABLE]" in output
+    assert "Authentication complete!" not in output
+
+
+def test_authenticate_script_reauth_reports_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """--re-auth exits non-zero with a message instead of a traceback."""
+    import authenticate
+
+    _install_fake_auth(monkeypatch, _expired_account_auth([]))
+    monkeypatch.setattr(
+        authenticate,
+        "_parse_arguments",
+        lambda: SimpleNamespace(
+            env_file=Path("__missing_env__"), re_auth="acc-1", remove=None, yes=False
+        ),
+    )
+
+    assert authenticate.main() == 1
+    assert "grant is expired" in capsys.readouterr().out

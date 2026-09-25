@@ -13,6 +13,14 @@ move it here in the same commit, under its programme heading, with:
 
 ---
 
+## 2026-09 v1.0.0 unified tools programme
+
+| ID | Task | Completed | Commit | Evidence |
+|---|---|---|---|---|
+| U0.1 | Merge `202609` into `master` (PR #21) and tag `v0.2.3-final` before any surface change | 2026-09-26 | `706c8c3` (merge) | Tag pushed; `generate_tools_doc.py --check` on a clean worktree of the tag: up to date (85 tools); suite 544 passed before merge |
+
+---
+
 ## 2026-09 Unified tool design and specification
 
 | ID | Task | Completed | Commit | Evidence |

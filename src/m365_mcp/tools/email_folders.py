@@ -1,35 +1,8 @@
 from typing import Any
+
 from ..mcp_instance import mcp
-from .. import graph
+from ..services import mail_folders
 from ..validators import validate_limit, require_confirm, validate_microsoft_graph_id
-
-
-def _list_mail_folders_impl(
-    account_id: str,
-    parent_folder_id: str | None = None,
-    include_hidden: bool = False,
-    limit: int | None = None,
-) -> list[dict[str, Any]]:
-    """Internal implementation for listing mail folders"""
-    if parent_folder_id:
-        endpoint = f"/me/mailFolders/{parent_folder_id}/childFolders"
-    else:
-        endpoint = "/me/mailFolders"
-
-    page_size = limit if limit is not None else 250
-    params = {
-        "$select": "id,displayName,childFolderCount,unreadItemCount,totalItemCount,parentFolderId,isHidden",
-        "$top": page_size,
-    }
-
-    if include_hidden:
-        params["includeHiddenFolders"] = "true"
-
-    folders = list(
-        graph.request_paginated(endpoint, account_id, params=params, limit=limit)
-    )
-
-    return folders
 
 
 # emailfolders_list
@@ -66,7 +39,12 @@ def emailfolders_list(
         unreadItemCount, totalItemCount, parentFolderId, isHidden
     """
     limit = validate_limit(limit, 1, 250, "limit")
-    return _list_mail_folders_impl(account_id, parent_folder_id, include_hidden, limit)
+    return mail_folders.list_folders(
+        account_id,
+        parent_folder_id=parent_folder_id,
+        include_hidden=include_hidden,
+        limit=limit,
+    )
 
 
 # emailfolders_get
@@ -97,10 +75,7 @@ def emailfolders_get(
         Folder object with full metadata including id, displayName,
         childFolderCount, unreadItemCount, totalItemCount
     """
-    result = graph.request("GET", f"/me/mailFolders/{folder_id}", account_id)
-    if not result:
-        raise ValueError(f"Mail folder with ID {folder_id} not found")
-    return result
+    return mail_folders.get_folder(account_id, folder_id=folder_id)
 
 
 # emailfolders_get_tree
@@ -136,53 +111,12 @@ def emailfolders_get_tree(
         Nested tree structure with folders and their children
     """
     max_depth = validate_limit(max_depth, 1, 25, "max_depth")
-
-    def _build_folder_tree(
-        folder_id: str | None, current_depth: int
-    ) -> list[dict[str, Any]]:
-        """Internal recursive helper to build folder tree"""
-        if current_depth >= max_depth:
-            return []
-
-        # Get folders at this level
-        folders = _list_mail_folders_impl(
-            account_id=account_id,
-            parent_folder_id=folder_id,
-            include_hidden=include_hidden,
-            limit=None,
-        )
-
-        result = []
-        for folder in folders:
-            folder_node = {
-                "id": folder["id"],
-                "displayName": folder.get("displayName", ""),
-                "childFolderCount": folder.get("childFolderCount", 0),
-                "unreadItemCount": folder.get("unreadItemCount", 0),
-                "totalItemCount": folder.get("totalItemCount", 0),
-                "parentFolderId": folder.get("parentFolderId"),
-                "isHidden": folder.get("isHidden", False),
-                "children": [],
-            }
-
-            # Recursively get children if this folder has child folders
-            if folder.get("childFolderCount", 0) > 0:
-                folder_node["children"] = _build_folder_tree(
-                    folder["id"], current_depth + 1
-                )
-
-            result.append(folder_node)
-
-        return result
-
-    # Build tree starting from specified parent or root
-    tree_data = _build_folder_tree(parent_folder_id, 0)
-
-    return {
-        "root_folder_id": parent_folder_id,
-        "max_depth": max_depth,
-        "folders": tree_data,
-    }
+    return mail_folders.get_folder_tree(
+        account_id,
+        parent_folder_id=parent_folder_id,
+        max_depth=max_depth,
+        include_hidden=include_hidden,
+    )
 
 
 # emailfolders_create
@@ -228,18 +162,12 @@ def emailfolders_create(
         parent_folder_id = validate_microsoft_graph_id(
             parent_folder_id, "parent_folder_id"
         )
-        endpoint = f"/me/mailFolders/{parent_folder_id}/childFolders"
-    else:
-        endpoint = "/me/mailFolders"
 
-    payload = {"displayName": display_name}
-
-    result = graph.request("POST", endpoint, account_id, json=payload)
-
-    if not result:
-        raise ValueError("Failed to create mail folder")
-
-    return result
+    return mail_folders.create_folder(
+        account_id,
+        display_name=display_name,
+        parent_folder_id=parent_folder_id,
+    )
 
 
 # emailfolders_rename
@@ -281,16 +209,9 @@ def emailfolders_rename(
 
     new_display_name = new_display_name.strip()
 
-    payload = {"displayName": new_display_name}
-
-    result = graph.request(
-        "PATCH", f"/me/mailFolders/{folder_id}", account_id, json=payload
+    return mail_folders.rename_folder(
+        account_id, folder_id=folder_id, new_display_name=new_display_name
     )
-
-    if not result:
-        raise ValueError(f"Failed to rename mail folder {folder_id}")
-
-    return result
 
 
 # emailfolders_move
@@ -330,16 +251,11 @@ def emailfolders_move(
         destination_folder_id, "destination_folder_id"
     )
 
-    payload = {"parentFolderId": destination_folder_id}
-
-    result = graph.request(
-        "PATCH", f"/me/mailFolders/{folder_id}", account_id, json=payload
+    return mail_folders.move_folder(
+        account_id,
+        folder_id=folder_id,
+        destination_folder_id=destination_folder_id,
     )
-
-    if not result:
-        raise ValueError(f"Failed to move mail folder {folder_id}")
-
-    return result
 
 
 # emailfolders_delete
@@ -378,9 +294,7 @@ def emailfolders_delete(
     require_confirm(confirm, "delete mail folder")
     folder_id = validate_microsoft_graph_id(folder_id, "folder_id")
 
-    graph.request("DELETE", f"/me/mailFolders/{folder_id}", account_id)
-
-    return {"status": "deleted", "folder_id": folder_id}
+    return mail_folders.delete_folder(account_id, folder_id=folder_id)
 
 
 # emailfolders_mark_all_as_read
@@ -416,37 +330,7 @@ def emailfolders_mark_all_as_read(
     """
     folder_id = validate_microsoft_graph_id(folder_id, "folder_id")
 
-    # Get all messages in the folder
-    endpoint = f"/me/mailFolders/{folder_id}/messages"
-    params = {
-        "$select": "id,isRead",
-        "$filter": "isRead eq false",
-        "$top": 999,
-    }
-
-    messages = list(graph.request_paginated(endpoint, account_id, params=params))
-
-    # Mark each message as read
-    update_count = 0
-    for message in messages:
-        if not message.get("isRead", False):
-            try:
-                graph.request(
-                    "PATCH",
-                    f"/me/messages/{message['id']}",
-                    account_id,
-                    json={"isRead": True},
-                )
-                update_count += 1
-            except Exception:
-                # Log error but continue with other messages
-                pass
-
-    return {
-        "status": "completed",
-        "folder_id": folder_id,
-        "messages_marked_read": update_count,
-    }
+    return mail_folders.mark_all_as_read(account_id, folder_id=folder_id)
 
 
 # emailfolders_empty
@@ -486,27 +370,4 @@ def emailfolders_empty(
     require_confirm(confirm, "empty mail folder")
     folder_id = validate_microsoft_graph_id(folder_id, "folder_id")
 
-    # Get all messages in the folder
-    endpoint = f"/me/mailFolders/{folder_id}/messages"
-    params = {
-        "$select": "id",
-        "$top": 999,
-    }
-
-    messages = list(graph.request_paginated(endpoint, account_id, params=params))
-
-    # Delete each message
-    delete_count = 0
-    for message in messages:
-        try:
-            graph.request("DELETE", f"/me/messages/{message['id']}", account_id)
-            delete_count += 1
-        except Exception:
-            # Log error but continue with other messages
-            pass
-
-    return {
-        "status": "completed",
-        "folder_id": folder_id,
-        "messages_deleted": delete_count,
-    }
+    return mail_folders.empty_folder(account_id, folder_id=folder_id)

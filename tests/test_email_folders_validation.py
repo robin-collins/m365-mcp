@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from src.m365_mcp.services import mail_folders as folder_service
 from src.m365_mcp.tools import email_folders as folder_tools
 from src.m365_mcp.validators import ValidationError
 
@@ -35,7 +36,7 @@ def test_emailfolders_create_success_root_level(
             "childFolderCount": 0,
         }
 
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(folder_service.graph, "request", fake_request)
 
     result = folder_tools.emailfolders_create.fn(
         display_name="Test Folder",
@@ -72,7 +73,7 @@ def test_emailfolders_create_success_with_parent(
             "parentFolderId": "parent-123",
         }
 
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(folder_service.graph, "request", fake_request)
 
     result = folder_tools.emailfolders_create.fn(
         display_name="Child Folder",
@@ -100,7 +101,7 @@ def test_emailfolders_create_strips_whitespace(
         captured["json"] = kwargs.get("json", {})
         return {"id": "folder-123", "displayName": "Trimmed"}
 
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(folder_service.graph, "request", fake_request)
 
     folder_tools.emailfolders_create.fn(
         display_name="  Trimmed  ",
@@ -154,7 +155,7 @@ def test_emailfolders_rename_success(
             "displayName": "New Name",
         }
 
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(folder_service.graph, "request", fake_request)
 
     result = folder_tools.emailfolders_rename.fn(
         folder_id="folder-123",
@@ -184,7 +185,7 @@ def test_emailfolders_rename_strips_whitespace(
         captured["json"] = kwargs.get("json", {})
         return {"id": "folder-123", "displayName": "Trimmed"}
 
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(folder_service.graph, "request", fake_request)
 
     folder_tools.emailfolders_rename.fn(
         folder_id="folder-123",
@@ -241,7 +242,7 @@ def test_emailfolders_move_success(
             "parentFolderId": "parent-456",
         }
 
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(folder_service.graph, "request", fake_request)
 
     result = folder_tools.emailfolders_move.fn(
         folder_id="folder-123",
@@ -274,7 +275,7 @@ def test_emailfolders_delete_success(
         captured["method"] = method
         captured["path"] = path
 
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(folder_service.graph, "request", fake_request)
 
     result = folder_tools.emailfolders_delete.fn(
         folder_id="folder-123",
@@ -336,8 +337,8 @@ def test_emailfolders_mark_all_as_read_success(
             }
         )
 
-    monkeypatch.setattr(folder_tools.graph, "request_paginated", fake_paginated)
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(folder_service.graph, "request_paginated", fake_paginated)
+    monkeypatch.setattr(folder_service.graph, "request", fake_request)
 
     result = folder_tools.emailfolders_mark_all_as_read.fn(
         folder_id="folder-123",
@@ -366,7 +367,7 @@ def test_emailfolders_mark_all_as_read_empty_folder(
     ):
         return iter([])
 
-    monkeypatch.setattr(folder_tools.graph, "request_paginated", fake_paginated)
+    monkeypatch.setattr(folder_service.graph, "request_paginated", fake_paginated)
 
     result = folder_tools.emailfolders_mark_all_as_read.fn(
         folder_id="folder-123",
@@ -410,8 +411,8 @@ def test_emailfolders_empty_success(
         if method == "DELETE":
             captured_deletes.append(path)
 
-    monkeypatch.setattr(folder_tools.graph, "request_paginated", fake_paginated)
-    monkeypatch.setattr(folder_tools.graph, "request", fake_request)
+    monkeypatch.setattr(folder_service.graph, "request_paginated", fake_paginated)
+    monkeypatch.setattr(folder_service.graph, "request", fake_request)
 
     result = folder_tools.emailfolders_empty.fn(
         folder_id="folder-123",
@@ -452,7 +453,7 @@ def test_emailfolders_empty_handles_empty_folder(
     ):
         return iter([])
 
-    monkeypatch.setattr(folder_tools.graph, "request_paginated", fake_paginated)
+    monkeypatch.setattr(folder_service.graph, "request_paginated", fake_paginated)
 
     result = folder_tools.emailfolders_empty.fn(
         folder_id="folder-123",

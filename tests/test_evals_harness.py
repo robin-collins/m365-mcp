@@ -4,7 +4,6 @@ import asyncio
 from datetime import date
 
 import httpx
-import pytest
 
 from evals.cases import CASES, SMOKE_IDS, select
 from evals.fake_graph import ACCOUNT_ID, FakeGraph
@@ -193,7 +192,17 @@ def test_runner_no_tool_and_schema_errors():
     assert "| Correct first tool (%) |" in report
 
 
-def test_unified_surface_reports_missing_registry():
+def test_unified_surface_loads_from_registry():
     case = next(c for c in CASES if c.id == "n01")
-    with pytest.raises(RuntimeError, match="unified surface"):
-        asyncio.run(run([case], "unified", ScriptedModel({}), ANCHOR, None))
+    scripts = {
+        "n01": [
+            tool_turn(("m365_list", {"resource": "email"})),
+            text_turn("Paris."),
+        ]
+    }
+    (result,) = asyncio.run(
+        run([case], "unified", ScriptedModel(scripts), ANCHOR, None)
+    )
+    (call,) = result.calls
+    assert call.tool == "m365_list" and call.schema_valid and call.is_error
+    assert "m365_list is not implemented yet" in call.result_text

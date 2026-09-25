@@ -47,9 +47,7 @@ def test_loader_reads_packaged_specs() -> None:
     index = tool_specs.load_index()
     assert index == json.loads((DOCS_DIR / "index.json").read_text("utf-8"))
     for name in index["tool_order"]:
-        expected = json.loads(
-            (DOCS_DIR / "tools" / f"{name}.json").read_text("utf-8")
-        )
+        expected = json.loads((DOCS_DIR / "tools" / f"{name}.json").read_text("utf-8"))
         assert tool_specs.load_tool_spec(name) == expected
 
 
@@ -100,8 +98,7 @@ def test_wheel_contains_specs(tmp_path: Path) -> None:
         packaged = {
             name.removeprefix("m365_mcp/tool_specs/"): archive.read(name)
             for name in names
-            if name.startswith("m365_mcp/tool_specs/")
-            and name.endswith(".json")
+            if name.startswith("m365_mcp/tool_specs/") and name.endswith(".json")
         }
     assert "m365_mcp/tool_specs/__init__.py" in names
     assert packaged == _spec_files(DOCS_DIR)

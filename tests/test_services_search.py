@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime as dt
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -113,30 +112,10 @@ def test_search_router_shim_reexports_service() -> None:
     )
 
 
-def test_get_account_type_returns_known_type(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    accounts = [SimpleNamespace(account_id="acc", account_type="personal")]
-    monkeypatch.setattr(search_service.auth, "list_accounts", lambda: accounts)
-
+def test_get_account_type_is_always_personal() -> None:
+    """Only personal accounts can sign in, so searches route as personal."""
     assert search_service.get_account_type("acc") == "personal"
-    assert search_service.get_account_type("missing") == "unknown"
-
-
-def test_get_account_type_detects_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
-    state = {"type": "unknown"}
-
-    def list_accounts() -> list[SimpleNamespace]:
-        return [SimpleNamespace(account_id="acc", account_type=state["type"])]
-
-    def get_token(account_id: str) -> str:
-        state["type"] = "work_school"
-        return "token"
-
-    monkeypatch.setattr(search_service.auth, "list_accounts", list_accounts)
-    monkeypatch.setattr(search_service.auth, "get_token", get_token)
-
-    assert search_service.get_account_type("acc") == "work_school"
+    assert search_service.get_account_type("missing") == "personal"
 
 
 def test_search_emails_personal_filters_client_side(

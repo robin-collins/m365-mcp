@@ -14,15 +14,14 @@ from src.m365_mcp.tools import account as account_tools
 
 
 def test_account_list_serialises_namedtuple(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure account_list exposes username/account_id/account_type triples."""
+    """Ensure account_list exposes username/account_id/account_type triples.
+
+    Only personal accounts are supported, so account_type is "personal".
+    """
 
     accounts = [
-        account_service.auth.Account(
-            username="ada@example.com", account_id="acc-1", account_type="work_school"
-        ),
-        account_service.auth.Account(
-            username="grace@example.com", account_id="acc-2", account_type="personal"
-        ),
+        account_service.auth.Account(username="ada@example.com", account_id="acc-1"),
+        account_service.auth.Account(username="grace@example.com", account_id="acc-2"),
     ]
     monkeypatch.setattr(account_service.auth, "list_accounts", lambda: accounts)
 
@@ -32,7 +31,7 @@ def test_account_list_serialises_namedtuple(monkeypatch: pytest.MonkeyPatch) -> 
         {
             "username": "ada@example.com",
             "account_id": "acc-1",
-            "account_type": "work_school",
+            "account_type": "personal",
         },
         {
             "username": "grace@example.com",
@@ -109,11 +108,6 @@ def test_get_token_accepts_username_identifier(
     fake_app = FakeApp()
 
     monkeypatch.setattr(account_service.auth, "get_app", lambda: (fake_app, "common"))
-    monkeypatch.setattr(
-        account_service.auth,
-        "_get_account_type",
-        lambda account_id, username: "personal",
-    )
 
     token = account_service.auth.get_token("robin.f.collins@outlook.com")
 
@@ -202,7 +196,7 @@ def test_account_complete_auth_returns_pending_status(
 def test_account_complete_auth_returns_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Successful completion returns matched account details including account type."""
+    """Successful completion returns the matched personal account."""
 
     flow_cache = {"device_code": "EFGH"}
 
@@ -211,7 +205,10 @@ def test_account_complete_auth_returns_success(
             self, flow: dict[str, Any], **kwargs: Any
         ) -> dict[str, Any]:
             return {
-                "id_token_claims": {"preferred_username": "ada@example.com"},
+                "id_token_claims": {
+                    "preferred_username": "ada@example.com",
+                    "tid": account_service.auth.PERSONAL_TENANT_ID,
+                },
                 "access_token": "fake-access-token",
             }
 
@@ -221,13 +218,7 @@ def test_account_complete_auth_returns_success(
                 {"username": "grace@example.com", "home_account_id": "acc-2"},
             ]
 
-    def fake_get_account_type(account_id: str, username: str) -> str:
-        return "work_school"
-
     monkeypatch.setattr(account_service.auth, "get_app", lambda: (FakeApp(), "common"))
-    monkeypatch.setattr(
-        account_service.auth, "_get_account_type", fake_get_account_type
-    )
 
     result = account_tools.account_complete_auth.fn(str(flow_cache))
 
@@ -235,7 +226,7 @@ def test_account_complete_auth_returns_success(
         "status": "success",
         "username": "ada@example.com",
         "account_id": "acc-1",
-        "account_type": "work_school",
+        "account_type": "personal",
         "message": "Successfully authenticated ada@example.com",
     }
 
@@ -390,11 +381,6 @@ def test_get_token_passes_force_refresh(monkeypatch: pytest.MonkeyPatch) -> None
     """force_refresh must reach MSAL so a 401 retry redeems the refresh token."""
     app = _SilentErrorApp({"access_token": "fresh"})
     monkeypatch.setattr(account_service.auth, "get_app", lambda: (app, "common"))
-    monkeypatch.setattr(
-        account_service.auth,
-        "_get_account_type",
-        lambda account_id, username: "personal",
-    )
 
     assert account_service.auth.get_token("acc-1", force_refresh=True) == "fresh"
     assert app.force_refresh is True
@@ -458,11 +444,6 @@ def test_reauthenticate_account_force_refreshes(
     captured: dict[str, Any] = {}
 
     monkeypatch.setattr(account_service.auth, "get_app", lambda: (FakeApp(), "common"))
-    monkeypatch.setattr(
-        account_service.auth,
-        "_get_account_type",
-        lambda account_id, username: "work_school",
-    )
 
     result = account_service.auth.reauthenticate_account("acc-1")
 
@@ -471,10 +452,9 @@ def test_reauthenticate_account_force_refreshes(
     assert captured["force_refresh"] is True
     assert result.expires_in == 3600
     assert result.account.account_id == "acc-1"
-    assert result.account.account_type == "work_school"
 
 
-def test_remove_account_clears_tokens_metadata_and_database_cache(
+def test_remove_account_clears_tokens_and_database_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Removing an account should clear every local cache layer."""
@@ -490,11 +470,6 @@ def test_remove_account_clears_tokens_metadata_and_database_cache(
             removed_accounts.append(account)
 
     removed_accounts: list[dict[str, str]] = []
-    metadata_writes: list[dict[str, dict[str, str]]] = []
-    metadata = {
-        "acc-1": {"account_type": "personal"},
-        "acc-2": {"account_type": "work_school"},
-    }
     database_counts = {
         "cache_entries": 2,
         "cache_tasks": 1,
@@ -502,8 +477,6 @@ def test_remove_account_clears_tokens_metadata_and_database_cache(
     }
 
     monkeypatch.setattr(account_service.auth, "get_app", lambda: (FakeApp(), "common"))
-    monkeypatch.setattr(account_service.auth, "_read_metadata", lambda: metadata.copy())
-    monkeypatch.setattr(account_service.auth, "_write_metadata", metadata_writes.append)
     monkeypatch.setattr(
         account_service.auth,
         "_remove_account_database_cache",
@@ -515,12 +488,9 @@ def test_remove_account_clears_tokens_metadata_and_database_cache(
     assert removed_accounts == [
         {"username": "ada@example.com", "home_account_id": "acc-1"}
     ]
-    assert metadata_writes == [{"acc-2": {"account_type": "work_school"}}]
     assert result.account.username == "ada@example.com"
     assert result.account.account_id == "acc-1"
-    assert result.account.account_type == "personal"
     assert result.token_cache_removed is True
-    assert result.metadata_removed is True
     assert result.database_cache_removed == database_counts
 
 
@@ -563,7 +533,6 @@ def test_authenticate_script_reauth_option(
     account = SimpleNamespace(
         username="ada@example.com",
         account_id="acc-1",
-        account_type="personal",
     )
     refresh_result = SimpleNamespace(account=account, expires_in=3600)
     calls: list[str] = []
@@ -606,12 +575,10 @@ def test_authenticate_script_remove_option(
     account = SimpleNamespace(
         username="ada@example.com",
         account_id="acc-1",
-        account_type="personal",
     )
     remove_result = SimpleNamespace(
         account=account,
         token_cache_removed=True,
-        metadata_removed=True,
         database_cache_removed={
             "cache_entries": 3,
             "cache_tasks": 1,
@@ -659,9 +626,7 @@ def _install_fake_auth(monkeypatch: pytest.MonkeyPatch, fake_auth: ModuleType) -
 
 def _expired_account_auth(signed_in: list[str]) -> ModuleType:
     """Fake auth module with one account whose refresh token has expired."""
-    account = SimpleNamespace(
-        username="ada@example.com", account_id="acc-1", account_type="personal"
-    )
+    account = SimpleNamespace(username="ada@example.com", account_id="acc-1")
     fake_auth = ModuleType("m365_mcp.auth")
     fake_auth.SignInRequiredError = account_service.auth.SignInRequiredError  # type: ignore[attr-defined]
     fake_auth.list_accounts = lambda: [account]  # type: ignore[attr-defined]

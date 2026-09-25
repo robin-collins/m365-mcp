@@ -11,13 +11,14 @@ def list_accounts() -> list[dict[str, str]]:
 
     Returns:
         One dictionary per account with ``username``, ``account_id`` and
-        ``account_type`` keys.
+        ``account_type`` keys. Only personal accounts are supported, so
+        ``account_type`` is always ``"personal"`` (legacy output shape).
     """
     return [
         {
             "username": acc.username,
             "account_id": acc.account_id,
-            "account_type": acc.account_type,
+            "account_type": "personal",
         }
         for acc in auth.list_accounts()
     ]
@@ -72,6 +73,8 @@ def complete_device_flow(flow_cache: str) -> dict[str, Any]:
 
     Raises:
         ValueError: If ``flow_cache`` is not a valid literal mapping.
+        auth.PersonalAccountRequiredError: If a work or school account
+            signed in.
         Exception: If MSAL reports an error other than a pending sign-in.
     """
     try:
@@ -79,15 +82,7 @@ def complete_device_flow(flow_cache: str) -> dict[str, Any]:
     except (ValueError, SyntaxError):
         raise ValueError("Invalid flow cache data")
 
-    # Redeem the code with the same authority that issued it (the device
-    # flow may have fallen back to the consumers authority).
-    flow_tenant = flow.get(auth.DEVICE_FLOW_TENANT_KEY)
-    if flow_tenant:
-        app = auth._build_app(flow_tenant)
-    else:
-        app, _tenant_id = auth.get_app()
-    # Poll once instead of blocking until the device code expires.
-    result = app.acquire_token_by_device_flow(flow, exit_condition=lambda _flow: True)
+    app, result = auth.poll_device_flow_once(flow)
 
     if "error" in result:
         error_msg = result.get("error_description", result["error"])
@@ -99,38 +94,17 @@ def complete_device_flow(flow_cache: str) -> dict[str, Any]:
             }
         raise Exception(f"Authentication failed: {error_msg}")
 
-    # Get the newly added account
-    accounts = app.get_accounts()
-    if accounts:
-        # Find the account that matches the token we just got
-        matched_account = None
-        for account in accounts:
-            if (
-                account.get("username", "").lower()
-                == result.get("id_token_claims", {})
-                .get("preferred_username", "")
-                .lower()
-            ):
-                matched_account = account
-                break
-
-        # If exact match not found, use the last account
-        if not matched_account:
-            matched_account = accounts[-1]
-
-        # Detect and cache account type
-        account_id = matched_account["home_account_id"]
-        account_type = auth._get_account_type(account_id, matched_account["username"])
-
+    if not app.get_accounts():
         return {
-            "status": "success",
-            "username": matched_account["username"],
-            "account_id": account_id,
-            "account_type": account_type,
-            "message": f"Successfully authenticated {matched_account['username']}",
+            "status": "error",
+            "message": "Authentication succeeded but no account was found",
         }
 
+    account = auth.finish_device_flow_sign_in(app, result)
     return {
-        "status": "error",
-        "message": "Authentication succeeded but no account was found",
+        "status": "success",
+        "username": account.username,
+        "account_id": account.account_id,
+        "account_type": "personal",
+        "message": f"Successfully authenticated {account.username}",
     }

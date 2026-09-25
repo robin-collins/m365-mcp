@@ -159,10 +159,6 @@ def _sign_in(auth_module: Any, expected_username: str | None = None) -> bool:
         print(f"\n✗ Authentication failed: {e}")
         return False
 
-    if not new_account:
-        print("\n✗ Authentication failed: Could not retrieve account information")
-        return False
-
     print("\n✓ Authentication successful!")
     print(f"Signed in as: {new_account.username}")
     print(f"Account ID: {new_account.account_id}")
@@ -215,7 +211,6 @@ def _handle_remove(auth_module: Any, selector: str, skip_confirmation: bool) -> 
     print(f"Account: {result.account.username}")
     print(f"Account ID: {result.account.account_id}")
     print(f"Token cache updated: {'yes' if result.token_cache_removed else 'no'}")
-    print(f"Metadata removed: {'yes' if result.metadata_removed else 'no'}")
     cache_counts = result.database_cache_removed
     print(
         "Database cache rows removed: "

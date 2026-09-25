@@ -11,18 +11,12 @@ from src.m365_mcp.services import accounts
 
 
 def test_list_accounts_shapes_auth_accounts(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Auth Account tuples become username/account_id/account_type dicts."""
+    """Auth accounts become dicts whose legacy account_type is personal."""
 
     monkeypatch.setattr(
         accounts.auth,
         "list_accounts",
-        lambda: [
-            accounts.auth.Account(
-                username="ada@example.com",
-                account_id="acc-1",
-                account_type="personal",
-            )
-        ],
+        lambda: [accounts.auth.Account(username="ada@example.com", account_id="acc-1")],
     )
 
     assert accounts.list_accounts() == [
@@ -83,7 +77,12 @@ def test_complete_device_flow_uses_flow_tenant(
         def acquire_token_by_device_flow(
             self, flow: dict[str, Any], **kwargs: Any
         ) -> dict[str, Any]:
-            return {"id_token_claims": {"preferred_username": "x@example.com"}}
+            return {
+                "id_token_claims": {
+                    "preferred_username": "x@example.com",
+                    "tid": accounts.auth.PERSONAL_TENANT_ID,
+                }
+            }
 
         def get_accounts(self) -> list[dict[str, str]]:
             return [{"username": "other@example.com", "home_account_id": "acc-9"}]
@@ -93,9 +92,6 @@ def test_complete_device_flow_uses_flow_tenant(
         return FakeApp()
 
     monkeypatch.setattr(accounts.auth, "_build_app", fake_build_app)
-    monkeypatch.setattr(
-        accounts.auth, "_get_account_type", lambda account_id, username: "personal"
-    )
     flow_cache = {"device_code": "X", accounts.auth.DEVICE_FLOW_TENANT_KEY: "consumers"}
 
     result = accounts.complete_device_flow(str(flow_cache))

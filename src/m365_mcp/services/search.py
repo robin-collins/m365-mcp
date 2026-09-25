@@ -24,7 +24,7 @@ from collections.abc import Callable, Iterator
 from typing import Any
 from urllib.parse import quote
 
-from .. import auth, graph
+from .. import graph
 from ..cache import CacheManager
 
 logger = logging.getLogger(__name__)
@@ -114,36 +114,18 @@ def _cached_search(
 
 
 def get_account_type(account_id: str) -> str:
-    """Get the account type for an account, detecting it when unknown.
+    """Return the account type used to route legacy searches.
 
-    If the stored type is ``"unknown"``, acquiring a token triggers
-    detection and the account list is re-read.
+    Only personal Microsoft accounts can sign in (work/school accounts are
+    rejected), so the work/school search routes are no longer reached.
 
     Args:
-        account_id: Microsoft account identifier.
+        account_id: Microsoft account identifier (unused).
 
     Returns:
-        Account type: ``"personal"``, ``"work_school"`` or ``"unknown"``.
+        Always ``"personal"``.
     """
-    accounts = auth.list_accounts()
-    for account in accounts:
-        if account.account_id == account_id:
-            account_type = account.account_type
-            # If unknown, trigger detection by getting token
-            if account_type == "unknown":
-                try:
-                    # Getting token triggers account type detection
-                    auth.get_token(account_id)
-                    # Re-fetch accounts to get updated type
-                    accounts = auth.list_accounts()
-                    for account in accounts:
-                        if account.account_id == account_id:
-                            return account.account_type
-                except Exception:
-                    # If detection fails, return unknown
-                    logger.debug("Account type detection failed", exc_info=True)
-            return account_type
-    return "unknown"
+    return "personal"
 
 
 def find_files(

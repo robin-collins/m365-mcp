@@ -146,9 +146,12 @@ def _query_headers(
     params = dict(params) if params else params
     headers: dict[str, str] = {}
 
-    if method == "GET" and params:
-        if "$search" in params or "body" in params.get("$select", ""):
-            headers["Prefer"] = 'outlook.body-content-type="text"'
+    if (
+        method == "GET"
+        and params
+        and ("$search" in params or "body" in params.get("$select", ""))
+    ):
+        headers["Prefer"] = 'outlook.body-content-type="text"'
 
     if params and (
         "$search" in params

@@ -96,14 +96,14 @@ class CacheRuntime:
 
     async def stop(self) -> None:
         """Stop background services and release cache handles."""
-        from .tools import cache_tools
+        from . import warming_status
 
         active_logger = logger or logging.getLogger(__name__)
         try:
             await self.warmer.stop()
         finally:
             await self.worker.stop()
-            cache_tools.set_warming_status_provider(None)
+            warming_status.set_warming_status_provider(None)
             self.cache_manager.close()
             active_logger.info("Cache runtime stopped")
 
@@ -167,27 +167,27 @@ async def _start_cache_runtime() -> CacheRuntime | None:
     from .background_worker import BackgroundWorker
     from .cache_config import CACHE_WARMING_ENABLED
     from .cache_warming import CacheWarmer
-    from .tools import cache_tools
+    from . import cache, warming_status
 
     active_logger = logger or logging.getLogger(__name__)
     if not CACHE_WARMING_ENABLED:
-        cache_tools.set_warming_status_provider(None)
+        warming_status.set_warming_status_provider(None)
         active_logger.info("Cache warming/background refresh disabled")
         return None
 
-    cache_manager = cache_tools.get_cache_manager()
+    cache_manager = cache.get_cache_manager()
     worker = BackgroundWorker(cache_manager, _execute_background_refresh)
     accounts = _get_cache_warming_accounts()
     warmer = CacheWarmer(cache_manager, _execute_warming_operation, accounts)
     worker.set_cache_warmer(warmer)
-    cache_tools.set_background_worker(worker)
+    warming_status.set_warming_status_provider(worker)
 
     try:
         await worker.start()
         await warmer.start_warming()
     except Exception:
         await worker.stop()
-        cache_tools.set_warming_status_provider(None)
+        warming_status.set_warming_status_provider(None)
         cache_manager.close()
         active_logger.exception("Failed to start cache runtime")
         raise
@@ -229,7 +229,7 @@ def main() -> None:
     # Import local modules after loading environment
     # (This allows auth.py to access environment variables)
     from .logging_config import get_logger, setup_logging
-    from .tools import mcp
+    from .tools.registry import build_server
 
     # Initialize logger after loading environment
     global logger
@@ -260,6 +260,13 @@ def main() -> None:
             "Error: M365_MCP_CLIENT_ID environment variable is required",
             file=sys.stderr,
         )
+        sys.exit(1)
+
+    try:
+        mcp = build_server()
+    except ValueError as exc:
+        logger.error(f"Invalid M365_MCP_TOOLSETS: {exc}")
+        print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
 
     # Configure transport based on environment variable

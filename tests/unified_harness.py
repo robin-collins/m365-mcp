@@ -91,6 +91,18 @@ class UnifiedHarness:
 
 @pytest.fixture
 def harness() -> Iterator[UnifiedHarness]:
-    """A fresh unified server and fake Graph for one test (all toolsets)."""
-    with open_surface("unified", ANCHOR, "core,extended,admin") as surface:
-        yield UnifiedHarness(surface)
+    """A fresh unified server and fake Graph for one test (all toolsets).
+
+    The process-wide rate limiter is replaced per test, so sends and deletes
+    from earlier tests cannot exhaust the 20-per-minute bucket.
+    """
+    from m365_mcp.rate_limit import RateLimiter
+    from m365_mcp.tools.unified import common
+
+    real = common.rate_limiter
+    common.rate_limiter = RateLimiter()
+    try:
+        with open_surface("unified", ANCHOR, "core,extended,admin") as surface:
+            yield UnifiedHarness(surface)
+    finally:
+        common.rate_limiter = real

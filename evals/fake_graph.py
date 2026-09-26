@@ -1027,6 +1027,17 @@ class FakeGraph:
         return self._error(405, "MethodNotAllowed", method)
 
     def _contact_folder_children(self, method, params, body, folder_id):
+        if method == "POST":
+            if folder_id not in self.contact_folders:
+                return self._missing("contact folder", folder_id)
+            child_id = self.new_id("cfolder")
+            child = {
+                "id": child_id,
+                "displayName": (body or {}).get("displayName", "Folder"),
+                "parentFolderId": folder_id,
+            }
+            self.contact_folders[child_id] = child
+            return 201, copy.deepcopy(child)
         items = [
             f for f in self.contact_folders.values() if f["parentFolderId"] == folder_id
         ]
@@ -1254,6 +1265,10 @@ class FakeGraph:
             return self._error(
                 409, "nameAlreadyExists", "An item with the same name already exists."
             )
+        if existing is not None and conflict == "rename":
+            stem, dot, ext = name.rpartition(".")
+            name = f"{stem} 1{dot}{ext}" if dot else f"{name} 1"
+            existing = None
         return self._drive_put(parent_id, name, body, existing)
 
     def _drive_child_upload_session(self, method, params, body, parent_id, name):
@@ -1308,6 +1323,11 @@ class FakeGraph:
             }
         if action == "permissions":
             return 200, {"value": []}
+        if action == "createUploadSession":
+            return 200, {
+                "uploadUrl": f"https://upload.fake/drive/items/{item_id}",
+                "expirationDateTime": self.at(1),
+            }
         return self._not_found(f"{method} /me/drive/items/{{id}}/{action}")
 
     # ------------------------------------------------------------------

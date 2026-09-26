@@ -150,10 +150,17 @@ below.
 
 ### Changed
 
-- The documented Azure app permissions now include `MailboxSettings.Read`
-  (working hours for `calendar_find_availability`) and `Contacts.ReadWrite`
-  (the contact tools create, update and delete); grant them in the app
-  registration.
+- Cache warming and stale-entry refresh now work on the unified tools
+  (`M365_MCP_CACHE_WARMING=true`): warming pre-loads the mail folder tree,
+  inbox, upcoming events and contacts per account, and a stale `m365_list` or
+  `m365_get` entry queues a background refresh of that request. Previously the
+  refresh executor only knew the removed 0.x tool names.
+- The documented Azure app permissions were corrected against Microsoft's
+  permission tables: added `Mail.Send` (sending, replying and forwarding need
+  it; `Mail.ReadWrite` does not cover them), `MailboxSettings.Read` (working
+  hours and time zone for `calendar_find_availability`) and
+  `Contacts.ReadWrite` (the contact tools create, update and delete); removed
+  `People.Read`, which no tool uses. Grant them in the app registration.
 - Default authority is `consumers`; the MSAL cache is cleaned of work and
   school accounts at sign-in.
 - Cache keys are by account, resource, normalised parameters and cursor, with
@@ -291,7 +298,34 @@ or notify others need `confirm=true`.
 | `search_unified` | `m365_search(resources=[...])` | Search API path removed |
 | `server_get_version` | `admin_server_info` | None |
 
-## [Unreleased]
+## [0.2.3] - 2026-09-26 (final 0.x release, tag `v0.2.3-final`)
+
+This is the last release of the 85-tool surface. Everything below refers to
+tools that 1.0.0 removes; see the migration table under
+[1.0.0](#100---2026-09-26-unreleased) for the replacement of each one.
+
+### Fixed (reliability and authentication review, September 2026)
+
+- `authenticate.py` checks every account with a forced token refresh, offers
+  re-sign-in for expired accounts, and exits 1 unless all accounts are usable.
+- The token cache uses `msal-extensions` (cross-process lock, reload on
+  change), and one MSAL app is reused per client ID and tenant.
+- Sign-in errors carry the MSAL reason; an account that needs sign-in raises
+  `SignInRequiredError` instead of a generic failure.
+- `account_complete_auth` polls once instead of blocking for up to 15
+  minutes.
+- A 401 triggers one forced token refresh and a retry; network errors are
+  retried (connect errors for every method, timeouts only for idempotent
+  ones) with a fresh token per attempt.
+- `Retry-After` accepts seconds or an HTTP date and is honoured on 503.
+- POST requests are no longer retried after an ambiguous 5xx or a read
+  timeout, so a send cannot be duplicated.
+- Chunked uploads no longer send `Authorization` to the pre-authenticated
+  upload URL, and an empty final 201 no longer crashes.
+- Pagination resends the first page's query headers on every page (plain-text
+  bodies and `ConsistencyLevel`), and `graph.request()` no longer mutates the
+  caller's `params`.
+- The device flow completes against the authority that issued the code.
 
 ### Added
 

@@ -149,8 +149,11 @@ The cache reduces repeated Graph calls for reads.
 5. **Invalidation on write**: each mutating tool clears the affected
    resources for that account only (`resource_cache.MUTATION_INVALIDATES`).
 6. **Cleanup** keeps the cache under 2 GB (starts at 80%, reduces to 60%).
-7. **Warming** is off by default; `M365_MCP_CACHE_WARMING=true` starts the
-   background worker.
+7. **Warming** is off by default. `M365_MCP_CACHE_WARMING=true` starts the
+   background worker: it pre-loads the mail folder tree, inbox, upcoming events
+   and contacts for each account (`cache_config.CACHE_WARMING_OPERATIONS`), and
+   a stale `m365_list` / `m365_get` hit queues a `unified:<tool>` refresh task
+   that re-runs the request with `refresh=true`.
 
 Cache metadata is never returned to the model. The only model-facing control
 is `refresh` on `m365_list` and `m365_get`:
@@ -250,12 +253,15 @@ must be allowed (device code). Required delegated permissions:
 
 - offline_access
 - Mail.ReadWrite
+- Mail.Send (send, reply and forward; not covered by `Mail.ReadWrite`)
 - Calendars.ReadWrite
 - Files.ReadWrite
 - Contacts.ReadWrite
-- MailboxSettings.Read (working hours for `calendar_find_availability`)
-- People.Read
+- MailboxSettings.Read (working hours and time zone for `calendar_find_availability`)
 - User.Read
+
+The server requests `.default`, so it receives what the app registration
+grants; a missing permission fails only the tools that need it.
 
 ## Testing
 

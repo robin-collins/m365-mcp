@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from .cache import CacheManager
+from . import resource_cache
 from .cache_config import CACHE_WARMING_OPERATIONS, CacheState
 
 logger = logging.getLogger(__name__)
@@ -114,6 +115,7 @@ class CacheWarmer:
                 queue_item = {
                     "account_id": account_id,
                     "operation": operation_config["operation"],
+                    "resource": operation_config["resource"],
                     "params": operation_config.get("params", {}),
                     "priority": operation_config.get("priority", 5),
                     "throttle_sec": operation_config.get("throttle_sec", 0.5),
@@ -144,39 +146,26 @@ class CacheWarmer:
                 params = item["params"]
                 throttle_sec = item["throttle_sec"]
 
+                resource = item["resource"]
                 try:
-                    # Check if already cached (skip if fresh)
-                    cached_result = self.cache_manager.get_cached(
-                        account_id, operation, params
-                    )
+                    # Skip when the entry the tools read is already fresh
+                    state = resource_cache.peek_state(account_id, resource, params)
+                    if state == CacheState.FRESH:
+                        logger.debug(
+                            f"Skipping {operation} for account {account_id[:8]}... "
+                            "(already cached)"
+                        )
+                        self.operations_skipped += 1
+                        self.operations_completed += 1
+                        continue
 
-                    if cached_result:
-                        data, state = cached_result
-                        if state == CacheState.FRESH:
-                            logger.debug(
-                                f"Skipping {operation} for account {account_id[:8]}... "
-                                "(already cached)"
-                            )
-                            self.operations_skipped += 1
-                            self.operations_completed += 1
-                            continue
-
-                    # Execute operation
+                    # Execute operation. The executor re-runs the tool with
+                    # refresh=true, which stores the result under the
+                    # resource key that later tool calls read.
                     logger.debug(
                         f"Warming cache: {operation} for account {account_id[:8]}..."
                     )
-                    result = await self._execute_warming_operation(
-                        account_id, operation, params
-                    )
-
-                    if result:
-                        # Store in cache
-                        self.cache_manager.set_cached(
-                            account_id, operation, params, result
-                        )
-                        logger.debug(
-                            f"Cached {operation} for account {account_id[:8]}..."
-                        )
+                    await self._execute_warming_operation(account_id, operation, params)
 
                     self.operations_completed += 1
 

@@ -225,29 +225,41 @@ CACHE_WARMING_ENABLED = (
     os.environ.get("M365_MCP_CACHE_WARMING", "false").lower() == "true"
 )
 
-# Operations to warm cache with on startup
-# Format: (operation_name, priority, throttle_sec, params)
+# Operations to warm cache with on startup.
+# Each runs a unified read tool (``unified:<tool>``) with the arguments a
+# typical first call uses, so warming fills the entries later calls hit.
+# ``resource`` names the cache resource, for the "already fresh?" check.
 CACHE_WARMING_OPERATIONS = [
-    # Priority 1: Folder structure (most important, rarely changes)
+    # Priority 1: mail folder tree (most important, rarely changes)
     {
-        "operation": "folder_get_tree",
+        "operation": "unified:m365_list",
+        "resource": "email_folder",
         "priority": 1,
         "throttle_sec": 5,
-        "params": {"folder_id": "root", "max_depth": 10},
+        "params": {"resource": "email_folder", "recursive": True},
     },
-    # Priority 2: Email list (frequently accessed)
+    # Priority 2: newest inbox messages (frequently accessed)
     {
-        "operation": "email_list",
+        "operation": "unified:m365_list",
+        "resource": "email",
         "priority": 2,
         "throttle_sec": 3,
-        "params": {"folder_id": "inbox", "limit": 50},
+        "params": {"resource": "email"},
     },
-    # Priority 3: Contact list (commonly used)
+    # Priority 3: upcoming events, then contacts (commonly used)
     {
-        "operation": "contact_list",
+        "operation": "unified:m365_list",
+        "resource": "event",
         "priority": 3,
         "throttle_sec": 2,
-        "params": {"limit": 100},
+        "params": {"resource": "event"},
+    },
+    {
+        "operation": "unified:m365_list",
+        "resource": "contact",
+        "priority": 4,
+        "throttle_sec": 2,
+        "params": {"resource": "contact"},
     },
 ]
 

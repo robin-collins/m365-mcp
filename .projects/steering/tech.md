@@ -117,7 +117,9 @@ uv run authenticate.py
 ### Microsoft Graph Endpoints
 - **Authentication:** `https://login.microsoftonline.com/`
 - **Graph API:** `https://graph.microsoft.com/v1.0/`
-- **Scopes:** Mail.ReadWrite, Calendars.ReadWrite, Files.ReadWrite, Contacts.Read
+- **Scopes:** the server requests `.default`; the app registration must grant
+  Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, Files.ReadWrite,
+  Contacts.ReadWrite, MailboxSettings.Read and User.Read
 - **Accounts:** personal Microsoft accounts only (outlook.com, hotmail.com,
   live.com). The default authority is `consumers` (`M365_MCP_TENANT_ID`);
   work and school accounts are rejected at sign-in completion

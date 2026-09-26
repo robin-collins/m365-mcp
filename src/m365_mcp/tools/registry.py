@@ -275,6 +275,7 @@ async def _run_handler(tool: str, handler: Any, args: dict[str, Any]) -> Any:
                 args,
                 fetch,
                 refresh=bool(args.get("refresh")),
+                refresh_call=(tool, args),
             )
         except _HandlerFailed as failed:
             raise failed.original from None
@@ -292,6 +293,25 @@ async def _run_handler(tool: str, handler: Any, args: dict[str, Any]) -> Any:
             except Exception:  # noqa: BLE001 - cache trouble must not fail calls
                 logger.warning("Cache invalidation failed after %s", tool)
     return result
+
+
+async def run_refresh(tool: str, args: dict[str, Any]) -> Any:
+    """Re-run a cached read with ``refresh=true`` (background refresh, warming).
+
+    Args:
+        tool: A cached read tool (``m365_list`` or ``m365_get``).
+        args: The original arguments plus the ``account_id`` to run as.
+
+    Returns:
+        The handler result, now stored in the cache.
+
+    Raises:
+        ValueError: If ``tool`` is not a cached read or has no handler.
+    """
+    handler = handlers.get_handler(tool)
+    if tool not in CACHED_READS or handler is None:
+        raise ValueError(f"Unsupported cache refresh operation: {tool}")
+    return await _run_handler(tool, handler, {**args, "refresh": True})
 
 
 class SpecTool(Tool):

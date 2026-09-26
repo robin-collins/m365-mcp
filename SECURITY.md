@@ -175,7 +175,9 @@ export M365_MCP_CACHE_WARMING=true
 ```
 
 When enabled, the server owns the background worker lifecycle and stops the
-worker and cache handles on shutdown.
+worker and cache handles on shutdown. Warming and refresh run the same read
+tools as a normal call, as the signed-in account, and store results in the same
+encrypted cache; they add no new permissions or network paths.
 
 ## Data Handling
 

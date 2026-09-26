@@ -19,7 +19,7 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import Any, TypeVar
 
 from . import cache as _cache
-from .cache_config import generate_cache_key
+from .cache_config import CacheState, generate_cache_key
 from .validators import ValidationError, format_validation_error
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,10 @@ RESOURCES: tuple[str, ...] = (
 )
 
 SCOPE_ALL = "all"
+
+# Operation-name prefix of background refresh tasks for unified tool calls:
+# ``unified:m365_list`` re-runs ``m365_list`` with the stored arguments.
+UNIFIED_REFRESH_PREFIX = "unified:"
 
 # Table key for tools that have no ``resource`` parameter.
 ANY_RESOURCE = "*"
@@ -161,6 +165,7 @@ def get_or_fetch(
     fetch: Callable[[], T],
     *,
     refresh: bool = False,
+    refresh_call: tuple[str, Mapping[str, Any]] | None = None,
 ) -> T:
     """Return a cached result, or fetch and cache it.
 
@@ -175,6 +180,9 @@ def get_or_fetch(
         params: The tool arguments that shape the Graph request.
         fetch: Zero-argument callable returning a JSON-serialisable value.
         refresh: Bypass the cached value and fetch fresh data.
+        refresh_call: ``(tool, arguments)`` that re-runs this request. When
+            given, serving a stale entry queues a background refresh (only
+            while cache warming is enabled).
 
     Returns:
         The cached or freshly fetched value.
@@ -189,6 +197,13 @@ def get_or_fetch(
             account_id, resource, key_params, enqueue_refresh=False
         )
         if cached is not None:
+            if cached[1] == CacheState.STALE and refresh_call is not None:
+                tool, arguments = refresh_call
+                manager.enqueue_refresh(
+                    account_id,
+                    f"{UNIFIED_REFRESH_PREFIX}{tool}",
+                    _refresh_parameters(arguments),
+                )
             return cached[0]
 
     value = fetch()
@@ -200,6 +215,33 @@ def get_or_fetch(
             extra={"resource": resource},
         )
     return value
+
+
+def _refresh_parameters(arguments: Mapping[str, Any]) -> dict[str, Any]:
+    """Arguments a refresh task re-runs a tool with (no cache controls)."""
+    return {
+        k: v for k, v in arguments.items() if v is not None and k not in _IGNORED_PARAMS
+    }
+
+
+def peek_state(
+    account_id: str, resource: str, params: Mapping[str, Any]
+) -> CacheState | None:
+    """Return an entry's cache state without queuing refreshes.
+
+    Args:
+        account_id: The resolved account ID.
+        resource: One of ``RESOURCES``.
+        params: The tool arguments that shape the Graph request.
+
+    Returns:
+        ``FRESH`` or ``STALE``, or ``None`` when missing or expired.
+    """
+    key_params = _key_parameters(resource, params)
+    cached = _cache.get_cache_manager().get_cached(
+        account_id, resource, key_params, enqueue_refresh=False
+    )
+    return None if cached is None else cached[1]
 
 
 def invalidate(

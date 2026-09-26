@@ -15,6 +15,7 @@ from typing import Any
 from dotenv import load_dotenv
 from starlette.middleware import Middleware as StarletteMiddleware
 
+from .resource_cache import UNIFIED_REFRESH_PREFIX
 from .http_security import (
     OriginValidationMiddleware,
     allowed_origins_from_env,
@@ -122,31 +123,22 @@ async def _execute_cache_refresh_tool(
     operation: str,
     parameters: dict[str, Any],
 ) -> Any:
-    """Execute a cacheable tool operation for warming or stale refresh."""
-    from .tools import contact, email, file, folder
+    """Re-run a cached read for warming or stale refresh.
 
-    tool_functions = {
-        "contact_list": contact.contact_list.fn,
-        "email_list": email.email_list.fn,
-        "file_list": file.file_list.fn,
-        "folder_get_tree": folder.folder_get_tree.fn,
-    }
-    tool_function = tool_functions.get(operation)
-    if tool_function is None:
+    Args:
+        account_id: Account to run as.
+        operation: ``unified:<tool>``, for example ``unified:m365_list``.
+        parameters: The tool arguments (without ``account_id``).
+
+    Raises:
+        ValueError: If ``operation`` is not a unified refresh operation.
+    """
+    if not operation.startswith(UNIFIED_REFRESH_PREFIX):
         raise ValueError(f"Unsupported cache refresh operation: {operation}")
+    from .tools import registry
 
-    call_parameters = dict(parameters)
-    call_parameters["account_id"] = account_id
-    signature = inspect.signature(tool_function)
-    if "force_refresh" in signature.parameters:
-        call_parameters["force_refresh"] = True
-    if "use_cache" in signature.parameters:
-        call_parameters.setdefault("use_cache", True)
-
-    result = tool_function(**call_parameters)
-    if asyncio.iscoroutine(result):
-        return await result
-    return result
+    tool = operation[len(UNIFIED_REFRESH_PREFIX) :]
+    return await registry.run_refresh(tool, {**parameters, "account_id": account_id})
 
 
 async def _execute_background_refresh(

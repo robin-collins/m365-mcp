@@ -574,6 +574,21 @@ class CacheManager:
         """Serialize task parameters deterministically for duplicate checks."""
         return json.dumps(parameters, sort_keys=True, separators=(",", ":"))
 
+    def enqueue_refresh(
+        self, account_id: str, operation: str, parameters: dict[str, Any]
+    ) -> None:
+        """Queue a background refresh unless one is already pending.
+
+        A no-op unless cache warming (``M365_MCP_CACHE_WARMING``) is enabled.
+
+        Args:
+            account_id: Account whose entry should be refreshed.
+            operation: Operation name understood by the refresh executor.
+            parameters: Parameters the executor re-runs the operation with.
+        """
+        with self._db() as conn:
+            self._enqueue_refresh_task(conn, account_id, operation, parameters)
+
     def _enqueue_refresh_task(
         self,
         conn,

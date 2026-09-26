@@ -162,8 +162,9 @@ cuts repeated Microsoft Graph calls and makes repeated browsing fast.
   and the cursor
 - **Smart invalidation**: every mutating tool clears the affected resources
   for its own account only
-- **Optional cache warming**: set `M365_MCP_CACHE_WARMING=true` to start the
-  background worker
+- **Optional cache warming**: set `M365_MCP_CACHE_WARMING=true` to pre-load
+  the folder tree, inbox, upcoming events and contacts at startup and refresh
+  stale entries in the background
 - **Automatic cleanup**: kept under 2 GB
 
 ### The `refresh` parameter
@@ -223,14 +224,18 @@ admin_cache_invalidate(scope="all")
 4. Authentication → Allow public client flows: Yes
 5. API permissions → Add these delegated permissions:
   - offline_access (required for refresh tokens; the CLI retries against the consumers authority if a personal account flags it as reserved)
-  - Mail.ReadWrite
+  - Mail.ReadWrite (read, draft, move, delete mail and rules)
+  - Mail.Send (send, reply, forward; `Mail.ReadWrite` does not cover sending)
   - Calendars.ReadWrite
   - Files.ReadWrite
   - Contacts.ReadWrite
-  - MailboxSettings.Read (working hours for `calendar_find_availability`)
-  - People.Read
+  - MailboxSettings.Read (working hours and time zone for `calendar_find_availability`)
   - User.Read
 6. Copy Application ID
+
+The server requests the `.default` scope, so it gets exactly the permissions
+granted to the app registration. A missing permission shows up as a
+`403` error for that tool only. `People.Read` is not needed.
 
 The default authority is `consumers`. Set `M365_MCP_TENANT_ID` only if you
 know you need a different value; work and school accounts are still rejected.

@@ -197,7 +197,8 @@ account's data.
 
 Startup warming and background tasks are available when the server starts with
 `M365_MCP_CACHE_WARMING=true`. Leave the variable unset or `false` for the
-default on-demand behaviour.
+default on-demand behaviour. Warming pre-loads the mail folder tree, inbox,
+upcoming events and contacts, and refreshes stale entries in the background.
 
 ```bash
 export M365_MCP_CACHE_WARMING=true

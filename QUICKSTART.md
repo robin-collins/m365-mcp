@@ -127,7 +127,8 @@ generated key. If the generated key cannot be persisted, the server logs a
 warning because the cache may be unreadable after restart.
 
 Startup warming and stale-cache background refresh are disabled by default. To
-enable the worker-owned lifecycle:
+enable them (folder tree, inbox, events and contacts are pre-loaded, and stale
+entries refresh in the background):
 
 ```bash
 export M365_MCP_CACHE_WARMING=true

@@ -210,7 +210,15 @@ Default behaviour: the server starts without a warming worker and the cache
 fills on demand.
 
 Enabled behaviour (`M365_MCP_CACHE_WARMING=true`): the server starts the
-background worker and warmer, and stops them on shutdown.
+background worker and warmer, and stops them on shutdown. For every signed-in
+account it warms the mail folder tree, the newest inbox messages, upcoming
+events and contacts: the same entries a first `m365_list` call reads. Entries
+that are already fresh are skipped.
+
+Stale entries (older than the fresh window but still inside the stale window)
+are still served immediately; with warming enabled, serving one also queues a
+background refresh of that exact `m365_list` or `m365_get` request, so the next
+call is fresh. Without warming, a stale entry is served until it expires.
 
 ```bash
 export M365_MCP_CACHE_WARMING=true

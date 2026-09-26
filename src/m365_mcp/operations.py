@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 import httpx
 
 from . import graph
-from .validators import ValidationError
+from .validators import ValidationError, validate_graph_url
 
 OPERATION_TTL_SECONDS = 24 * 60 * 60
 
@@ -106,10 +106,10 @@ class OperationStore:
             An opaque ID such as ``op_1f2e3d4c5b6a7980``.
 
         Raises:
-            ValueError: If the monitor URL is not HTTPS.
+            ValidationError: If the monitor URL is not an approved Microsoft
+                HTTPS URL.
         """
-        if urlparse(monitor_url).scheme.lower() != "https":
-            raise ValueError("Monitor URL must use HTTPS")
+        monitor_url = validate_graph_url(monitor_url, "monitor_url")
         op_id = f"op_{secrets.token_hex(8)}"
         with self._lock:
             now = self._clock()

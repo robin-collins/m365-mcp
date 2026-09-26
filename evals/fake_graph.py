@@ -1297,7 +1297,9 @@ class FakeGraph:
                 size=item.get("size", 0),
             )
             return 202, {
-                "__headers__": {"Location": f"https://monitor.fake/copy/{copied['id']}"}
+                "__headers__": {
+                    "Location": f"https://api.onedrive.com/copy/{copied['id']}"
+                }
             }
         if action == "createLink":
             if item_id == "root":
@@ -1362,7 +1364,7 @@ class FakeGraph:
         return 200, {"responses": responses}
 
     def _external(self, method: str, url: str, body: Any) -> tuple[int, Any]:
-        if url.startswith("https://monitor.fake/copy/"):
+        if url.startswith("https://api.onedrive.com/copy/"):
             item_id = url.rsplit("/", 1)[-1]
             return 200, {
                 "status": "completed",

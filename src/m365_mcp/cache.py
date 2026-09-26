@@ -98,7 +98,10 @@ class CacheManager:
         logger.info(f"Cache manager initialized at {self.db_path}")
 
     def __del__(self) -> None:
-        self.close()
+        # ``__del__`` can run for partially initialized instances (including
+        # when ``__init__`` raises), so it must not assume the pool exists.
+        if hasattr(self, "_pool_lock") and hasattr(self, "_connection_pool"):
+            self.close()
 
     def _create_connection(self) -> sqlite3.Connection:  # type: ignore[name-defined]
         """

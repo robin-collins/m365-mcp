@@ -235,7 +235,9 @@ def test_get_drive_item_rejects_id_with_path(harness: UnifiedHarness) -> None:
 
 def test_get_operation_example(harness: UnifiedHarness) -> None:
     operations.operation_store._operations["op_7f3c2a"] = operations._Operation(
-        "https://monitor.fake/copy/01ABCDEF2345", harness.account_id, time.time()
+        "https://api.onedrive.com/copy/01ABCDEF2345",
+        harness.account_id,
+        time.time(),
     )
 
     result = harness.ok("m365_get", {"resource": "operation", "id": "op_7f3c2a"})

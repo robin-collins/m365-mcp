@@ -22,7 +22,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
-from urllib.parse import parse_qsl, unquote, urlsplit
+from urllib.parse import parse_qsl, quote, unquote, urlsplit
 
 import httpx
 
@@ -1089,7 +1089,9 @@ class FakeGraph:
             for i in self.drive.values()
             if i["id"] != "root" and all(t in i["name"].lower() for t in terms)
         ]
-        return 200, self._page(items, params, "/me/drive/root/search")
+        # The nextLink keeps the (encoded) query, as Graph's does.
+        path = f"/me/drive/root/search(q='{quote(query, safe='')}')"
+        return 200, self._page(items, params, path)
 
     def _drive_path(self, method, params, body, path):
         item = self._drive_by_path(path)

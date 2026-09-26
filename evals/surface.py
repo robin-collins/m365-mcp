@@ -114,10 +114,16 @@ def open_surface(
 
         real_client = httpx.Client
 
-        def routed_client(*args: Any, **kwargs: Any) -> httpx.Client:
-            # Downloads open their own clients; route them to the fake too.
-            kwargs["transport"] = fake.transport()
-            return real_client(*args, **kwargs)
+        class RoutedClient(real_client):  # type: ignore[valid-type, misc]
+            """``httpx.Client`` that always talks to the fake Graph.
+
+            A subclass, not a function, so libraries that subclass
+            ``httpx.Client`` on import (authlib) keep working.
+            """
+
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                kwargs["transport"] = fake.transport()
+                super().__init__(*args, **kwargs)
 
         def fake_token(*args: Any, **kwargs: Any) -> str:
             return "fake-token"
@@ -129,7 +135,7 @@ def open_surface(
             (graph_module, "time", _NoSleepTime()),
             (auth, "get_token", fake_token),
             (auth, "list_accounts", _fake_accounts),
-            (httpx, "Client", routed_client),
+            (httpx, "Client", RoutedClient),
         ]
         originals = [(obj, attr, getattr(obj, attr)) for obj, attr, _ in patches]
         cwd = os.getcwd()

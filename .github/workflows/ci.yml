@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [master, "2026*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # Headless runners have no keyring: use a throwaway cache key.
+      M365_MCP_CACHE_KEY: ci-only-cache-key-not-a-secret-0000000000
+      M365_MCP_CLIENT_ID: ci-client-id
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: uv sync --group evals
+      - name: Unit tests, including tools/list conformance (U3.32)
+        run: uv run pytest tests/ -q --ignore=tests/test_integration.py
+      - name: Spec and tool reference are current
+        run: |
+          uv run python scripts/build_unified_tool_specs.py --check
+          uv run python scripts/generate_tools_doc.py --check
+      - name: Type check
+        run: uv run pyright
+      # Legacy code moved into services/{accounts,calendar,contacts,drive,
+      # mail,search}.py still carries old findings; H5 widens this scope.
+      - name: Lint new code
+        run: >-
+          uvx ruff check src/m365_mcp/tools/unified src/m365_mcp/tools/registry.py
+          src/m365_mcp/tools/handlers.py src/m365_mcp/tool_specs
+          src/m365_mcp/services/__init__.py src/m365_mcp/services/mail_compose.py
+          src/m365_mcp/services/mail_folders.py src/m365_mcp/services/mail_rules.py
+          src/m365_mcp/projections.py src/m365_mcp/untrusted.py
+          src/m365_mcp/cursors.py src/m365_mcp/errors.py
+          src/m365_mcp/observability.py src/m365_mcp/resource_cache.py
+          src/m365_mcp/http_security.py src/m365_mcp/local_files.py
+          src/m365_mcp/rate_limit.py src/m365_mcp/operations.py
+          src/m365_mcp/auth_sessions.py evals

@@ -318,6 +318,93 @@ Or for local development:
 }
 ```
 
+## Client Configuration
+
+The server exposes 29 tools in three tiers: `core` (16), `extended` (7) and
+`admin` (6, hidden by default). `M365_MCP_TOOLSETS` (comma separated, default
+`core,extended`) chooses which tiers the server registers. Cutting the tool
+list saves model context: the core tier costs about 9.4k tokens of tool
+definitions and the default `core,extended` about 13.5k. Unknown values fail
+at startup.
+
+| Client situation | Set `M365_MCP_TOOLSETS` to | Also |
+|---|---|---|
+| Client without tool search or deferred loading | `core` | Users lose `drive_*`, bulk mail and rule tools |
+| Client with tool search or deferred loading | `core,extended` (default) | Load `core` eagerly, defer `extended` |
+| Signing in from the client (no terminal) | add `admin` | `uv run authenticate.py` remains the primary sign-in path |
+
+Tier contents:
+
+- **core:** "m365_list", "m365_get", "m365_search", "m365_get_content", "m365_create", "m365_update", "m365_move", "m365_delete", "email_create_draft", "email_send", "email_reply", "email_forward", "calendar_create_event", "calendar_update_event", "calendar_respond", "calendar_find_availability"
+- **extended:** "drive_upload", "drive_copy", "drive_share", "email_folder_mark_all_read", "email_folder_empty", "email_rule_manage", "calendar_forward"
+- **admin:** "account_list", "account_auth_begin", "account_auth_complete", "admin_cache_get", "admin_cache_invalidate", "admin_server_info"
+
+### Claude Desktop and Claude Code (stdio)
+
+Claude Desktop uses the `mcpServers` block shown under *Claude Desktop
+Configuration* above; add `"M365_MCP_TOOLSETS": "core,extended"` to `env`.
+Claude Code:
+
+```bash
+claude mcp add m365 --env M365_MCP_CLIENT_ID=your-app-id
+  --env M365_MCP_TOOLSETS=core,extended
+  -- uv --directory /path/to/m365-mcp run m365-mcp
+```
+
+Claude API MCP connector and Claude Code both support tool search: keep the
+`core` tools loaded and let `extended` load on demand. Have the host ask for
+approval on tools annotated `dangerous` or `critical` (send, share and delete
+tools). The server's `confirm=true` gate is a second check, not a substitute.
+
+### OpenAI (Responses API, remote MCP)
+
+Run the server with HTTP transport (see *Transport Modes*), then:
+
+```json
+{
+  "type": "mcp",
+  "server_label": "m365",
+  "server_url": "https://your-host.example/mcp",
+  "authorization": "<bearer token>",
+  "allowed_tools": ["m365_list", "m365_get", "m365_search", "m365_get_content"],
+  "require_approval": "always",
+  "defer_loading": true
+}
+```
+
+`allowed_tools` imports only the listed tools; use it to expose the read
+tools alone, or the `core` list above. `defer_loading: true` keeps the
+function definitions out of the prompt until the model searches for them,
+which suits the `extended` tier. Keep `require_approval` on for tools that
+send, share or delete.
+
+### Gemini CLI (Streamable HTTP)
+
+```json
+{
+  "mcpServers": {
+    "m365": {
+      "httpUrl": "http://127.0.0.1:8000/mcp",
+      "headers": { "Authorization": "Bearer <token>" },
+      "timeout": 30000,
+      "trust": false,
+      "includeTools": ["m365_list", "m365_get", "m365_search", "m365_get_content"],
+      "excludeTools": ["m365_delete", "email_folder_empty", "drive_share"]
+    }
+  }
+}
+```
+
+`includeTools` is an allowlist and `excludeTools` a blocklist; exclusion wins.
+Leave `trust` false so Gemini CLI asks before running tools.
+
+### Choosing what to expose
+
+Prefer restricting on the server (`M365_MCP_TOOLSETS`) so every client sees
+the same surface, and add client-side `allowed_tools` / `includeTools` for
+per-agent least privilege (for example a read-only agent with only the
+`m365_list`, `m365_get`, `m365_search` and `m365_get_content` tools).
+
 ## Transport Modes
 
 M365 MCP supports two transport modes for different use cases:
@@ -338,7 +425,7 @@ uv run m365-mcp
 
 **Use for:** Web applications, remote access, multi-client scenarios
 
-**Security:** ⚠️ **Requires authentication** (bearer token or OAuth)
+**Security:** ⚠️ **Requires authentication** (bearer token; `MCP_AUTH_METHOD=oauth` is not supported). Browser requests must come from an allowed `Origin` (loopback by default; set `MCP_ALLOWED_ORIGINS` to change)
 
 **Protocol:** Uses MCP Streamable HTTP (spec 2025-03-26+)
 

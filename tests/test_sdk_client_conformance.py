@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from mcp.shared.memory import create_connected_server_and_client_session
+from mcp import Client
 
 CALLS = [
     ("m365_list", {"resource": resource, "limit": 3})
@@ -50,12 +50,10 @@ CALLS = [
 )
 def test_sdk_client_accepts_output(harness, tool, args) -> None:
     async def run():
-        async with create_connected_server_and_client_session(
-            harness.surface.server._mcp_server
-        ) as client:
+        async with Client(harness.surface.server._mcp_server) as client:
             await client.list_tools()  # the SDK reads output schemas here
             return await client.call_tool(tool, args)
 
     result = asyncio.run(run())
-    assert not result.isError, result.content
-    assert result.structuredContent is not None
+    assert not result.is_error, result.content
+    assert result.structured_content is not None

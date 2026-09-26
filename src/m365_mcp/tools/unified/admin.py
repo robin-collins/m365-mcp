@@ -13,7 +13,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from fastmcp.exceptions import ToolError
-from mcp.shared.version import SUPPORTED_PROTOCOL_VERSIONS
+from mcp_types.version import SUPPORTED_PROTOCOL_VERSIONS
 
 from ... import auth, auth_sessions, cache, resource_cache, warming_status
 from ...services import accounts as accounts_service

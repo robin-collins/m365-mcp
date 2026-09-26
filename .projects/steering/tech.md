@@ -19,7 +19,7 @@
 
 ### Production Dependencies
 ```python
-fastmcp>=2.8.0      # MCP server framework
+fastmcp>=4.0.10     # MCP server framework (MCP SDK 2, protocol 2026-07-28)
 msal>=1.20.0        # Microsoft authentication
 httpx>=0.25.0       # Async HTTP client
 python-dotenv>=1.0.0 # Environment variable management

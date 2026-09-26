@@ -75,7 +75,9 @@ async def fetch_tools() -> list[dict[str, Any]]:
     """Return the unified server's tools/list response as dictionaries."""
     async with Client(build_server(ALL_TOOLSETS)) as client:
         tools = await client.list_tools()
-    return [tool.model_dump(mode="json", exclude_none=True) for tool in tools]
+    return [
+        tool.model_dump(mode="json", by_alias=True, exclude_none=True) for tool in tools
+    ]
 
 
 def schema_type(schema: dict[str, Any]) -> str:

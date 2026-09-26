@@ -20,7 +20,7 @@ from typing import Any, cast
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import Tool, ToolResult
+from fastmcp.tools.base import Tool, ToolResult
 from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import ValidationError as JSONSchemaError
 from jsonschema.exceptions import best_match
@@ -317,6 +317,18 @@ async def run_refresh(tool: str, args: dict[str, Any]) -> Any:
 class SpecTool(Tool):
     """A unified tool whose MCP definition is its spec JSON."""
 
+    def get_meta(self) -> dict[str, Any]:
+        """Return the spec's ``meta`` exactly.
+
+        FastMCP 4 injects a ``fastmcp`` key (tags, version) into every
+        tool's ``_meta``; ``tools/list`` must equal the spec, so it is
+        left out.
+
+        Returns:
+            A copy of the spec's ``meta`` object.
+        """
+        return dict(self.meta) if self.meta else {}
+
     async def run(self, arguments: dict[str, Any]) -> ToolResult:
         """Validate the arguments and run the tool's handler.
 
@@ -470,7 +482,7 @@ def build_server(toolsets: str | None = None) -> FastMCP:
         SERVER_NAME,
         instructions=SERVER_INSTRUCTIONS,
         mask_error_details=True,
-        include_fastmcp_meta=False,
+        dereference_schemas=False,  # tools/list must equal the spec's $ref schemas
     )
     mutating: set[str] = set()
     for tier in tiers:

@@ -72,7 +72,9 @@ def _expected_tool(name: str) -> dict[str, Any]:
         "title": spec["title"],
         "description": spec["description"],
         "annotations": spec["annotations"],
-        "_meta": spec["meta"],
+        # The MCP SDK omits null values on the wire, so a spec ``null``
+        # (``confirm_rule`` on tools that never need one) arrives as absent.
+        "_meta": {k: v for k, v in spec["meta"].items() if v is not None},
         "inputSchema": spec["inputSchema"],
         "outputSchema": spec["outputSchema"],
     }

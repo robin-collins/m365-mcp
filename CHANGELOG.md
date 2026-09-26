@@ -99,6 +99,12 @@ below.
 
 ### Added
 
+- MCP protocol 2026-07-28 support: the server runs on FastMCP 4.0 and the MCP
+  Python SDK 2.2, and negotiates every revision from 2024-11-05 to 2026-07-28
+  (`tests/test_protocol_versions.py` covers the handshake, auto and pinned
+  2026-07-28 connect modes). `null` values in tool `_meta` (for example
+  `confirm_rule`) are omitted on the wire by the SDK; clients should treat a
+  missing key as `null`.
 - 29 tools defined by generated JSON specs: 16 `core`, 7 `extended`, 6
   `admin` (see `docs/unified-tools/`). The server registers them from the spec
   in a fixed order, so `tools/list` is deterministic; `M365_MCP_TOOLSETS`

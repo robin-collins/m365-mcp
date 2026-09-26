@@ -234,13 +234,13 @@ async def run_case(
                 {
                     "name": t.name,
                     "description": t.description or "",
-                    "input_schema": t.inputSchema,
+                    "input_schema": t.input_schema,
                 }
                 for t in listed
             ]
             validators = {
                 t.name: Draft202012Validator(
-                    t.inputSchema, format_checker=FormatChecker()
+                    t.input_schema, format_checker=FormatChecker()
                 )
                 for t in listed
             }

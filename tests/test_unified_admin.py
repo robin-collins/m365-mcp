@@ -8,7 +8,7 @@ from importlib.metadata import version
 from typing import Any, NamedTuple
 
 import pytest
-from mcp.shared.version import SUPPORTED_PROTOCOL_VERSIONS
+from mcp_types.version import SUPPORTED_PROTOCOL_VERSIONS
 
 from m365_mcp import auth, auth_sessions, cache, warming_status
 from m365_mcp.tool_specs import load_tool_spec

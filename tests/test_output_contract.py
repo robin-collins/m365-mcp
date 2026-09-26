@@ -99,8 +99,8 @@ def test_example_outputs_round_trip(
     output = copy.deepcopy(example["output"])
     handlers.register_handler(name)(lambda args: output)
     result = call(server, name, example["input"])
-    assert not result.isError, text_of(result)
-    assert result.structuredContent == example["output"]
+    assert not result.is_error, text_of(result)
+    assert result.structured_content == example["output"]
     # The text block is the same data as JSON, so a text-only consumer
     # (no structuredContent) still sees everything, per the MCP spec's
     # "SHOULD also return the serialized JSON in a TextContent block".
@@ -146,7 +146,7 @@ def test_text_block_carries_item_details_not_just_a_count(server: FastMCP) -> No
     }
     handlers.register_handler("m365_list")(lambda args: output)
     result = call(server, "m365_list", {"resource": "email", "container_id": "junk"})
-    assert not result.isError, text_of(result)
+    assert not result.is_error, text_of(result)
     text = text_of(result)
     assert "msg-008" in text and "You won a prize!!!" in text
     assert "msg-009" in text and "Double your crypto today" in text
@@ -158,8 +158,8 @@ def test_async_handler_is_awaited(server: FastMCP) -> None:
 
     handlers.register_handler("m365_delete")(handler)
     result = call(server, "m365_delete", DELETE_ARGS)
-    assert not result.isError
-    assert result.structuredContent == DELETE_OK
+    assert not result.is_error
+    assert result.structured_content == DELETE_OK
     assert json.loads(text_of(result)) == DELETE_OK
 
 
@@ -176,7 +176,7 @@ def test_schema_mismatch_fails_loudly(
 ) -> None:
     handlers.register_handler("m365_delete")(lambda args: {**DELETE_OK, **change})
     result = call(server, "m365_delete", DELETE_ARGS)
-    assert result.isError
+    assert result.is_error
     text = text_of(result)
     assert text.startswith("Output contract violation in m365_delete")
     assert fragment in text
@@ -191,14 +191,14 @@ def test_format_mismatch_fails_in_test_mode_only(
     handlers.register_handler("calendar_create_event")(lambda args: output)
 
     result = call(server, "calendar_create_event", example["input"])
-    assert result.isError
+    assert result.is_error
     assert "Output contract violation in calendar_create_event" in text_of(result)
     assert "event.start" in text_of(result)
 
     monkeypatch.setenv(registry.VALIDATE_OUTPUT_ENV, "0")
     result = call(server, "calendar_create_event", example["input"])
-    assert not result.isError
-    assert result.structuredContent == output
+    assert not result.is_error
+    assert result.structured_content == output
 
 
 @pytest.mark.parametrize("output", [None, ["x"], {"resource": "email"}])
@@ -208,5 +208,5 @@ def test_result_must_be_dict_with_summary_even_outside_test_mode(
     monkeypatch.setenv(registry.VALIDATE_OUTPUT_ENV, "0")
     handlers.register_handler("m365_delete")(lambda args: output)
     result = call(server, "m365_delete", DELETE_ARGS)
-    assert result.isError
+    assert result.is_error
     assert text_of(result).startswith("Output contract violation in m365_delete")

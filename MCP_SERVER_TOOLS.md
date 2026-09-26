@@ -9,8 +9,8 @@ specifications are in [`docs/unified-tools/`](docs/unified-tools/README.md).
 |---|---|
 | Server name (MCP) | `microsoft-mcp` |
 | Package version | `m365-mcp` 1.0.0 |
-| MCP runtime | FastMCP 2.13.3 on the `mcp` Python SDK 1.22.0 |
-| Protocol versions negotiated | `2024-11-05`, `2025-03-26`, `2025-06-18` (newest offered: `2025-06-18`) |
+| MCP runtime | FastMCP 4.0.10 on the `mcp` Python SDK 2.2.0 |
+| Protocol versions negotiated | `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25`, `2026-07-28` (newest offered: `2026-07-28`) |
 | Tools exposed | **29** in three tiers (default `core,extended`: 23; `admin` adds 6) |
 | Accounts | Personal Microsoft accounts only |
 | Snapshot date | 2026-09-26 |

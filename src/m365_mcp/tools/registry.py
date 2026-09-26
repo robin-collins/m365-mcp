@@ -373,8 +373,13 @@ class SpecTool(Tool):
             result: The handler's return value.
 
         Returns:
-            ``result`` as ``structuredContent`` with ``summary`` as the only
-            text block.
+            ``result`` as ``structuredContent``, with the same data
+            serialized as JSON in the single text block. ``structuredContent``
+            is not guaranteed to reach the model (many clients, including a
+            plain Anthropic-API tool loop, only see ``content``), so the text
+            block must be "functionally equivalent", per the MCP spec, not a
+            bare summary sentence: a model that cannot see item ids or
+            subjects in the text cannot act on them.
 
         Raises:
             OutputContractError: If ``result`` is not a dict with a string
@@ -395,8 +400,9 @@ class SpecTool(Tool):
                     f"Output contract violation in {self.name} at "
                     f"{_param_name(error.absolute_path)}: {error.message}"
                 )
+        text = json.dumps(result, default=str, ensure_ascii=False)
         return ToolResult(
-            content=[TextContent(type="text", text=result["summary"])],
+            content=[TextContent(type="text", text=text)],
             structured_content=result,
         )
 

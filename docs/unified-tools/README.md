@@ -56,8 +56,12 @@ Never edit them by hand.
      `error` text (same wording, with the concrete values substituted).
      Each rule needs a unit test.
 3. **Return `structuredContent` that validates against `outputSchema`**,
-   plus a single text block containing `summary`. Tests validate real
-   handler output against the schema.
+   plus a single text block holding the same result serialized as JSON
+   (`summary` is one field within it). Per the MCP spec, `structuredContent`
+   is not guaranteed to reach the model — many clients, including a plain
+   Anthropic-API tool loop, only forward `content` — so the text must stay
+   "functionally equivalent" to the structured data, not a bare summary
+   sentence. Tests validate real handler output against the schema.
 4. **Call Graph as listed in `graph_calls`** through the services layer
    (`src/m365_mcp/services/`); tools never build Graph URLs.
 5. **Confirm gates.**

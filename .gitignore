@@ -52,3 +52,8 @@ logs/
 
 .gait/custom-merge-driver.sh
 .chatledger/
+
+# Eval run logs (raw stderr/stdout with terminal escapes): keep the .md
+# report, .jsonl and .transcripts.json, not these.
+evals/results/*.err
+evals/results/*.out

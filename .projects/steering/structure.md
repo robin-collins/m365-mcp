@@ -8,33 +8,41 @@ M365 MCP Server follows a modular architecture with clear separation of concerns
 
 ```
 m365-mcp/
-├── src/m365_mcp/          # Main package
-│   ├── __init__.py            # Package initialization
-│   ├── auth.py                # Authentication & token management
-│   ├── graph.py               # Microsoft Graph API client
-│   ├── server.py              # MCP server configuration & HTTP transport
-│   ├── mcp_instance.py        # Shared FastMCP instance
-│   ├── tools/                 # Modular MCP tool package
+├── src/m365_mcp/              # Main package
+│   ├── auth.py                # MSAL auth, personal accounts only (authority consumers)
+│   ├── auth_sessions.py       # Server-side device-flow sessions (opaque auth_session_id)
+│   ├── graph.py               # Graph client: retries, 401 refresh, deadlines, $batch
+│   ├── errors.py              # GraphAPIError and mapping to actionable ToolError text
+│   ├── server.py              # Entry point, stdio and HTTP transports
+│   ├── http_security.py       # Origin allowlist and constant-time bearer check
+│   ├── mcp_instance.py        # Legacy FastMCP instance (removed at cut-over)
+│   ├── tool_specs/            # Packaged spec JSON (generated; do not edit)
+│   ├── tools/
+│   │   ├── registry.py        # Builds the server from tool_specs; validation,
+│   │   │                      # output contract, caching, error translation
+│   │   ├── handlers.py        # Handler and validation-rule registries
+│   │   └── unified/           # Handlers by domain (mail, calendar, drive, ...)
+│   ├── services/              # Graph logic (URLs, params, paging); no FastMCP
+│   ├── projections.py         # Graph JSON -> spec result records
+│   ├── untrusted.py           # Sanitising of third-party text
+│   ├── cursors.py             # Opaque, HMAC-protected pagination cursors
+│   ├── resource_cache.py      # Cache keyed by account, resource and arguments
+│   ├── local_files.py         # Allowed roots, deny-list, safe file names
+│   ├── rate_limit.py          # Per-account token buckets
+│   ├── operations.py          # Async copy operation store
+│   ├── observability.py       # Per-call JSON audit log middleware
 │   ├── cache.py               # Encrypted SQLite cache manager (AES-256)
-│   ├── cache_config.py        # Cache configuration, TTL policies, key generation
-│   ├── cache_warming.py       # Optional startup warming and status owner
+│   ├── cache_config.py        # TTL policies, cache configuration
+│   ├── cache_warming.py       # Optional startup warming
 │   ├── background_worker.py   # Async task queue for cache operations
-│   └── encryption.py          # Encryption key management (keyring integration)
-├── tests/                     # Test suite
-│   ├── __init__.py
-│   ├── test_integration.py    # Integration tests
-│   ├── test_cache.py          # Cache operation tests (18 tests)
-│   ├── test_encryption.py     # Encryption & key management tests (26 tests)
-│   ├── test_cache_schema.py   # Database schema tests (8 tests)
-│   ├── test_cache_warming.py  # Cache warming tests (20+ tests)
-│   ├── test_background_worker.py # Background task tests (9 tests)
-│   └── test_tool_caching.py   # Tool caching integration tests (7 tests)
+│   ├── encryption.py          # Cache key management (keyring integration)
+│   └── validators.py          # Shared validation helpers and error format
+├── docs/unified-tools/        # Tool specification (source of truth, generated)
+├── scripts/                   # Spec builder and tool reference generator
+├── evals/                     # Golden-prompt evaluation harness and fake Graph
+├── tests/                     # Unit, conformance and (opt-in) live tests
 ├── .projects/steering/        # AI assistant guidance
-│   ├── product.md             # Product overview
-│   ├── tech.md                # Technology stack & commands
-│   └── structure.md           # This file
-├── docs/                      # Documentation
-└── reports/                   # Generated reports & analysis
+└── docs/                      # Documentation
 ```
 
 ## Layer Responsibilities
@@ -53,12 +61,19 @@ m365-mcp/
 - **File upload** - Large file handling with chunked upload
 
 ### Tool Layer (`tools/` package)
-- **MCP tool definitions** - FastMCP decorators organized by domain module
-- **Package registration** - `tools/__init__.py` imports tool modules so
-  decorators register against the shared `mcp_instance.mcp`
-- **Business logic** - Email, calendar, file, and contact operations
-- **Error handling** - Comprehensive error management
-- **Type safety** - Full type annotations for all tools
+- **Spec-driven registration** - `tools/registry.py` registers each enabled
+  tool from its packaged spec JSON (exact name, description, annotations,
+  input and output schemas) in `index.json` order, filtered by
+  `M365_MCP_TOOLSETS`
+- **Pipeline** - JSON Schema validation, semantic rules, handler, output
+  contract, caching and error translation happen in the registry
+- **Handlers** - `tools/unified/` modules register handlers; the eight
+  `m365_*` tools dispatch on `resource` to per-resource functions
+- **No Graph URLs** - handlers call services; they never build URLs
+
+### Services Layer (`services/` package)
+- **Graph logic** - endpoints, query parameters, paging, request bodies
+- **No FastMCP** - enforced by `tests/test_services_boundaries.py`
 
 ### Server Layer (`server.py`)
 - **Transport modes** - stdio (default) and HTTP support
@@ -86,11 +101,11 @@ m365-mcp/
 
 ### MCP Tool Pattern
 All Microsoft 365 operations are exposed as stateless MCP tools with:
-- **Compatible signatures** - account-scoped tools include `account_id`; existing
-  public tools preserve their historical parameter order
-- **Comprehensive error handling** - Proper exception management
-- **Type safety** - Full type annotations
-- **Documentation** - Detailed docstrings with examples
+- **Spec-defined surface** - 29 tools defined in `docs/unified-tools/`;
+  optional `account_id` on every Microsoft 365 tool
+- **Typed results** - `outputSchema`, `structuredContent` and a `summary`
+- **Actionable errors** - Graph errors mapped to fix-it text; no URLs
+- **Explicit handles** - cursors, auth sessions and copy operations
 
 ### Graph API Client Pattern
 Centralized API communication with:
@@ -132,15 +147,15 @@ uv.lock                        # Dependency lock file
 ## File Organization Guidelines
 
 ### Adding New Tools
-1. **Location** - Add to the matching module under `src/m365_mcp/tools/`
-2. **Pattern** - Import `mcp` from `mcp_instance` or local module patterns and
-   use the `@mcp.tool` decorator
-3. **Registration** - Import/export the new tool from `tools/__init__.py`
-4. **Signature** - Include `account_id: str` where the tool is account-scoped.
-   Preserve existing public parameter order; for new tools, follow the local
-   module's established ordering.
-5. **Documentation** - Comprehensive docstring with examples
-6. **Error Handling** - Proper exception raising and handling
+1. **Spec** - Add the tool to `scripts/build_unified_tool_specs.py`
+   (description, schemas, validation rules, Graph calls, examples), run the
+   builder, and pass `tests/test_unified_tool_specs.py`
+2. **Services** - Add the Graph calls to the matching `services/` module
+3. **Handler** - Register it in a `tools/unified/` module with
+   `@register_handler` (or `@resource_op` for a generic tool resource)
+4. **Tests** - One test per validation rule (exact text), the confirm gate,
+   the Graph calls, and each spec example, using the `harness` fixture
+5. **Breaking changes** - Only in a major version, listed in `CHANGELOG.md`
 
 ### Adding New Modules
 1. **Location** - Create in `src/m365_mcp/`

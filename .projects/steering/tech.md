@@ -3,7 +3,7 @@
 ## Core Technologies
 
 ### Runtime Environment
-- **Python 3.8+** - Primary programming language
+- **Python 3.11+** - Primary programming language
 - **FastMCP** - MCP server framework for tool registration and transport
 - **httpx** - Async HTTP client for Microsoft Graph API communication
 
@@ -85,6 +85,10 @@ export M365_MCP_CLIENT_ID="your-azure-app-id"
 uv run m365-mcp
 ```
 
+**Tool exposure:** `M365_MCP_TOOLSETS` (comma separated, default
+`core,extended`) selects the tiers: `core` (16 tools), `extended` (7) and
+`admin` (6, hidden by default). Unknown values fail at startup.
+
 **HTTP Mode:**
 ```bash
 # Set HTTP transport configuration
@@ -103,12 +107,9 @@ uv run m365-mcp
 # Run authentication script
 uv run authenticate.py
 
-# Complete authentication flow
-uv run python -c "
-from src.m365_mcp.tools import account_complete_auth
-result = account_complete_auth.fn('your-flow-cache')
-print(result)
-"
+# Sign-in is interactive through authenticate.py (device code flow);
+# the admin tools account_auth_begin / account_auth_complete do the same
+# from an MCP client when M365_MCP_TOOLSETS includes admin.
 ```
 
 ## API Integration
@@ -117,6 +118,9 @@ print(result)
 - **Authentication:** `https://login.microsoftonline.com/`
 - **Graph API:** `https://graph.microsoft.com/v1.0/`
 - **Scopes:** Mail.ReadWrite, Calendars.ReadWrite, Files.ReadWrite, Contacts.Read
+- **Accounts:** personal Microsoft accounts only (outlook.com, hotmail.com,
+  live.com). The default authority is `consumers` (`M365_MCP_TENANT_ID`);
+  work and school accounts are rejected at sign-in completion
 
 ### Transport Modes
 1. **stdio** - Standard input/output for desktop applications

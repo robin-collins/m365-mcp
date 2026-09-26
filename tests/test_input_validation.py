@@ -242,7 +242,7 @@ def test_unexpected_errors_go_through_translate_exception(
 ) -> None:
     seen: list[BaseException] = []
 
-    def translate(exc: Exception) -> Exception:
+    def translate(exc: Exception, **kwargs: Any) -> Exception:
         seen.append(exc)
         return ToolError("Microsoft 365 is unavailable. Try again later.")
 
@@ -258,9 +258,15 @@ def test_unexpected_errors_go_through_translate_exception(
     assert [type(exc) for exc in seen] == [RuntimeError]
 
 
-def test_translate_exception_is_identity_for_now() -> None:
-    exc = RuntimeError("x")
-    assert registry._translate_exception(exc) is exc
+def test_translate_exception_uses_the_graph_error_mapping() -> None:
+    from m365_mcp.errors import GraphAPIError
+
+    exc = GraphAPIError(404, "ErrorItemNotFound", "gone", "req-1")
+    translated = registry._translate_exception(exc, tool="m365_get", resource="email")
+    assert isinstance(translated, ToolError)
+    assert "No email with that id" in str(translated)
+    generic = registry._translate_exception(RuntimeError("secret detail"))
+    assert isinstance(generic, ToolError) and "secret" not in str(generic)
 
 
 def test_register_rejects_unknown_tool() -> None:

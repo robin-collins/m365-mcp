@@ -1,6 +1,7 @@
 import email.utils
 import time
 from collections.abc import Callable, Iterator
+from contextvars import ContextVar, Token
 from datetime import UTC, datetime
 from typing import Any
 
@@ -25,6 +26,28 @@ _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 _client = httpx.Client(timeout=30.0, follow_redirects=True)
 # Injectable monotonic clock for the deadline budget (tests use a fake).
 _clock: Callable[[], float] = time.monotonic
+# Retries made during the current tool call, read by the audit log.
+_retries: ContextVar[int] = ContextVar("m365_graph_retries", default=0)
+
+
+def note_retry() -> None:
+    """Count one retry against the current tool call."""
+    _retries.set(_retries.get() + 1)
+
+
+def retry_count() -> int:
+    """Return the retries counted in the current context."""
+    return _retries.get()
+
+
+def reset_retry_count() -> Token[int]:
+    """Start counting retries from zero; pass the token to restore."""
+    return _retries.set(0)
+
+
+def restore_retry_count(token: Token[int]) -> None:
+    """Restore the retry count saved by :func:`reset_retry_count`."""
+    _retries.reset(token)
 
 
 def _retry_after_seconds(response: httpx.Response, default: float) -> float:
@@ -163,6 +186,7 @@ def _send(
                     raise deadline from exc
                 time.sleep(delay)
                 retry_count += 1
+                note_retry()
                 continue
             raise
 
@@ -181,6 +205,7 @@ def _send(
             _check_deadline(started, budget, delay)
             time.sleep(delay)
             retry_count += 1
+            note_retry()
             continue
 
         if not response.is_success:
@@ -389,6 +414,7 @@ def batch(
             break
         time.sleep(delay)
         retry_count += 1
+        note_retry()
         pending = sorted(retry)
 
     return [result for result in results if result is not None]

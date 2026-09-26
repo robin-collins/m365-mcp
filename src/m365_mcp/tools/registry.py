@@ -25,6 +25,8 @@ from jsonschema.exceptions import ValidationError as JSONSchemaError
 from jsonschema.exceptions import best_match
 from mcp.types import TextContent, ToolAnnotations
 
+from .. import errors
+from ..observability import AuditLogMiddleware
 from ..tool_specs import load_index, load_tool_spec
 from ..validators import format_validation_error
 from . import handlers
@@ -196,19 +198,24 @@ def output_validation_enabled() -> bool:
     return "PYTEST_CURRENT_TEST" in os.environ
 
 
-def _translate_exception(exc: Exception) -> Exception:
+def _translate_exception(
+    exc: Exception, *, tool: str | None = None, resource: str | None = None
+) -> Exception:
     """Map an unexpected handler exception to the error to raise.
 
-    The Graph error mapping (``errors.py``, task U2.7) plugs in here; until
-    then the exception is returned unchanged, so FastMCP masks it.
+    Graph errors, deadline overruns and validation errors become actionable
+    ``ToolError`` text (``errors.to_tool_error``); anything else becomes a
+    generic message, with the details logged rather than shown.
 
     Args:
         exc: Exception raised by a handler or validation rule.
+        tool: Tool name, used to say what failed.
+        resource: The call's ``resource`` argument, for resource-aware hints.
 
     Returns:
-        The exception to raise instead (``exc`` itself for now).
+        The ``ToolError`` to raise instead.
     """
-    return exc
+    return errors.to_tool_error(exc, tool=tool, resource=resource)
 
 
 class SpecTool(Tool):
@@ -253,7 +260,12 @@ class SpecTool(Tool):
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
         except Exception as exc:
-            translated = _translate_exception(exc)
+            resource = args.get("resource")
+            translated = _translate_exception(
+                exc,
+                tool=self.name,
+                resource=resource if isinstance(resource, str) else None,
+            )
             if translated is exc:
                 raise
             raise translated from exc
@@ -360,7 +372,12 @@ def build_server(toolsets: str | None = None) -> FastMCP:
         mask_error_details=True,
         include_fastmcp_meta=False,
     )
+    mutating: set[str] = set()
     for tier in tiers:
         for name in index["tiers"][tier]:
-            server.add_tool(_spec_tool(load_tool_spec(name)))
+            spec = load_tool_spec(name)
+            server.add_tool(_spec_tool(spec))
+            if not spec["annotations"].get("readOnlyHint", False):
+                mutating.add(name)
+    server.add_middleware(AuditLogMiddleware(mutating))
     return server

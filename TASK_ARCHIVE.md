@@ -13,6 +13,15 @@ move it here in the same commit, under its programme heading, with:
 
 ---
 
+## 2026-09 Independent tracks
+
+| ID | Task | Completed | Commit | Evidence |
+|---|---|---|---|---|
+| H1 | HTTP transport hardening: Origin allowlist on every request (loopback default, `MCP_ALLOWED_ORIGINS`), `hmac.compare_digest` for the bearer token, `MCP_AUTH_METHOD=oauth` and unknown methods fail at startup (an unknown value previously ran the server without auth), `build_bearer_app()` extracted | 2026-09-26 | `132615d` | `tests/test_http_security.py`: bad Origin, allowed origins, no Origin, configured origins, constant-time compare, bearer app, oauth and unknown-method startup |
+| H4 | Steering policy agreed with the user: ruff (format + lint), pyright, `>=` ranges with `uv.lock`; `python.md` updated (line length 88 as enforced by `ruff format`) | 2026-09-26 | this commit | User decision 2026-09-26 |
+
+---
+
 ## 2026-09 v1.0.0 unified tools programme
 
 | ID | Task | Completed | Commit | Evidence |

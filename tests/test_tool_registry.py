@@ -141,12 +141,9 @@ def test_server_identity_and_instructions() -> None:
 
 
 def test_build_server_returns_new_instance_each_time() -> None:
-    from m365_mcp.mcp_instance import mcp as legacy
-
     first = registry.build_server("core")
     second = registry.build_server("core")
     assert first is not second
-    assert first is not legacy
 
 
 def _list_in_subprocess(toolsets: str, hash_seed: str) -> bytes:

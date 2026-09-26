@@ -55,14 +55,12 @@ def test_services_never_import_fastmcp_or_tools(path: Path):
 
 def test_cache_manager_singleton_lives_outside_tools():
     from src.m365_mcp import cache
-    from src.m365_mcp.tools import cache_tools
 
     cache._cache_manager = None
     sentinel = object()
     cache._cache_manager = sentinel  # type: ignore[assignment]
     try:
         assert cache.get_cache_manager() is sentinel
-        assert cache_tools.get_cache_manager() is sentinel
     finally:
         cache._cache_manager = None
 

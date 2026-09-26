@@ -6,11 +6,10 @@ integration and environment variable fallback for headless deployments.
 All cached data is encrypted at rest using AES-256-CBC via SQLCipher.
 """
 
-import os
-import secrets
 import base64
 import logging
-from typing import Optional
+import os
+import secrets
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +142,7 @@ class EncryptionKeyManager:
         return key
 
     @staticmethod
-    def _get_key_from_keyring() -> Optional[str]:
+    def _get_key_from_keyring() -> str | None:
         """Attempt to retrieve encryption key from system keyring.
 
         Returns:
@@ -170,12 +169,12 @@ class EncryptionKeyManager:
         except ImportError:
             logger.debug("keyring module not available")
             return None
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - keyring backends raise arbitrary errors; fall back
             logger.warning(f"System keyring unavailable: {e}")
             return None
 
     @staticmethod
-    def _get_key_from_env() -> Optional[str]:
+    def _get_key_from_env() -> str | None:
         """Attempt to retrieve encryption key from environment variable.
 
         Returns:
@@ -221,7 +220,7 @@ class EncryptionKeyManager:
         except ImportError:
             logger.debug("keyring module not available for storage")
             return False
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - keyring backends raise arbitrary errors; fall back
             logger.warning(f"Could not store key in keyring: {e}")
             return False
 
@@ -249,7 +248,7 @@ class EncryptionKeyManager:
 
             return True
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - keyring backends raise arbitrary errors; fall back
             logger.warning(f"Key validation failed: {e}")
             return False
 
@@ -283,6 +282,6 @@ class EncryptionKeyManager:
         except ImportError:
             logger.debug("keyring module not available")
             return True  # No key to delete
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - keyring backends raise arbitrary errors; fall back
             logger.warning(f"Could not delete key from keyring: {e}")
             return False

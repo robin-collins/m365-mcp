@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from importlib.metadata import version
 from typing import Any, NamedTuple
 
 import pytest
 from mcp.shared.version import SUPPORTED_PROTOCOL_VERSIONS
 
-from m365_mcp import auth, auth_sessions, cache
+from m365_mcp import auth, auth_sessions, cache, warming_status
 from m365_mcp.tool_specs import load_tool_spec
-from m365_mcp.tools import cache_tools
 from tests.unified_harness import UnifiedHarness
 
 DEVICE_CODE = "DAQABAAEAAAD--very-secret-device-code"
@@ -320,10 +320,16 @@ class _Warmer:
         }
 
 
-def test_cache_get_warming_in_progress(
-    harness: UnifiedHarness, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(cache_tools, "_warming_status_provider", _Warmer())
+@pytest.fixture
+def warmer() -> Iterator[_Warmer]:
+    provider = _Warmer()
+    warming_status.set_warming_status_provider(provider)
+    yield provider
+    warming_status.set_warming_status_provider(None)
+
+
+@pytest.mark.usefixtures("warmer")
+def test_cache_get_warming_in_progress(harness: UnifiedHarness) -> None:
 
     result = harness.ok("admin_cache_get", {"view": "warming"})
 

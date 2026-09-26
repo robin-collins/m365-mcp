@@ -1,6 +1,10 @@
 # Unified MCP Tool Architecture — Microsoft 365 Home Accounts
 
-**Status:** Approved design (revision 2). Decisions are recorded in §2.
+**Status:** Approved design (revision 2), implemented in v1.0.0. This
+document describes the design as approved; it is not updated after
+implementation. For the tool surface as it exists today, see
+`MCP_SERVER_TOOLS.md` (generated) and `docs/unified-tools/`. Decisions are
+recorded in §2.
 **Supersedes:** revision 1 (the original concept).
 **Scope:** The `m365-mcp` server (FastMCP 2.13 / Python), personal Microsoft
 accounts (outlook.com, hotmail.com, live.com), and Microsoft Graph v1.0:

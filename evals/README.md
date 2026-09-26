@@ -1,7 +1,8 @@
 # Golden-prompt evaluation harness
 
 Measures how well a Claude model uses a tool surface (concept §16.2): the
-legacy 85-tool surface now, and the unified 29-tool surface once it exists.
+unified 29-tool surface. The legacy 85-tool surface was removed in v1.0.0;
+its baseline can still be re-run from a git tag (see the end of this file).
 
 ## How it works
 
@@ -38,19 +39,36 @@ legacy 85-tool surface now, and the unified 29-tool surface once it exists.
 
 ```bash
 # offline tests (no API calls)
-uv run --group evals pytest tests/test_evals_harness.py -q
+uv run pytest tests/test_evals_harness.py -q
 
 # live smoke run (needs ANTHROPIC_API_KEY or an `ant auth login` profile)
-uv run --group evals python -m evals.runner --surface legacy --split smoke \
-    --out evals/results/smoke-legacy --title "Smoke run, legacy surface"
+uv run python -m evals.runner --surface unified --split smoke     --out evals/results/smoke-unified --title "Smoke run, unified surface"
 
-# full baseline (U0.3)
-uv run --group evals python -m evals.runner --surface legacy --split all \
-    --out evals/results/baseline-v0 --title "Baseline v0: legacy 85-tool surface"
+# full run: all 115 prompts (dev and held-out are reported separately)
+uv run python -m evals.runner --surface unified --split all     --out evals/results/unified-run1 --title "Unified 29-tool surface"
+
+# a local Anthropic-compatible server (LM Studio) instead of the Anthropic API
+uv run python -m evals.runner --surface unified --split smoke     --base-url http://10.10.10.10:1234 --model <model id from /api/v1/models>     --out evals/results/smoke-local
 ```
+
+`--toolsets` selects the unified tiers (default `core,extended`). The runner
+exits non-zero, and the report carries an INVALID RUN banner, if any case hit
+an API or harness error: those numbers must not be used.
 
 The default model is `claude-sonnet-5` (override with `--model` or
 `M365_EVAL_MODEL`). The runner checks the model ID against the Models API
 before it starts. Each run writes `<out>.md` (metrics table), `<out>.jsonl`
 (one scored result per case) and `<out>.transcripts.json` (full
 conversations and the Graph calls made).
+
+## Running the legacy baseline
+
+`--surface legacy` no longer works in the current tree (`open_surface`
+raises an error pointing here). To re-run the legacy 85-tool baseline, check
+out the tag `v0.2.3-final` in a separate worktree
+(`git worktree add ../m365-legacy v0.2.3-final`), copy this `evals/`
+directory over the tag's, restore the pre-cut-over loader with
+`git show cf1e890:evals/surface.py > evals/surface.py`, run
+`uv sync`, and then run the commands above with
+`--surface legacy`. `cases.py` and `grading.py` keep the legacy
+expectations for exactly this purpose.

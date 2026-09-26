@@ -2,9 +2,9 @@
 
 Usage::
 
-    uv run --group evals python -m evals.runner --surface legacy --split smoke
-    uv run --group evals python -m evals.runner --surface legacy --split all \
-        --out evals/results/baseline-v0
+    uv run python -m evals.runner --surface unified --split smoke
+    uv run python -m evals.runner --surface unified --split all \
+        --out evals/results/unified-v1
 
 The model sees the surface's real ``tools/list`` (names, descriptions and
 input schemas). Its tool calls run the real server code against the fake
@@ -562,7 +562,7 @@ async def run(
 def main(argv: list[str] | None = None) -> int:
     """Command-line entry point."""
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
-    parser.add_argument("--surface", choices=["legacy", "unified"], default="legacy")
+    parser.add_argument("--surface", choices=["legacy", "unified"], default="unified")
     parser.add_argument(
         "--split", choices=["smoke", "dev", "heldout", "all"], default="smoke"
     )

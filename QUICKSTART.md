@@ -138,13 +138,13 @@ uv run m365-mcp
 ## Verify
 
 ```bash
-uv run pytest tests/ -q --ignore=tests/test_integration.py
+uv run pytest tests/ -q
 uv run pyright
-uvx ruff format .
-uvx ruff check --fix --unsafe-fixes .
+uvx ruff format --check .
+uvx ruff check .
 ```
 
-`tests/test_integration.py` is a live legacy test and is skipped above. To run
+The live tests in `tests/test_integration_unified.py` are skipped above. To run
 the live read-only checks against a signed-in personal account (they never
 write):
 

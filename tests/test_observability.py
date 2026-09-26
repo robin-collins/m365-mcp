@@ -26,8 +26,16 @@ SERVER_INFO = {
     "summary": "m365-mcp 1.0.0, 29 tools.",
 }
 LOG_FIELDS = {
-    "event", "tool", "resource", "account", "duration_ms", "outcome",
-    "error_class", "retries", "result_bytes", "mutation",
+    "event",
+    "tool",
+    "resource",
+    "account",
+    "duration_ms",
+    "outcome",
+    "error_class",
+    "retries",
+    "result_bytes",
+    "mutation",
 }
 
 
@@ -85,8 +93,12 @@ def test_log_shape_for_a_failed_mutation(server, caplog) -> None:
         raise GraphAPIError(404, "ErrorItemNotFound", "gone", "req-1", request=request)
 
     handlers.register_handler("m365_delete")(handler)
-    args = {"resource": "email", "id": "AAMk1", "confirm": True,
-            "account_id": "alex@outlook.com"}
+    args = {
+        "resource": "email",
+        "id": "AAMk1",
+        "confirm": True,
+        "account_id": "alex@outlook.com",
+    }
     with caplog.at_level(logging.INFO, logger=AUDIT_LOGGER_NAME):
         is_error, text = call(server, "m365_delete", args)
     assert is_error

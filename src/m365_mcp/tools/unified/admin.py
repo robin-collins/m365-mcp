@@ -15,11 +15,10 @@ from typing import Any
 from fastmcp.exceptions import ToolError
 from mcp.shared.version import SUPPORTED_PROTOCOL_VERSIONS
 
-from ... import auth, auth_sessions, cache, resource_cache
+from ... import auth, auth_sessions, cache, resource_cache, warming_status
 from ...services import accounts as accounts_service
 from ...tool_specs import load_index
 from ...validators import ValidationError, format_validation_error
-from .. import cache_tools
 from ..handlers import register_handler, register_validation_rule
 from .common import account, arg, invalid
 
@@ -150,7 +149,7 @@ def _stats() -> tuple[dict[str, Any], str]:
 
 
 def _warming() -> tuple[dict[str, Any], str]:
-    provider = cache_tools._warming_status_provider
+    provider = warming_status.get_warming_status_provider()
     raw: dict[str, Any] = {} if provider is None else provider.get_warming_status()
     if provider is None or str(raw.get("status", "")).startswith(
         "Cache warming disabled"

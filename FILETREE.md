@@ -42,7 +42,7 @@ m365-mcp/
 │   ├── runner.py                           # Runs a model against a tool surface
 │   ├── surface.py                          # Builds the surface and patches transport, token and sleeps
 │   ├── __init__.py
-│   └── results/                            # Run output (kept empty in git)
+│   └── results/                            # Run output; the recorded baseline and unified runs are kept
 ├── graphapi_update/                        # Graph API research notes (historical)
 ├── individual_schema/                      # Per-operation JSON schemas from the design phase (historical)
 ├── unified_schema/                         # Early unified-schema proposal (historical)
@@ -108,22 +108,27 @@ m365-mcp/
 │           ├── search.py                   # m365_search
 │           └── admin.py                    # account_* and admin_* tools
 ├── tests/
+│   ├── __init__.py
 │   ├── conftest.py
 │   ├── unified_harness.py                  # Mocked Graph harness for tool tests
-│   ├── parity_helpers.py                   # Shared helpers for the parity tests
-│   ├── parity_helpers_part2.py
+│   ├── parity_helpers.py                   # Shared helpers for test_parity.py
 │   ├── fixtures/graph/                     # Graph JSON fixtures
-│   ├── test_unified_*.py                   # One module per tool domain (mail, compose, bulk, rules,
-│   │                                       #   calendar, availability, contacts, drive, search, admin, common)
+│   ├── reports/                            # Archived reports of the earlier live test runs
+│   ├── test_unified_admin.py, test_unified_availability.py, test_unified_cache_refresh.py,
+│   │   test_unified_calendar.py, test_unified_common.py, test_unified_contacts.py,
+│   │   test_unified_drive.py, test_unified_mail.py, test_unified_mail_bulk.py,
+│   │   test_unified_mail_compose.py, test_unified_mail_rules.py, test_unified_search.py
+│   │                                       # One module per tool domain
 │   ├── test_unified_tool_specs.py          # Spec validity, tiers, token budgets, --check
 │   ├── test_tool_registry.py               # Live tools/list equals the specs per toolset
 │   ├── test_tool_specs_package.py          # Packaged specs equal docs copy; wheel contents
 │   ├── test_input_validation.py            # Input pipeline and error format
 │   ├── test_output_contract.py             # structuredContent and outputSchema
+│   ├── test_parity.py                      # Every row of the legacy-to-unified migration table
 │   ├── test_sdk_client_conformance.py      # Official MCP SDK client against the server
-│   ├── test_parity_part1.py                # Migration table rows 1-43
-│   ├── test_parity_part2.py                # Migration table rows 44-85
-│   ├── test_services_*.py                  # Service layer tests
+│   ├── test_server_stdio_smoke.py          # Server process over stdio
+│   ├── test_services_boundaries.py         # Services never import FastMCP
+│   ├── test_services_calendar.py, test_services_mail_folders.py, test_services_mail_rules.py
 │   ├── test_projections.py, test_cursors.py, test_untrusted_content.py, test_local_files.py,
 │   │   test_rate_limit.py, test_operations.py, test_observability.py, test_http_security.py,
 │   │   test_resource_cache.py, test_registry_caching.py, test_graph_errors.py,
@@ -131,15 +136,17 @@ m365-mcp/
 │   ├── test_account_resolution.py, test_account_validation.py, test_auth_sessions.py,
 │   │   test_personal_only_auth.py
 │   ├── test_cache.py, test_cache_schema.py, test_cache_warming.py, test_background_worker.py,
-│   │   test_encryption.py, test_server_cache_lifecycle.py, test_cache_teardown_scaffolding.py
+│   │   test_encryption.py, test_server_cache_lifecycle.py, test_cache_teardown_scaffolding.py,
+│   │   test_warming_status.py
 │   ├── test_validators.py, test_port_cleanup.py, test_windows_path_scaffolding.py
 │   ├── test_evals_harness.py               # Offline tests of the evaluation harness
-│   ├── test_integration_unified.py         # Live read-only tests (M365_MCP_LIVE_TESTS=1)
-│   └── test_services_boundaries.py         # Services never import FastMCP
+│   └── test_integration_unified.py         # Live read-only tests (M365_MCP_LIVE_TESTS=1)
 ├── .env.example                            # Environment template with comments
 ├── .env.http.example                       # HTTP mode configuration example
+├── .env.http copy.example                  # Stray copy of the HTTP example (obsolete)
 ├── .env.stdio.example                      # stdio mode configuration example
 ├── .coveragerc
+├── .cursorindexingignore
 ├── .gitattributes
 ├── .gitignore
 ├── .python-version

@@ -6,14 +6,14 @@ TTL management, and automatic cleanup for Microsoft 365 data.
 """
 
 import atexit
-import json
 import gzip
+import json
 import logging
-import time
 import threading
-from pathlib import Path
+import time
 from contextlib import contextmanager
-from typing import Any, Optional
+from pathlib import Path
+from typing import Any
 
 try:
     import sqlcipher3 as sqlite3
@@ -24,18 +24,18 @@ except ImportError:
 
     USING_SQLCIPHER = False
 
-from .encryption import EncryptionKeyManager
 from .cache_config import (
     CACHE_DB_PATH,
-    TTL_POLICIES,
     CACHE_LIMITS,
+    CACHE_WARMING_ENABLED,
     CONNECTION_POOL_SIZE,
     CONNECTION_TIMEOUT,
-    CacheState,
-    CACHE_WARMING_ENABLED,
     SQLCIPHER_SETTINGS,
+    TTL_POLICIES,
+    CacheState,
     generate_cache_key,
 )
+from .encryption import EncryptionKeyManager
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ class CacheManager:
 
     def __init__(
         self,
-        db_path: Optional[str] = None,
+        db_path: str | None = None,
         encryption_enabled: bool = True,
         max_connections: int = CONNECTION_POOL_SIZE,
     ):
@@ -237,7 +237,7 @@ class CacheManager:
         resource_type: str,
         params: dict[str, Any],
         enqueue_refresh: bool = True,
-    ) -> Optional[tuple[Any, CacheState]]:
+    ) -> tuple[Any, CacheState] | None:
         """
         Retrieve cached data with state detection.
 
@@ -408,7 +408,7 @@ class CacheManager:
                 self._cleanup_to_target()
 
     def invalidate_pattern(
-        self, pattern: str, account_id: Optional[str] = None, reason: str = "manual"
+        self, pattern: str, account_id: str | None = None, reason: str = "manual"
     ) -> int:
         """
         Invalidate cache entries matching pattern.
@@ -751,7 +751,7 @@ class CacheManager:
 
         return task_id
 
-    def get_task_status(self, task_id: str) -> Optional[dict[str, Any]]:
+    def get_task_status(self, task_id: str) -> dict[str, Any] | None:
         """
         Get status of a specific task.
 
@@ -799,8 +799,8 @@ class CacheManager:
 
     def list_tasks(
         self,
-        account_id: Optional[str] = None,
-        status: Optional[str] = None,
+        account_id: str | None = None,
+        status: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """

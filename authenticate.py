@@ -155,7 +155,7 @@ def _sign_in(auth_module: Any, expected_username: str | None = None) -> bool:
     """Run device-code sign-in. Return True if the expected account signed in."""
     try:
         new_account = auth_module.authenticate_new_account()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - CLI boundary: report any sign-in failure to the user
         print(f"\n✗ Authentication failed: {e}")
         return False
 

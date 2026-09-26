@@ -3,8 +3,8 @@
 ``build_server`` creates a new FastMCP server and registers every enabled
 unified tool straight from its packaged spec JSON, so ``tools/list``
 carries the spec's exact name, title, description, annotations, meta,
-``inputSchema`` and ``outputSchema``. The legacy ``mcp_instance.mcp`` is
-not touched.
+``inputSchema`` and ``outputSchema``. Each call builds an independent
+server.
 """
 
 from __future__ import annotations

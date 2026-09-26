@@ -6,12 +6,13 @@ for monitoring, testing, and diagnostics.
 """
 
 import asyncio
+import logging
 import sys
 import time
-from typing import Any, Optional
 from dataclasses import dataclass
+from typing import Any
+
 import httpx
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -21,16 +22,16 @@ class HealthCheckResult:
     """Result of a health check operation."""
 
     success: bool
-    status_code: Optional[int]
+    status_code: int | None
     response_time_ms: float
-    error: Optional[str] = None
-    details: Optional[dict[str, Any]] = None
+    error: str | None = None
+    details: dict[str, Any] | None = None
 
 
 async def check_health_async(
     url: str,
     timeout: float = 5.0,
-    auth_token: Optional[str] = None,
+    auth_token: str | None = None,
 ) -> HealthCheckResult:
     """
     Perform an async health check against the MCP server.
@@ -58,7 +59,7 @@ async def check_health_async(
             if response.status_code == 200:
                 try:
                     details = response.json()
-                except Exception:
+                except Exception:  # noqa: BLE001 - a probe reports any failure as unhealthy
                     details = None
 
                 return HealthCheckResult(
@@ -93,7 +94,7 @@ async def check_health_async(
             error=f"Connection error: {e}",
         )
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - a probe reports any failure as unhealthy
         response_time_ms = (time.time() - start_time) * 1000
         return HealthCheckResult(
             success=False,
@@ -106,7 +107,7 @@ async def check_health_async(
 def check_health(
     url: str,
     timeout: float = 5.0,
-    auth_token: Optional[str] = None,
+    auth_token: str | None = None,
 ) -> HealthCheckResult:
     """
     Perform a synchronous health check against the MCP server.
@@ -126,7 +127,7 @@ async def continuous_health_check(
     url: str,
     interval: float = 10.0,
     timeout: float = 5.0,
-    auth_token: Optional[str] = None,
+    auth_token: str | None = None,
     max_failures: int = 3,
 ) -> None:
     """
@@ -183,8 +184,8 @@ def main() -> int:
     Command-line interface for health checking.
 
     Usage:
-        python -m microsoft_mcp.health_check http://localhost:8000/health
-        python -m microsoft_mcp.health_check --continuous --interval 10 http://localhost:8000/health
+        python -m m365_mcp.health_check http://localhost:8000/health
+        python -m m365_mcp.health_check --continuous --interval 10 http://localhost:8000/health
     """
     import argparse
 

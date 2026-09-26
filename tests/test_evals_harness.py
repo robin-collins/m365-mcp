@@ -4,9 +4,10 @@ import asyncio
 from datetime import date
 
 import httpx
+import pytest
 
 from evals.cases import CASES, SMOKE_IDS, select
-from evals.fake_graph import ACCOUNT_ID, FakeGraph
+from evals.fake_graph import FakeGraph
 from evals.grading import CallRecord, call_matches, match_value
 from evals.runner import (
     ScriptedModel,
@@ -118,27 +119,35 @@ def test_matchers():
 
 
 def _run(cases, scripts):
-    return asyncio.run(run(cases, "legacy", ScriptedModel(scripts), ANCHOR, None))
+    return asyncio.run(run(cases, "unified", ScriptedModel(scripts), ANCHOR, None))
 
 
-def test_runner_scores_a_legacy_read_case():
+def test_runner_scores_a_read_case():
     case = next(c for c in CASES if c.id == "d01")
     results = _run(
         [case],
         {
             "d01": [
-                tool_turn(("account_list", {})),
-                tool_turn(("email_list", {"account_id": ACCOUNT_ID, "limit": 10})),
+                tool_turn(
+                    (
+                        "m365_list",
+                        {
+                            "resource": "email",
+                            "email_filter": {"unread": True},
+                            "limit": 10,
+                        },
+                    )
+                ),
                 text_turn("You have 4 unread emails."),
             ]
         },
     )
     result = results[0]
-    assert result.first_tool == "email_list"
+    assert result.first_tool == "m365_list"
     assert result.first_tool_correct and result.task_success
-    assert [c.is_error for c in result.calls] == [False, False]
+    assert [c.is_error for c in result.calls] == [False]
     assert all(c.schema_valid for c in result.calls)
-    assert "msg-" in result.calls[1].result_text
+    assert "Returned 4 emails from inbox" in result.calls[0].result_text
 
 
 def test_runner_approval_flow_and_unconfirmed_side_effects():
@@ -146,8 +155,8 @@ def test_runner_approval_flow_and_unconfirmed_side_effects():
     send = (
         "email_send",
         {
-            "account_id": ACCOUNT_ID,
-            "to": "sam.lee@example.com",
+            "mode": "new",
+            "to": ["sam.lee@example.com"],
             "subject": "Modem arrived",
             "body": "It came.",
             "confirm": True,
@@ -178,7 +187,7 @@ def test_runner_no_tool_and_schema_errors():
         {
             "n01": [text_turn("Paris.")],
             "d06": [
-                tool_turn(("calendar_list_calendars", {"account_id": 7})),
+                tool_turn(("m365_list", {"resource": 7})),
                 text_turn("Sorry."),
             ],
         },
@@ -186,9 +195,9 @@ def test_runner_no_tool_and_schema_errors():
     assert results[0].task_success and results[0].first_tool_correct
     bad = results[1].calls[0]
     assert not bad.schema_valid and bad.is_error
-    summary = summarise(results, "legacy")
+    summary = summarise(results, "unified")
     assert summary["cases"] == 2 and summary["schema_valid_args"] == 0.0
-    report = render_markdown("t", "legacy", "scripted", ANCHOR, results)
+    report = render_markdown("t", "unified", "scripted", ANCHOR, results)
     assert "| Correct first tool (%) |" in report
 
 
@@ -218,14 +227,14 @@ class _FailingModel:
 def test_errored_runs_never_count_as_success() -> None:
     cases = [c for c in CASES if c.id in ("n01", "a02", "d01")]
     extra = [c for c in CASES if c.id in ("d02", "d03")]
-    results = asyncio.run(run(cases + extra, "legacy", _FailingModel(), ANCHOR, None))
+    results = asyncio.run(run(cases + extra, "unified", _FailingModel(), ANCHOR, None))
     assert len(results) == 3, "the run stops after three consecutive errors"
     assert all(r.error for r in results)
     assert not any(r.task_success or r.first_tool_correct for r in results)
-    summary = summarise(results, "legacy")
+    summary = summarise(results, "unified")
     assert summary["run_errors"] == 3
     assert summary["task_success"] == 0.0 and summary["correct_first_tool"] == 0.0
-    assert "INVALID RUN" in render_markdown("t", "legacy", "m", ANCHOR, results)
+    assert "INVALID RUN" in render_markdown("t", "unified", "m", ANCHOR, results)
 
 
 def test_local_endpoint_model_client(monkeypatch) -> None:
@@ -255,8 +264,8 @@ def test_user_approves_when_the_model_asks_before_a_plain_write() -> None:
     case = next(c for c in CASES if c.id == "c07")
     assert not case.side_effect and not case.clarify_ok
     create = (
-        "emailfolders_create",
-        {"account_id": ACCOUNT_ID, "display_name": "Kids"},
+        "m365_create",
+        {"resource": "email_folder", "email_folder": {"display_name": "Kids"}},
     )
     results = _run(
         [case],
@@ -277,7 +286,7 @@ def test_no_approval_when_the_model_simply_finishes() -> None:
         [case],
         {
             "d01": [
-                tool_turn(("email_list", {"account_id": ACCOUNT_ID})),
+                tool_turn(("m365_list", {"resource": "email"})),
                 text_turn("You have 4 unread emails."),
             ]
         },
@@ -289,3 +298,13 @@ def test_ask_first_cases_are_not_auto_approved() -> None:
     case = next(c for c in CASES if c.id == "a02")
     results = _run([case], {"a02": [text_turn("Which email do you mean?")]})
     assert results[0].approvals_given == 0 and results[0].task_success
+
+
+def test_legacy_surface_points_to_the_baseline_instructions() -> None:
+    from evals.surface import open_surface
+
+    with (
+        pytest.raises(RuntimeError, match=r"v0\.2\.3-final.*evals/README\.md"),
+        open_surface("legacy", ANCHOR),
+    ):
+        pass

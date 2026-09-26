@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from urllib.parse import parse_qsl, quote, unquote, urlsplit
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -70,6 +71,17 @@ class FakeGraph:
     contact_folders: dict[str, dict[str, Any]] = field(default_factory=dict)
     drive: dict[str, dict[str, Any]] = field(default_factory=dict)
     attachments: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    mailbox_settings: dict[str, Any] = field(
+        default_factory=lambda: {
+            "timeZone": "UTC",
+            "workingHours": {
+                "daysOfWeek": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+                "startTime": "09:00:00.0000000",
+                "endTime": "17:00:00.0000000",
+                "timeZone": {"name": "UTC"},
+            },
+        }
+    )
     calls: list[RecordedCall] = field(default_factory=list)
     unhandled: list[str] = field(default_factory=list)
     _seq: int = 0
@@ -143,6 +155,7 @@ class FakeGraph:
         return [
             (r"/me", self._me),
             (r"/me/mailboxSettings", self._mailbox_settings),
+            (r"/me/mailboxSettings/(\w+)", self._mailbox_setting),
             (r"/search/query", self._search_api),
             # mail folders
             (r"/me/mailFolders", self._folders_root),
@@ -399,15 +412,13 @@ class FakeGraph:
         }
 
     def _mailbox_settings(self, method, params, body):
-        return 200, {
-            "timeZone": "UTC",
-            "workingHours": {
-                "daysOfWeek": ["monday", "tuesday", "wednesday", "thursday", "friday"],
-                "startTime": "09:00:00.0000000",
-                "endTime": "17:00:00.0000000",
-                "timeZone": {"name": "UTC"},
-            },
-        }
+        return 200, copy.deepcopy(self.mailbox_settings)
+
+    def _mailbox_setting(self, method, params, body, name):
+        if name not in self.mailbox_settings:
+            return self._not_found(f"{method} /me/mailboxSettings/{name}")
+        value = copy.deepcopy(self.mailbox_settings[name])
+        return 200, value if isinstance(value, dict) else {"value": value}
 
     def _search_api(self, method, params, body):
         return self._error(
@@ -760,10 +771,21 @@ class FakeGraph:
             items = [
                 e
                 for e in items
-                if self._parse_dt(e["start"]["dateTime"]) < window_end
-                and self._parse_dt(e["end"]["dateTime"]) > window_start
+                if self._event_dt(e["start"]) < window_end
+                and self._event_dt(e["end"]) > window_start
             ]
         return self._query(items, params, default_order="start/dateTime asc")
+
+    def _event_dt(self, value: dict[str, Any]) -> datetime:
+        """Parse a dateTimeTimeZone, honouring an IANA ``timeZone``."""
+        parsed = self._parse_dt(value["dateTime"])
+        zone = value.get("timeZone") or "UTC"
+        if zone != "UTC" and "+" not in value["dateTime"][10:]:
+            try:
+                parsed = parsed.replace(tzinfo=ZoneInfo(zone))
+            except (KeyError, ValueError):
+                pass
+        return parsed
 
     def _calendar_view_default(self, method, params, body):
         items = self._events_in_window("cal-default", params)

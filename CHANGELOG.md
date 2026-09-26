@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-09-26
+
+Hardening release. It addresses four review findings; the tool surface is
+unchanged.
+
+### Changed
+
+- **Handlers no longer block the event loop.** Graph calls, retry sleeps,
+  file access and MSAL calls are synchronous; they now run in a bounded
+  thread pool (`M365_MCP_MAX_CONCURRENCY`, default 8) instead of on the
+  event-loop thread, so one slow call cannot stall other HTTP requests. The
+  audit log's retry counter is a mutable cell so counts survive the worker's
+  copied context.
+- **Output validation is on by default.** Every result is checked against its
+  `outputSchema` (a mismatch is a tool error, not malformed
+  `structuredContent`). Set `M365_MCP_VALIDATE_OUTPUT=false` to opt out.
+- **Local-file roots over HTTP are explicit.** With `MCP_TRANSPORT=http` the
+  working directory and temp directory are no longer allowed by default:
+  only `MCP_FILE_ALLOWED_ROOTS` applies, so the holder of the bearer token
+  cannot reach unrelated files there. `MCP_FILE_ALLOW_CWD=true` and
+  `MCP_FILE_ALLOW_TEMP=true` opt back in; `false` switches either off on
+  stdio. Stdio behaviour is unchanged. **Upgrade note for HTTP users:** set
+  `MCP_FILE_ALLOWED_ROOTS` (or the flags) before relying on `drive_upload`,
+  attachment downloads or `m365_get_content` over HTTP.
+
+### Fixed
+
+- `account_auth_complete` is single-consumer per session: a second call made
+  while the first is polling Microsoft reports `pending` instead of polling
+  (and possibly redeeming) the same device flow again.
+
 ## [1.0.0] - 2026-09-26
 
 Version 1.0.0 replaces the 85-tool surface with 30 intent-based tools and

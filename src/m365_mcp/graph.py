@@ -26,26 +26,32 @@ _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 _client = httpx.Client(timeout=30.0, follow_redirects=True)
 # Injectable monotonic clock for the deadline budget (tests use a fake).
 _clock: Callable[[], float] = time.monotonic
-# Retries made during the current tool call, read by the audit log.
-_retries: ContextVar[int] = ContextVar("m365_graph_retries", default=0)
+# Retries made during the current tool call, read by the audit log. The
+# context variable holds a one-item list (a mutable cell), not an int: tool
+# handlers run in worker threads with a *copy* of the caller's context, and
+# a plain ``set`` there would never reach the caller.
+_retries: ContextVar[list[int] | None] = ContextVar("m365_graph_retries", default=None)
 
 
 def note_retry() -> None:
     """Count one retry against the current tool call."""
-    _retries.set(_retries.get() + 1)
+    cell = _retries.get()
+    if cell is not None:
+        cell[0] += 1
 
 
 def retry_count() -> int:
     """Return the retries counted in the current context."""
-    return _retries.get()
+    cell = _retries.get()
+    return cell[0] if cell is not None else 0
 
 
-def reset_retry_count() -> Token[int]:
+def reset_retry_count() -> Token[list[int] | None]:
     """Start counting retries from zero; pass the token to restore."""
-    return _retries.set(0)
+    return _retries.set([0])
 
 
-def restore_retry_count(token: Token[int]) -> None:
+def restore_retry_count(token: Token[list[int] | None]) -> None:
     """Restore the retry count saved by :func:`reset_retry_count`."""
     _retries.reset(token)
 

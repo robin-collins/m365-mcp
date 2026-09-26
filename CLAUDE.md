@@ -248,7 +248,12 @@ Authentication and tools:
   cursors valid across restarts or workers; otherwise a random per-process
   key is used.
 - **`MCP_FILE_ALLOWED_ROOTS`**: extra local folders (separated by
-  `os.pathsep`) that file tools may read or write.
+  `os.pathsep`) that file tools may read or write. The working directory and
+  temp directory are also allowed on stdio, but not over HTTP unless
+  `MCP_FILE_ALLOW_CWD` / `MCP_FILE_ALLOW_TEMP` is `true`.
+- **`M365_MCP_VALIDATE_OUTPUT`**: results are validated against `outputSchema`
+  by default; `false` opts out. **`M365_MCP_MAX_CONCURRENCY`**: size (default
+  8) of the thread pool that runs handlers off the event loop.
 - **`MCP_FILE_DOWNLOAD_MAX_MB`**: largest OneDrive download (default 512).
 
 Cache: `M365_MCP_CACHE_KEY`, `M365_MCP_CACHE_DB_PATH`,

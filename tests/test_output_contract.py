@@ -210,3 +210,25 @@ def test_result_must_be_dict_with_summary_even_outside_test_mode(
     result = call(server, "m365_delete", DELETE_ARGS)
     assert result.is_error
     assert text_of(result).startswith("Output contract violation in m365_delete")
+
+
+def test_output_validation_is_on_by_default_outside_pytest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(registry.VALIDATE_OUTPUT_ENV, raising=False)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    assert registry.output_validation_enabled() is True
+
+
+@pytest.mark.parametrize("value", ["0", "false", "FALSE", "no", "off"])
+def test_output_validation_opt_out(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    monkeypatch.setenv(registry.VALIDATE_OUTPUT_ENV, value)
+    assert registry.output_validation_enabled() is False
+
+
+@pytest.mark.parametrize("value", ["1", "true", "yes", "on", "", "anything"])
+def test_output_validation_stays_on_for_anything_but_an_explicit_off(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv(registry.VALIDATE_OUTPUT_ENV, value)
+    assert registry.output_validation_enabled() is True

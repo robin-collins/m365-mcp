@@ -9,12 +9,16 @@ server.
 
 from __future__ import annotations
 
+import asyncio
+import contextvars
 import inspect
 import json
 import logging
 import os
 import re
-from collections.abc import Iterable
+import threading
+from collections.abc import Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, cast
 
@@ -192,18 +196,16 @@ class OutputContractError(ToolError):
 def output_validation_enabled() -> bool:
     """Return whether results are validated against ``outputSchema``.
 
-    ``M365_MCP_VALIDATE_OUTPUT`` (``1``/``true``/``yes``/``on`` or anything
-    else for off) decides when set. Otherwise validation is on while pytest
-    runs a test (``PYTEST_CURRENT_TEST``), so every handler test checks the
-    output contract, and off in production.
+    On by default, so a handler regression fails loudly instead of sending
+    malformed ``structuredContent`` to a client. Set
+    ``M365_MCP_VALIDATE_OUTPUT`` to ``0``, ``false``, ``no`` or ``off`` to
+    opt out (for example if profiling shows the overhead matters).
 
     Returns:
-        True when output validation (test mode) is enabled.
+        True unless validation was explicitly turned off.
     """
-    value = os.environ.get(VALIDATE_OUTPUT_ENV)
-    if value is not None:
-        return value.strip().lower() in {"1", "true", "yes", "on"}
-    return "PYTEST_CURRENT_TEST" in os.environ
+    value = os.environ.get(VALIDATE_OUTPUT_ENV, "")
+    return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _translate_exception(
@@ -250,8 +252,55 @@ def _cacheable(tool: str, handler: Any, args: dict[str, Any]) -> bool:
     )
 
 
+DEFAULT_MAX_CONCURRENCY = 8
+MAX_CONCURRENCY_ENV = "M365_MCP_MAX_CONCURRENCY"
+_pool: ThreadPoolExecutor | None = None
+_pool_lock = threading.Lock()
+
+
+def max_concurrency() -> int:
+    """Return how many handlers may run at once (``M365_MCP_MAX_CONCURRENCY``).
+
+    Returns:
+        The configured positive integer, else the default of 8.
+    """
+    try:
+        value = int(os.environ.get(MAX_CONCURRENCY_ENV, ""))
+    except ValueError:
+        return DEFAULT_MAX_CONCURRENCY
+    return value if value > 0 else DEFAULT_MAX_CONCURRENCY
+
+
+def _worker_pool() -> ThreadPoolExecutor:
+    """Return the bounded pool that runs synchronous handlers."""
+    global _pool
+    with _pool_lock:
+        if _pool is None:
+            _pool = ThreadPoolExecutor(
+                max_workers=max_concurrency(), thread_name_prefix="m365-tool"
+            )
+        return _pool
+
+
+async def _off_loop(fn: Callable[[], Any]) -> Any:
+    """Run blocking ``fn`` in the bounded worker pool, keeping the context.
+
+    Graph calls, retry sleeps, file access and MSAL are synchronous; running
+    them on the event-loop thread would stall every other request. The
+    caller's context is copied in, so context variables (the audit log's
+    retry counter) are visible to the worker.
+    """
+    context = contextvars.copy_context()
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_worker_pool(), context.run, fn)
+
+
 async def _run_handler(tool: str, handler: Any, args: dict[str, Any]) -> Any:
     """Run a handler with read-through caching and mutation invalidation.
+
+    Synchronous work (the handler, the cache and Graph I/O) runs in a
+    bounded worker pool, never on the event-loop thread; ``async`` handlers
+    are awaited on the loop.
 
     ``m365_list`` and ``m365_get`` results are cached per (account,
     resource, arguments); ``refresh=true`` bypasses the read. After a
@@ -259,8 +308,11 @@ async def _run_handler(tool: str, handler: Any, args: dict[str, Any]) -> Any:
     affected resources for that account. Cache failures never fail a call:
     they are logged and the handler runs directly.
     """
-    account = _resolved_account(args) if _cacheable(tool, handler, args) else None
-    if account is not None:
+
+    def cached_read() -> tuple[bool, Any]:
+        account = _resolved_account(args) if _cacheable(tool, handler, args) else None
+        if account is None:
+            return False, None
 
         def fetch() -> Any:
             try:
@@ -269,7 +321,7 @@ async def _run_handler(tool: str, handler: Any, args: dict[str, Any]) -> Any:
                 raise _HandlerFailed(exc) from exc
 
         try:
-            return resource_cache.get_or_fetch(
+            return True, resource_cache.get_or_fetch(
                 account,
                 args["resource"],
                 args,
@@ -281,17 +333,26 @@ async def _run_handler(tool: str, handler: Any, args: dict[str, Any]) -> Any:
             raise failed.original from None
         except Exception:  # noqa: BLE001 - cache trouble must not fail calls
             logger.warning("Cache read failed for %s; calling Graph directly", tool)
+            return False, None
 
-    result = handler(args)
+    served, value = await _off_loop(cached_read)
+    if served:
+        return value
+
+    result = await _off_loop(lambda: handler(args))
     if inspect.isawaitable(result):
         result = await result
-    if tool in resource_cache.MUTATION_INVALIDATES:
+
+    def invalidate() -> None:
         mutated_account = _resolved_account(args)
         if mutated_account is not None:
             try:
                 resource_cache.invalidate_for_call(tool, args, mutated_account)
             except Exception:  # noqa: BLE001 - cache trouble must not fail calls
                 logger.warning("Cache invalidation failed after %s", tool)
+
+    if tool in resource_cache.MUTATION_INVALIDATES:
+        await _off_loop(invalidate)
     return result
 
 

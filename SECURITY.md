@@ -60,10 +60,13 @@ tools annotated `dangerous` or `critical`. Recipients are never inferred.
 Tools that touch the local disk (`drive_upload` reads, `m365_get_content` writes)
 accept paths only inside these **allowed roots**:
 
-- the server's working directory
-- the system temp directory
 - each folder in `MCP_FILE_ALLOWED_ROOTS` (separated by `;` on Windows, `:`
   elsewhere)
+- the server's working directory and the system temp directory, **only for a
+  local stdio server**. Over HTTP (`MCP_TRANSPORT=http`) they are off, so the
+  holder of the bearer token cannot reach unrelated files placed there; set
+  `MCP_FILE_ALLOW_CWD=true` / `MCP_FILE_ALLOW_TEMP=true` to opt in, or
+  `false` to switch either off on stdio too
 
 Symlinks are resolved before the check, so a link that escapes a root is
 refused. A **deny-list** applies to both reads and writes: any path component

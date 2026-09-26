@@ -8,7 +8,7 @@ specifications are in [`docs/unified-tools/`](docs/unified-tools/README.md).
 | | |
 |---|---|
 | Server name (MCP) | `microsoft-mcp` |
-| Package version | `m365-mcp` 1.0.0 |
+| Package version | `m365-mcp` 1.0.1 |
 | MCP runtime | FastMCP 4.0.10 on the `mcp` Python SDK 2.2.0 |
 | Protocol versions negotiated | `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25`, `2026-07-28` (newest offered: `2026-07-28`) |
 | Tools exposed | **30** in three tiers (default `core,extended`: 23; `admin` adds 7) |
@@ -125,7 +125,10 @@ that completes sign-in is rejected.
 | `M365_MCP_CACHE_DB_PATH` | `~/.m365_mcp_cache.db` | Location of the encrypted cache database |
 | `M365_MCP_CACHE_WARMING` | `false` | Pre-populate the cache at startup and refresh stale entries in the background |
 | `M365_MCP_CURSOR_KEY` | *(random per process)* | HMAC key for pagination cursors. Set it so cursors survive restarts and work across workers |
-| `M365_MCP_VALIDATE_OUTPUT` | off (on under pytest) | Validate every result against its `outputSchema` (`1`, `true`, `yes` or `on`) |
+| `M365_MCP_VALIDATE_OUTPUT` | on | Validate every result against its `outputSchema`; `0`, `false`, `no` or `off` opts out |
+| `M365_MCP_MAX_CONCURRENCY` | `8` | Size of the thread pool that runs tool handlers off the event loop |
+| `MCP_FILE_ALLOWED_ROOTS` | — | Folders local file tools may use (plus the working and temp directories on stdio) |
+| `MCP_FILE_ALLOW_CWD` / `MCP_FILE_ALLOW_TEMP` | on for stdio, off for HTTP | Allow the working / temp directory as file roots |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` |
 | `MCP_HOST` / `MCP_PORT` / `MCP_PATH` | `127.0.0.1` / `8000` / `/mcp` | HTTP bind address and endpoint path |
 | `MCP_AUTH_METHOD` | `none` | `bearer` or `none` (`oauth` exits at startup; see 1.1) |

@@ -77,6 +77,24 @@ def list_accounts() -> list[dict[str, str]]:
     ]
 
 
+def list_account_records() -> list[dict[str, str | None]]:
+    """List signed-in accounts as ``account_list`` records.
+
+    Returns:
+        One ``{"account_id", "email", "display_name"}`` dictionary per
+        account. ``display_name`` is ``None`` unless the account object
+        carries one (the MSAL cache does not record it today).
+    """
+    return [
+        {
+            "account_id": acc.account_id,
+            "email": acc.username,
+            "display_name": getattr(acc, "display_name", None),
+        }
+        for acc in auth.list_accounts()
+    ]
+
+
 def begin_device_flow() -> dict[str, Any]:
     """Start device-flow authentication for a new account.
 

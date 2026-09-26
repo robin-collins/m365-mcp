@@ -346,8 +346,8 @@ Configuration* above; add `"M365_MCP_TOOLSETS": "core,extended"` to `env`.
 Claude Code:
 
 ```bash
-claude mcp add m365 --env M365_MCP_CLIENT_ID=your-app-id
-  --env M365_MCP_TOOLSETS=core,extended
+claude mcp add m365 --env M365_MCP_CLIENT_ID=your-app-id \
+  --env M365_MCP_TOOLSETS=core,extended \
   -- uv --directory /path/to/m365-mcp run m365-mcp
 ```
 

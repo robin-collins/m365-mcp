@@ -24,6 +24,7 @@ from typing import Any, Literal
 
 from fastmcp.exceptions import ToolError
 
+from ...cursors import cursor_codec
 from ...rate_limit import rate_limiter
 from ...services.accounts import resolve_account_id
 from ...tool_specs import load_tool_spec
@@ -213,3 +214,241 @@ def install_generic_handlers() -> None:
         if tool == "m365_search" or handlers.get_handler(tool) is not None:
             continue
         handlers.register_handler(tool)(_dispatch(tool))
+
+
+# ----------------------------------------------------------------------
+# Cross-resource rules for the generic tools (spec validation_rules)
+# ----------------------------------------------------------------------
+
+# tool -> parameter -> resources it applies to
+APPLIES_TO: dict[str, dict[str, tuple[str, ...]]] = {
+    "m365_list": {
+        "container_id": ("email", "email_folder", "event", "contact", "drive_item"),
+        "path": ("drive_item",),
+        "email_filter": ("email",),
+        "start": ("event",),
+        "end": ("event",),
+        "item_type": ("drive_item",),
+        "recursive": ("email_folder", "drive_item"),
+        "max_depth": ("email_folder", "drive_item"),
+        "include_hidden": ("email_folder",),
+    },
+    "m365_get": {
+        "path": ("drive_item",),
+        "include_body": ("email", "event"),
+        "body_max_chars": ("email", "event"),
+    },
+    "m365_move": {
+        "destination_path": ("drive_item",),
+        "new_name": ("drive_item",),
+    },
+    "m365_delete": {"cancellation_message": ("event",)},
+    "m365_get_content": {"attachment_id": ("email",)},
+}
+
+CREATE_OBJECTS = {
+    "email_folder": "email_folder",
+    "calendar": "calendar",
+    "contact": "contact",
+    "contact_folder": "contact_folder",
+    "drive_item": "drive_folder",
+}
+UPDATE_OBJECTS = {
+    "email": "email_changes",
+    "email_folder": "email_folder_changes",
+    "contact": "contact_changes",
+    "drive_item": "drive_item_changes",
+}
+CONTENT_MODES = {
+    "drive_item": ("download", "download_url"),
+    "email": ("download",),
+    "contact": ("vcard",),
+}
+
+
+def invalid(param: str, reason: str, expected: str | None = None) -> ValidationError:
+    """Build a spec-style error that has no ``'<value>'`` part.
+
+    Args:
+        param: Parameter name.
+        reason: Why it is invalid.
+        expected: Optional correction hint.
+
+    Returns:
+        A ``ValidationError`` reading ``Invalid <param>: <reason>[. Expected: ...]``.
+    """
+    text = f"Invalid {param}: {reason}"
+    if expected:
+        text += f". Expected: {expected}"
+    return ValidationError(text)
+
+
+def _quoted(resources: tuple[str, ...]) -> str:
+    return " or ".join(f"'{r}'" for r in resources)
+
+
+def reject_inapplicable(tool: str, args: dict[str, Any]) -> None:
+    """Reject parameters that do not apply to the chosen resource.
+
+    Raises:
+        ValidationError: With the spec's "only valid with resource=" text.
+    """
+    resource = args.get("resource")
+    for param, resources in APPLIES_TO.get(tool, {}).items():
+        if args.get(param) is None or resource in resources:
+            continue
+        if tool == "m365_delete":
+            raise invalid(param, f"only valid for resource={_quoted(resources)}")
+        raise invalid(
+            param,
+            f"only valid with resource={_quoted(resources)}",
+            f"remove {param} or use resource={_quoted(resources)}",
+        )
+
+
+def _exactly_one_object(args: dict[str, Any], objects: dict[str, str]) -> None:
+    resource = args["resource"]
+    wanted = objects[resource]
+    creating = objects is CREATE_OBJECTS
+    for name in objects.values():
+        if name != wanted and args.get(name) is not None:
+            expected = f"supply only the '{wanted}' object" if creating else wanted
+            raise invalid(name, f"resource is '{resource}'", expected)
+    if args.get(wanted) is None:
+        expected = f"supply the '{wanted}' object" if creating else wanted
+        raise invalid(wanted, f"required when resource='{resource}'", expected)
+
+
+def _list_rules(args: dict[str, Any]) -> None:
+    reject_inapplicable("m365_list", args)
+    if args.get("container_id") is not None and args.get("path") is not None:
+        raise invalid(
+            "path",
+            "cannot be combined with container_id",
+            "one of container_id or path",
+        )
+
+
+def _get_rules(args: dict[str, Any]) -> None:
+    reject_inapplicable("m365_get", args)
+    has_id, has_path = args.get("id") is not None, args.get("path") is not None
+    if has_id and has_path:
+        raise invalid("path", "cannot be combined with id")
+    if not has_id and not has_path:
+        raise invalid("id", "required unless resource='drive_item' with path")
+
+
+def _create_rules(args: dict[str, Any]) -> None:
+    _exactly_one_object(args, CREATE_OBJECTS)
+
+
+def _update_rules(args: dict[str, Any]) -> None:
+    _exactly_one_object(args, UPDATE_OBJECTS)
+
+
+def _move_rules(args: dict[str, Any]) -> None:
+    reject_inapplicable("m365_move", args)
+    has_id = args.get("destination_id") is not None
+    has_path = args.get("destination_path") is not None
+    if has_id and has_path:
+        raise invalid("destination_path", "cannot be combined with destination_id")
+    if not has_id and not has_path:
+        raise invalid("destination_id", "required")
+
+
+def _delete_rules(args: dict[str, Any]) -> None:
+    require_confirm(args, "delete")
+    reject_inapplicable("m365_delete", args)
+
+
+def _content_rules(args: dict[str, Any]) -> None:
+    resource, mode = args["resource"], args["mode"]
+    modes = CONTENT_MODES[resource]
+    if mode not in modes:
+        raise ValidationError(
+            format_validation_error(
+                "mode", mode, f"not valid for resource '{resource}'", " or ".join(modes)
+            )
+        )
+    reject_inapplicable("m365_get_content", args)
+    if resource == "email" and args.get("attachment_id") is None:
+        raise invalid("attachment_id", "required for resource='email'")
+    if mode == "download" and args.get("save_path") is None:
+        raise invalid("save_path", "required for mode='download'")
+
+
+Rule = Callable[[dict[str, Any]], None]
+
+_GENERIC_RULES: dict[str, Rule] = {
+    "m365_list": _list_rules,
+    "m365_get": _get_rules,
+    "m365_create": _create_rules,
+    "m365_update": _update_rules,
+    "m365_move": _move_rules,
+    "m365_delete": _delete_rules,
+    "m365_get_content": _content_rules,
+}
+
+
+def install_generic_rules() -> None:
+    """Register the cross-resource rules once, ahead of per-tool rules."""
+    for tool, rule in _GENERIC_RULES.items():
+        if rule not in handlers.get_validation_rules(tool):
+            handlers.register_validation_rule(tool)(rule)
+
+
+# ----------------------------------------------------------------------
+# Cursors
+# ----------------------------------------------------------------------
+
+
+def _cursor_request(args: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in args.items() if k != "refresh"}
+
+
+def encode_cursor(
+    args: dict[str, Any],
+    account_id: str,
+    resource: str,
+    *,
+    next_link: str | None = None,
+    offset: int | None = None,
+    sub_cursors: dict[str, Any] | None = None,
+) -> str:
+    """Encode the next-page cursor, bound to this exact request.
+
+    Args:
+        args: The validated tool arguments (``refresh`` is ignored).
+        account_id: Resolved account ID.
+        resource: Resource the cursor pages through.
+        next_link: Graph ``@odata.nextLink``, or
+        offset: an item offset (tree modes, client-side matching), or
+        sub_cursors: per-resource positions for multi-resource search.
+
+    Returns:
+        The opaque cursor string.
+    """
+    return cursor_codec.encode(
+        account_id,
+        resource,
+        _cursor_request(args),
+        next_link=next_link,
+        offset=offset,
+        sub_cursors=sub_cursors,
+    )
+
+
+def decode_cursor(args: dict[str, Any], account_id: str, resource: str) -> Any:
+    """Decode ``args['cursor']`` for this request.
+
+    Returns:
+        The ``DecodedCursor``, or ``None`` when no cursor was passed.
+
+    Raises:
+        ValidationError: If the cursor was tampered with, is expired, or was
+            issued for a different request.
+    """
+    cursor = args.get("cursor")
+    if not cursor:
+        return None
+    return cursor_codec.decode(cursor, account_id, resource, _cursor_request(args))

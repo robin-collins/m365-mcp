@@ -63,3 +63,93 @@ def test_account_defaults_to_the_single_signed_in_account(harness) -> None:
     assert common.account({"account_id": harness.account_email.upper()}) == (
         harness.account_id
     )
+
+
+@pytest.mark.parametrize(
+    ("tool", "args", "expected"),
+    [
+        (
+            "m365_list",
+            {"resource": "event", "email_filter": {"unread": True}},
+            (
+                "Invalid email_filter: only valid with resource='email'. Expected: "
+                "remove email_filter or use resource='email'"
+            ),
+        ),
+        (
+            "m365_list",
+            {"resource": "drive_item", "container_id": "root", "path": "/Docs"},
+            (
+                "Invalid path: cannot be combined with container_id. Expected: one of "
+                "container_id or path"
+            ),
+        ),
+        (
+            "m365_get",
+            {"resource": "email"},
+            "Invalid id: required unless resource='drive_item' with path",
+        ),
+        (
+            "m365_create",
+            {"resource": "calendar", "contact": {"given_name": "A"}},
+            (
+                "Invalid contact: resource is 'calendar'. Expected: supply only the "
+                "'calendar' object"
+            ),
+        ),
+        (
+            "m365_update",
+            {"resource": "contact", "id": "c1", "email_changes": {"is_read": True}},
+            "Invalid email_changes: resource is 'contact'. Expected: contact_changes",
+        ),
+        (
+            "m365_move",
+            {"resource": "email", "id": "m1"},
+            "Invalid destination_id: required",
+        ),
+        (
+            "m365_delete",
+            {"resource": "email", "id": "m1", "confirm": False},
+            (
+                "Invalid confirm 'False': delete requires confirm=True to proceed. "
+                "Expected: Explicit user confirmation"
+            ),
+        ),
+        (
+            "m365_delete",
+            {
+                "resource": "email",
+                "id": "m1",
+                "confirm": True,
+                "cancellation_message": "x",
+            },
+            "Invalid cancellation_message: only valid for resource='event'",
+        ),
+        (
+            "m365_get_content",
+            {"resource": "drive_item", "id": "i1", "mode": "vcard"},
+            (
+                "Invalid mode 'vcard': not valid for resource 'drive_item'. Expected: "
+                "download or download_url"
+            ),
+        ),
+        (
+            "m365_get_content",
+            {"resource": "email", "id": "m1", "mode": "download", "save_path": "a"},
+            "Invalid attachment_id: required for resource='email'",
+        ),
+    ],
+)
+def test_generic_rules_use_spec_text(harness, tool, args, expected) -> None:
+    assert harness.error(tool, args) == expected
+
+
+def test_cursor_round_trip_is_bound_to_the_request() -> None:
+    args = {"resource": "email", "limit": 5, "refresh": True}
+    cursor = common.encode_cursor(args, "acc", "email", offset=5)
+    decoded = common.decode_cursor(
+        {**args, "cursor": cursor, "refresh": False}, "acc", "email"
+    )
+    assert decoded.offset == 5
+    with pytest.raises(ValidationError, match="does not match this request"):
+        common.decode_cursor({**args, "limit": 6, "cursor": cursor}, "acc", "email")

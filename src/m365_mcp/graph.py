@@ -1,21 +1,53 @@
 import email.utils
 import time
+from collections.abc import Callable, Iterator
+from contextvars import ContextVar, Token
 from datetime import UTC, datetime
-from typing import Any, Iterator
+from typing import Any
 
 import httpx
 
 from .auth import get_token
+from .errors import DeadlineExceeded, GraphAPIError
 
 BASE_URL = "https://graph.microsoft.com/v1.0"
 # 15 x 320 KiB = 4,915,200 bytes
 UPLOAD_CHUNK_SIZE = 15 * 320 * 1024
 MAX_RETRY_WAIT_SECONDS = 60
+# Per-call budget for all attempts and waits; transfers are exempt.
+READ_DEADLINE_SECONDS = 45
+WRITE_DEADLINE_SECONDS = 60
+BATCH_MAX_REQUESTS = 20
 
 # Methods that are safe to resend when the outcome of an attempt is unknown.
 _IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
+_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 _client = httpx.Client(timeout=30.0, follow_redirects=True)
+# Injectable monotonic clock for the deadline budget (tests use a fake).
+_clock: Callable[[], float] = time.monotonic
+# Retries made during the current tool call, read by the audit log.
+_retries: ContextVar[int] = ContextVar("m365_graph_retries", default=0)
+
+
+def note_retry() -> None:
+    """Count one retry against the current tool call."""
+    _retries.set(_retries.get() + 1)
+
+
+def retry_count() -> int:
+    """Return the retries counted in the current context."""
+    return _retries.get()
+
+
+def reset_retry_count() -> Token[int]:
+    """Start counting retries from zero; pass the token to restore."""
+    return _retries.set(0)
+
+
+def restore_retry_count(token: Token[int]) -> None:
+    """Restore the retry count saved by :func:`reset_retry_count`."""
+    _retries.reset(token)
 
 
 def _retry_after_seconds(response: httpx.Response, default: float) -> float:
@@ -38,6 +70,28 @@ def _retry_after_seconds(response: httpx.Response, default: float) -> float:
         else:
             delay = default
     return min(max(delay, 0.0), MAX_RETRY_WAIT_SECONDS)
+
+
+def _deadline_for(methods: list[str]) -> int:
+    """Return the budget: the read budget only if every method reads."""
+    if all(method in _READ_METHODS for method in methods):
+        return READ_DEADLINE_SECONDS
+    return WRITE_DEADLINE_SECONDS
+
+
+def _check_deadline(started: float, budget: float | None, delay: float) -> None:
+    """Raise if waiting ``delay`` more seconds would exceed the budget.
+
+    Args:
+        started: Clock reading when the call began.
+        budget: Budget in seconds, or ``None`` for exempt transfers.
+        delay: Seconds the next wait would take (0 for an immediate retry).
+
+    Raises:
+        DeadlineExceeded: If the retry would not fit in the budget.
+    """
+    if budget is not None and _clock() - started + delay > budget:
+        raise DeadlineExceeded(delay)
 
 
 def _should_retry_status(method: str, status_code: int) -> bool:
@@ -71,12 +125,18 @@ def _send(
     headers: dict[str, str] | None = None,
     max_retries: int = 3,
     authenticate: bool = True,
+    transfer: bool = False,
     **kwargs: Any,
 ) -> httpx.Response:
     """Send an HTTP request with auth, retries and backoff.
 
     A token is fetched for every attempt, so long throttling waits never
     reuse an expired token. A 401 triggers one forced token refresh.
+
+    Every retry and wait is checked against a per-call budget
+    (``READ_DEADLINE_SECONDS`` for GET/HEAD/OPTIONS, otherwise
+    ``WRITE_DEADLINE_SECONDS``) measured from the first attempt, so a tool
+    call cannot hang on repeated throttling.
 
     Args:
         method: HTTP method.
@@ -86,16 +146,22 @@ def _send(
         max_retries: Retries for throttling, server and network errors.
         authenticate: Add a bearer token. Disable for pre-authenticated
             upload session URLs.
+        transfer: Exempt an upload or download chunk from the deadline
+            budget.
         **kwargs: Passed through to ``httpx.Client.request``.
 
     Returns:
         The successful response.
 
     Raises:
-        httpx.HTTPStatusError: If the final response is an error status.
+        GraphAPIError: If the final response is an error status (a
+            subclass of ``httpx.HTTPStatusError``).
+        DeadlineExceeded: If another retry would exceed the budget.
         httpx.TransportError: If the network error cannot be retried.
     """
     method = method.upper()
+    budget = None if transfer else _deadline_for([method])
+    started = _clock()
     retry_count = 0
     force_refresh = False
     refreshed_after_401 = False
@@ -113,14 +179,21 @@ def _send(
             )
         except httpx.TransportError as exc:
             if retry_count < max_retries and _should_retry_transport(method, exc):
-                time.sleep(2**retry_count)
+                delay = 2**retry_count
+                try:
+                    _check_deadline(started, budget, delay)
+                except DeadlineExceeded as deadline:
+                    raise deadline from exc
+                time.sleep(delay)
                 retry_count += 1
+                note_retry()
                 continue
             raise
 
         if response.status_code == 401 and authenticate and not refreshed_after_401:
             # The access token was rejected (revoked or expired early);
             # redeem the refresh token once and try again.
+            _check_deadline(started, budget, 0)
             force_refresh = True
             refreshed_after_401 = True
             continue
@@ -128,11 +201,20 @@ def _send(
         if retry_count < max_retries and _should_retry_status(
             method, response.status_code
         ):
-            time.sleep(_retry_after_seconds(response, 2**retry_count))
+            delay = _retry_after_seconds(response, 2**retry_count)
+            _check_deadline(started, budget, delay)
+            time.sleep(delay)
             retry_count += 1
+            note_retry()
             continue
 
-        response.raise_for_status()
+        if not response.is_success:
+            retry_after = (
+                _retry_after_seconds(response, 0)
+                if "Retry-After" in response.headers
+                else None
+            )
+            raise GraphAPIError.from_response(response, retry_after=retry_after)
         return response
 
 
@@ -238,10 +320,116 @@ def request_paginated(
             break
 
 
+def _batch_envelope(index: int, item: dict[str, Any]) -> dict[str, Any]:
+    """Build one ``$batch`` request entry; its id is the input index."""
+    entry: dict[str, Any] = {
+        "id": str(index),
+        "method": item["method"].upper(),
+        "url": item["url"],
+    }
+    headers = dict(item.get("headers") or {})
+    if "body" in item:
+        entry["body"] = item["body"]
+        headers.setdefault("Content-Type", "application/json")
+    if headers:
+        entry["headers"] = headers
+    return entry
+
+
+def batch(
+    requests: list[dict[str, Any]],
+    account_id: str | None = None,
+    max_retries: int = 3,
+) -> list[dict[str, Any]]:
+    """Run requests through Graph JSON batching (``POST /$batch``).
+
+    Requests are sent at most ``BATCH_MAX_REQUESTS`` (20) per call. Item
+    failures do not raise; each result carries its own status. Throttled
+    (429) and 5xx items are resent after the longest Retry-After among
+    them, but only for idempotent methods (GET, HEAD, OPTIONS, PUT,
+    DELETE). POST and PATCH items are never resent, even on 429, so a
+    batched write can never be applied twice; their error is returned for
+    the caller to handle. Retries stop at ``max_retries`` or when the next
+    wait would exceed the deadline budget; the last item results are then
+    returned as they are.
+
+    Args:
+        requests: Items with ``method``, ``url`` (relative to the Graph
+            version root, e.g. ``/me/messages/1``), and optional ``body``,
+            ``headers`` and ``id``.
+        account_id: Account whose token authorises the batch.
+        max_retries: Retry rounds for throttled idempotent items.
+
+    Returns:
+        One dict per input request, in input order, with ``id`` (the
+        caller's id, or the input index as a string), ``status``,
+        ``headers`` and ``body``.
+
+    Raises:
+        GraphAPIError: If a ``$batch`` call itself fails.
+        DeadlineExceeded: If a ``$batch`` call runs out of budget.
+    """
+    results: list[dict[str, Any] | None] = [None] * len(requests)
+    methods = [item["method"].upper() for item in requests]
+    budget = _deadline_for(methods)
+    started = _clock()
+    pending = list(range(len(requests)))
+    retry_count = 0
+
+    while pending:
+        retry: dict[int, httpx.Response] = {}
+        for start in range(0, len(pending), BATCH_MAX_REQUESTS):
+            chunk = pending[start : start + BATCH_MAX_REQUESTS]
+            response = _send(
+                "POST",
+                f"{BASE_URL}/$batch",
+                account_id,
+                headers={"Content-Type": "application/json"},
+                json={"requests": [_batch_envelope(i, requests[i]) for i in chunk]},
+            )
+            for item in response.json().get("responses", []):
+                index = int(item["id"])
+                status = int(item.get("status") or 0)
+                headers = item.get("headers") or {}
+                results[index] = {
+                    "id": str(requests[index].get("id", index)),
+                    "status": status,
+                    "headers": headers,
+                    "body": item.get("body"),
+                }
+                method = methods[index]
+                if method in _IDEMPOTENT_METHODS and _should_retry_status(
+                    method, status
+                ):
+                    retry[index] = httpx.Response(status, headers=headers)
+
+        if not retry or retry_count >= max_retries:
+            break
+        delay = max(
+            _retry_after_seconds(item, 2**retry_count) for item in retry.values()
+        )
+        try:
+            _check_deadline(started, budget, delay)
+        except DeadlineExceeded:
+            break
+        time.sleep(delay)
+        retry_count += 1
+        note_retry()
+        pending = sorted(retry)
+
+    return [result for result in results if result is not None]
+
+
 def download_raw(
     path: str, account_id: str | None = None, max_retries: int = 3
 ) -> bytes:
-    response = _send("GET", f"{BASE_URL}{path}", account_id, max_retries=max_retries)
+    response = _send(
+        "GET",
+        f"{BASE_URL}{path}",
+        account_id,
+        max_retries=max_retries,
+        transfer=True,
+    )
     return response.content
 
 
@@ -267,6 +455,7 @@ def _do_chunked_upload(upload_url: str, data: bytes) -> dict[str, Any]:
             None,
             headers=chunk_headers,
             authenticate=False,
+            transfer=True,
             content=chunk,
         )
 

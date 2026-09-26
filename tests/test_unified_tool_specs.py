@@ -77,16 +77,16 @@ def test_generated_files_are_current() -> None:
 
 
 def test_catalog_shape() -> None:
-    assert INDEX["tool_count"] == 29
+    assert INDEX["tool_count"] == 30
     assert len(INDEX["tiers"]["core"]) == 16
     assert len(INDEX["tiers"]["extended"]) == 7
-    assert len(INDEX["tiers"]["admin"]) == 6
+    assert len(INDEX["tiers"]["admin"]) == 7
     assert INDEX["default_toolsets"] == ["core", "extended"]
     ordered = (
         INDEX["tiers"]["core"] + INDEX["tiers"]["extended"] + INDEX["tiers"]["admin"]
     )
     assert ordered == INDEX["tool_order"], "tools must be ordered by tier"
-    assert len(set(INDEX["tool_order"])) == 29
+    assert len(set(INDEX["tool_order"])) == 30
 
 
 @pytest.mark.parametrize("name", INDEX["tool_order"])
@@ -166,35 +166,44 @@ def test_examples_validate(name: str) -> None:
         output_validator.validate(example["output"])
 
 
+# Tools with no v0.x predecessor: nothing in the 85-row legacy mapping.
+NEW_IN_1_0 = {"admin_reauth_schedule"}
+
+
 @pytest.mark.parametrize("name", INDEX["tool_order"])
 def test_tool_is_fully_specified(name: str) -> None:
     tool = TOOLS[name]
     assert tool["graph_calls"], f"{name} must list its Microsoft Graph calls"
-    assert tool["replaces"], f"{name} must list the legacy tools it replaces"
+    if name not in NEW_IN_1_0:
+        assert tool["replaces"], f"{name} must list the legacy tools it replaces"
     for rule in tool["validation_rules"]:
         assert rule["rule"] and rule["error"]
 
 
+# Common model mistakes every schema must reject. Shared with
+# tests/test_input_validation.py, which checks the runtime rejection.
+INVALID_INPUT_CASES: list[tuple[str, dict[str, Any]]] = [
+    ("m365_list", {"resource": "mail"}),
+    ("m365_list", {"resource": "email", "limit": 500}),
+    ("m365_list", {"resource": "email", "unknown": 1}),
+    ("m365_delete", {"resource": "email", "id": "x"}),
+    ("email_send", {"mode": "new", "to": "jane@example.com", "confirm": True}),
+    (
+        "email_reply",
+        {"email_id": "x", "mode": "everyone", "body": "hi", "confirm": True},
+    ),
+    (
+        "drive_share",
+        {"item_id": "x", "mode": "link", "link_type": "public", "confirm": True},
+    ),
+    ("calendar_respond", {"event_id": "x", "action": "maybe"}),
+    ("m365_update", {"resource": "email", "id": "x", "email_changes": {}}),
+]
+
+
 def test_invalid_inputs_are_rejected() -> None:
     """Spot-check that schemas reject common model mistakes."""
-    cases = [
-        ("m365_list", {"resource": "mail"}),
-        ("m365_list", {"resource": "email", "limit": 500}),
-        ("m365_list", {"resource": "email", "unknown": 1}),
-        ("m365_delete", {"resource": "email", "id": "x"}),
-        ("email_send", {"mode": "new", "to": "jane@example.com", "confirm": True}),
-        (
-            "email_reply",
-            {"email_id": "x", "mode": "everyone", "body": "hi", "confirm": True},
-        ),
-        (
-            "drive_share",
-            {"item_id": "x", "mode": "link", "link_type": "public", "confirm": True},
-        ),
-        ("calendar_respond", {"event_id": "x", "action": "maybe"}),
-        ("m365_update", {"resource": "email", "id": "x", "email_changes": {}}),
-    ]
-    for name, arguments in cases:
+    for name, arguments in INVALID_INPUT_CASES:
         validator = Draft202012Validator(TOOLS[name]["inputSchema"])
         assert list(validator.iter_errors(arguments)), f"{name} accepted {arguments}"
 

@@ -13,14 +13,13 @@ The cache uses a three-state TTL model:
 3. Expired: Data is too old and must be refreshed before serving
 """
 
-import os
 import hashlib
 import json
+import os
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional
-from dataclasses import dataclass
-
+from typing import Any
 
 # ============================================================================
 # DATABASE CONFIGURATION
@@ -75,7 +74,7 @@ class TTLPolicy:
 
 # TTL policies for different resource types
 # Format: resource_type -> TTLPolicy(fresh_seconds, stale_seconds)
-TTL_POLICIES: Dict[str, TTLPolicy] = {
+TTL_POLICIES: dict[str, TTLPolicy] = {
     # Folder Operations (relatively static)
     "folder_get_tree": TTLPolicy(
         fresh_seconds=30 * 60,  # 30 minutes fresh
@@ -133,6 +132,58 @@ TTL_POLICIES: Dict[str, TTLPolicy] = {
 }
 
 
+# TTL policies for the unified tools, keyed by resource rather than tool
+# name (concept §7). Entries are served from cache until stale_seconds;
+# no background refresh is queued for them, so a stale entry is simply
+# served until it expires. Values mirror the legacy list/get policies of
+# the same data:
+# - email: mailbox contents change often (as email_list).
+# - email_folder: carries unread/total counts, so shorter than the
+#   legacy folder tree.
+# - email_rule, calendar, contact, contact_folder: rarely change outside
+#   this server, whose own mutations invalidate them.
+# - event: time-sensitive (as calendar_list_events).
+# - drive_item: moderately changing (as file_list).
+RESOURCE_TTL_POLICIES: dict[str, TTLPolicy] = {
+    "email": TTLPolicy(
+        fresh_seconds=2 * 60,  # 2 minutes fresh
+        stale_seconds=10 * 60,  # 10 minutes stale
+    ),
+    "email_folder": TTLPolicy(
+        fresh_seconds=5 * 60,  # 5 minutes fresh
+        stale_seconds=30 * 60,  # 30 minutes stale
+    ),
+    "email_rule": TTLPolicy(
+        fresh_seconds=15 * 60,  # 15 minutes fresh
+        stale_seconds=1 * 60 * 60,  # 1 hour stale
+    ),
+    "event": TTLPolicy(
+        fresh_seconds=5 * 60,  # 5 minutes fresh
+        stale_seconds=30 * 60,  # 30 minutes stale
+    ),
+    "calendar": TTLPolicy(
+        fresh_seconds=30 * 60,  # 30 minutes fresh
+        stale_seconds=2 * 60 * 60,  # 2 hours stale
+    ),
+    "contact": TTLPolicy(
+        fresh_seconds=20 * 60,  # 20 minutes fresh
+        stale_seconds=2 * 60 * 60,  # 2 hours stale
+    ),
+    "contact_folder": TTLPolicy(
+        fresh_seconds=30 * 60,  # 30 minutes fresh
+        stale_seconds=4 * 60 * 60,  # 4 hours stale
+    ),
+    "drive_item": TTLPolicy(
+        fresh_seconds=10 * 60,  # 10 minutes fresh
+        stale_seconds=1 * 60 * 60,  # 1 hour stale
+    ),
+}
+
+# The CacheManager looks policies up by resource type in TTL_POLICIES.
+# The resource names never collide with the legacy tool-name keys.
+TTL_POLICIES.update(RESOURCE_TTL_POLICIES)
+
+
 # ============================================================================
 # CACHE LIMITS
 # ============================================================================
@@ -173,29 +224,41 @@ CACHE_WARMING_ENABLED = (
     os.environ.get("M365_MCP_CACHE_WARMING", "false").lower() == "true"
 )
 
-# Operations to warm cache with on startup
-# Format: (operation_name, priority, throttle_sec, params)
+# Operations to warm cache with on startup.
+# Each runs a unified read tool (``unified:<tool>``) with the arguments a
+# typical first call uses, so warming fills the entries later calls hit.
+# ``resource`` names the cache resource, for the "already fresh?" check.
 CACHE_WARMING_OPERATIONS = [
-    # Priority 1: Folder structure (most important, rarely changes)
+    # Priority 1: mail folder tree (most important, rarely changes)
     {
-        "operation": "folder_get_tree",
+        "operation": "unified:m365_list",
+        "resource": "email_folder",
         "priority": 1,
         "throttle_sec": 5,
-        "params": {"folder_id": "root", "max_depth": 10},
+        "params": {"resource": "email_folder", "recursive": True},
     },
-    # Priority 2: Email list (frequently accessed)
+    # Priority 2: newest inbox messages (frequently accessed)
     {
-        "operation": "email_list",
+        "operation": "unified:m365_list",
+        "resource": "email",
         "priority": 2,
         "throttle_sec": 3,
-        "params": {"folder_id": "inbox", "limit": 50},
+        "params": {"resource": "email"},
     },
-    # Priority 3: Contact list (commonly used)
+    # Priority 3: upcoming events, then contacts (commonly used)
     {
-        "operation": "contact_list",
+        "operation": "unified:m365_list",
+        "resource": "event",
         "priority": 3,
         "throttle_sec": 2,
-        "params": {"limit": 100},
+        "params": {"resource": "event"},
+    },
+    {
+        "operation": "unified:m365_list",
+        "resource": "contact",
+        "priority": 4,
+        "throttle_sec": 2,
+        "params": {"resource": "contact"},
     },
 ]
 
@@ -206,7 +269,7 @@ CACHE_WARMING_OPERATIONS = [
 
 
 def generate_cache_key(
-    account_id: str, resource_type: str, parameters: Optional[Dict[str, Any]] = None
+    account_id: str, resource_type: str, parameters: dict[str, Any] | None = None
 ) -> str:
     """Generate deterministic cache key from operation parameters.
 
@@ -235,7 +298,7 @@ def generate_cache_key(
     return ":".join(key_parts)
 
 
-def parse_cache_key(cache_key: str) -> Dict[str, str]:
+def parse_cache_key(cache_key: str) -> dict[str, str]:
     """Parse cache key back into components.
 
     Args:

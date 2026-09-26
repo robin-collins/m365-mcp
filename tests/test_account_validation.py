@@ -5,76 +5,20 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
+from msal import PublicClientApplication
 
-from src.m365_mcp.tools import account as account_tools
-
-
-def test_account_list_serialises_namedtuple(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure account_list exposes username/account_id/account_type triples."""
-
-    accounts = [
-        account_tools.auth.Account(
-            username="ada@example.com", account_id="acc-1", account_type="work_school"
-        ),
-        account_tools.auth.Account(
-            username="grace@example.com", account_id="acc-2", account_type="personal"
-        ),
-    ]
-    monkeypatch.setattr(account_tools.auth, "list_accounts", lambda: accounts)
-
-    result = account_tools.account_list.fn()
-
-    assert result == [
-        {
-            "username": "ada@example.com",
-            "account_id": "acc-1",
-            "account_type": "work_school",
-        },
-        {
-            "username": "grace@example.com",
-            "account_id": "acc-2",
-            "account_type": "personal",
-        },
-    ]
-
-
-def test_account_authenticate_returns_flow_details(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Verify device flow details are surfaced when authentication begins."""
-
-    flow: dict[str, Any] = {
-        "user_code": "ABCD-1234",
-        "verification_uri": "https://microsoft.com/devicelogin",
-        "expires_in": 900,
-    }
-
-    class FakeApp:
-        def initiate_device_flow(self, scopes: Iterable[str]) -> dict[str, Any]:
-            self.scopes = list(scopes)  # type: ignore[attr-defined]
-            return flow
-
-    fake_app = FakeApp()
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (fake_app, "common"))
-
-    result = account_tools.account_authenticate.fn()
-
-    assert result["status"] == "authentication_required"
-    assert result["device_code"] == flow["user_code"]
-    assert result["verification_url"] == flow["verification_uri"]
-    assert result["_flow_cache"] == str(flow)
-    assert fake_app.scopes == account_tools.auth.DEVICE_FLOW_SCOPES
+from src.m365_mcp.services import accounts as account_service
 
 
 def test_device_flow_scopes_exclude_msal_reserved_scopes() -> None:
     """MSAL adds OIDC scopes internally and rejects them as input."""
 
-    assert "offline_access" not in account_tools.auth.DEVICE_FLOW_SCOPES
-    assert "openid" not in account_tools.auth.DEVICE_FLOW_SCOPES
-    assert "profile" not in account_tools.auth.DEVICE_FLOW_SCOPES
+    assert "offline_access" not in account_service.auth.DEVICE_FLOW_SCOPES
+    assert "openid" not in account_service.auth.DEVICE_FLOW_SCOPES
+    assert "profile" not in account_service.auth.DEVICE_FLOW_SCOPES
 
 
 def test_get_token_accepts_username_identifier(
@@ -107,133 +51,15 @@ def test_get_token_accepts_username_identifier(
     captured: dict[str, Any] = {}
     fake_app = FakeApp()
 
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (fake_app, "common"))
-    monkeypatch.setattr(
-        account_tools.auth,
-        "_get_account_type",
-        lambda account_id, username: "personal",
-    )
+    monkeypatch.setattr(account_service.auth, "get_app", lambda: (fake_app, "common"))
 
-    token = account_tools.auth.get_token("robin.f.collins@outlook.com")
+    token = account_service.auth.get_token("robin.f.collins@outlook.com")
 
     assert token == "cached-token"
-    assert captured["scopes"] == account_tools.auth.SCOPES
+    assert captured["scopes"] == account_service.auth.SCOPES
     assert captured["account"] == {
         "username": "Robin.F.Collins@outlook.com",
         "home_account_id": "acc-1",
-    }
-
-
-def test_account_authenticate_raises_when_flow_missing_user_code(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Guard against malformed device flow payloads."""
-
-    class FakeApp:
-        pass
-
-    fake_app = FakeApp()
-
-    def fake_initiate_device_flow(
-        app: FakeApp,
-        tenant_id: str,
-    ) -> tuple[FakeApp, dict[str, str]]:
-        assert app is fake_app
-        assert tenant_id == "common"
-        return app, {"error_description": "User code unavailable"}
-
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (fake_app, "common"))
-    monkeypatch.setattr(
-        account_tools.auth,
-        "_initiate_device_flow",
-        fake_initiate_device_flow,
-    )
-
-    with pytest.raises(Exception, match="Failed to get device code"):
-        account_tools.account_authenticate.fn()
-
-
-def test_account_complete_auth_rejects_invalid_cache(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Ensure flow cache must be a literal mapping."""
-
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (None, "common"))
-
-    with pytest.raises(ValueError, match="Invalid flow cache"):
-        account_tools.account_complete_auth.fn("not-a-dict")
-
-
-def test_account_complete_auth_returns_pending_status(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Map authorization_pending responses to a pending status."""
-
-    flow_cache = {"device_code": "ABCD"}
-
-    class FakeApp:
-        token_cache = object()
-
-        def acquire_token_by_device_flow(
-            self, flow: dict[str, Any], **kwargs: Any
-        ) -> dict[str, str]:
-            self.flow = flow  # type: ignore[attr-defined]
-            captured.update(kwargs)
-            return {
-                "error": "authorization_pending",
-                "error_description": "authorization_pending",
-            }
-
-        def get_accounts(self) -> list[dict[str, str]]:
-            return []
-
-    captured: dict[str, Any] = {}
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (FakeApp(), "common"))
-
-    result = account_tools.account_complete_auth.fn(str(flow_cache))
-
-    assert result["status"] == "pending"
-    assert "Authentication is still pending" in result["message"]
-    # Polls once instead of blocking until the device code expires.
-    assert captured["exit_condition"]({}) is True
-
-
-def test_account_complete_auth_returns_success(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Successful completion returns matched account details including account type."""
-
-    flow_cache = {"device_code": "EFGH"}
-
-    class FakeApp:
-        def acquire_token_by_device_flow(
-            self, flow: dict[str, Any], **kwargs: Any
-        ) -> dict[str, Any]:
-            return {
-                "id_token_claims": {"preferred_username": "ada@example.com"},
-                "access_token": "fake-access-token",
-            }
-
-        def get_accounts(self) -> list[dict[str, str]]:
-            return [
-                {"username": "ada@example.com", "home_account_id": "acc-1"},
-                {"username": "grace@example.com", "home_account_id": "acc-2"},
-            ]
-
-    def fake_get_account_type(account_id: str, username: str) -> str:
-        return "work_school"
-
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (FakeApp(), "common"))
-    monkeypatch.setattr(account_tools.auth, "_get_account_type", fake_get_account_type)
-
-    result = account_tools.account_complete_auth.fn(str(flow_cache))
-
-    assert result == {
-        "status": "success",
-        "username": "ada@example.com",
-        "account_id": "acc-1",
-        "account_type": "work_school",
-        "message": "Successfully authenticated ada@example.com",
     }
 
 
@@ -257,12 +83,12 @@ def test_get_token_fails_fast_when_interactive_auth_disabled(
     def fail_device_flow(*args: Any, **kwargs: Any) -> None:
         pytest.fail("Device flow should not start when interactive auth is disabled")
 
-    monkeypatch.delenv(account_tools.auth.INTERACTIVE_AUTH_ENV_VAR, raising=False)
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (FakeApp(), "common"))
-    monkeypatch.setattr(account_tools.auth, "_initiate_device_flow", fail_device_flow)
+    monkeypatch.delenv(account_service.auth.INTERACTIVE_AUTH_ENV_VAR, raising=False)
+    monkeypatch.setattr(account_service.auth, "get_app", lambda: (FakeApp(), "common"))
+    monkeypatch.setattr(account_service.auth, "_initiate_device_flow", fail_device_flow)
 
     with pytest.raises(RuntimeError, match="uv run authenticate.py"):
-        account_tools.auth.get_token()
+        account_service.auth.get_token()
 
 
 def test_get_token_allows_device_flow_when_interactive_auth_enabled(
@@ -307,15 +133,15 @@ def test_get_token_allows_device_flow_when_interactive_auth_enabled(
         assert tenant_id == "common"
         return app, flow
 
-    monkeypatch.setenv(account_tools.auth.INTERACTIVE_AUTH_ENV_VAR, "true")
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (fake_app, "common"))
+    monkeypatch.setenv(account_service.auth.INTERACTIVE_AUTH_ENV_VAR, "true")
+    monkeypatch.setattr(account_service.auth, "get_app", lambda: (fake_app, "common"))
     monkeypatch.setattr(
-        account_tools.auth,
+        account_service.auth,
         "_initiate_device_flow",
         fake_initiate_device_flow,
     )
 
-    assert account_tools.auth.get_token() == "token"
+    assert account_service.auth.get_token() == "token"
     assert calls == ["device_flow"]
 
 
@@ -349,11 +175,11 @@ def test_get_token_reports_expired_sign_in(
             "error_description": "AADSTS70000: The grant is expired.\nTrace ID: x",
         }
     )
-    monkeypatch.delenv(account_tools.auth.INTERACTIVE_AUTH_ENV_VAR, raising=False)
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (app, "common"))
+    monkeypatch.delenv(account_service.auth.INTERACTIVE_AUTH_ENV_VAR, raising=False)
+    monkeypatch.setattr(account_service.auth, "get_app", lambda: (app, "common"))
 
-    with pytest.raises(account_tools.auth.SignInRequiredError) as excinfo:
-        account_tools.auth.get_token("acc-1")
+    with pytest.raises(account_service.auth.SignInRequiredError) as excinfo:
+        account_service.auth.get_token("acc-1")
 
     message = str(excinfo.value)
     assert "ada@example.com" in message
@@ -373,25 +199,22 @@ def test_get_token_transient_error_is_not_sign_in_required(
     def fail_device_flow(*args: Any, **kwargs: Any) -> None:
         pytest.fail("Device flow should not start for transient errors")
 
-    monkeypatch.setenv(account_tools.auth.INTERACTIVE_AUTH_ENV_VAR, "true")
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (app, "common"))
-    monkeypatch.setattr(account_tools.auth, "_initiate_device_flow", fail_device_flow)
+    monkeypatch.setenv(account_service.auth.INTERACTIVE_AUTH_ENV_VAR, "true")
+    monkeypatch.setattr(account_service.auth, "get_app", lambda: (app, "common"))
+    monkeypatch.setattr(account_service.auth, "_initiate_device_flow", fail_device_flow)
 
     with pytest.raises(RuntimeError, match="temporarily_unavailable") as excinfo:
-        account_tools.auth.get_token("acc-1")
+        account_service.auth.get_token("acc-1")
 
-    assert not isinstance(excinfo.value, account_tools.auth.SignInRequiredError)
+    assert not isinstance(excinfo.value, account_service.auth.SignInRequiredError)
 
 
 def test_get_token_passes_force_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
     """force_refresh must reach MSAL so a 401 retry redeems the refresh token."""
     app = _SilentErrorApp({"access_token": "fresh"})
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (app, "common"))
-    monkeypatch.setattr(
-        account_tools.auth, "_get_account_type", lambda account_id, username: "personal"
-    )
+    monkeypatch.setattr(account_service.auth, "get_app", lambda: (app, "common"))
 
-    assert account_tools.auth.get_token("acc-1", force_refresh=True) == "fresh"
+    assert account_service.auth.get_token("acc-1", force_refresh=True) == "fresh"
     assert app.force_refresh is True
 
 
@@ -404,13 +227,13 @@ def test_build_app_reuses_app_per_tenant(monkeypatch: pytest.MonkeyPatch) -> Non
         return object()
 
     monkeypatch.setenv("M365_MCP_CLIENT_ID", "client-id")
-    monkeypatch.setattr(account_tools.auth, "_APPS", {})
-    monkeypatch.setattr(account_tools.auth, "_get_token_cache", lambda: None)
-    monkeypatch.setattr(account_tools.auth.msal, "PublicClientApplication", fake_app)
+    monkeypatch.setattr(account_service.auth, "_APPS", {})
+    monkeypatch.setattr(account_service.auth, "_get_token_cache", lambda: None)
+    monkeypatch.setattr(account_service.auth.msal, "PublicClientApplication", fake_app)
 
-    first = account_tools.auth._build_app("common")
-    assert account_tools.auth._build_app("common") is first
-    assert account_tools.auth._build_app("consumers") is not first
+    first = account_service.auth._build_app("common")
+    assert account_service.auth._build_app("common") is first
+    assert account_service.auth._build_app("consumers") is not first
     assert created == [
         "https://login.microsoftonline.com/common",
         "https://login.microsoftonline.com/consumers",
@@ -424,10 +247,10 @@ def test_reauthenticate_account_reports_expired_sign_in(
     app = _SilentErrorApp(
         {"error": "invalid_grant", "error_description": "AADSTS70000: expired"}
     )
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (app, "common"))
+    monkeypatch.setattr(account_service.auth, "get_app", lambda: (app, "common"))
 
-    with pytest.raises(account_tools.auth.SignInRequiredError, match="AADSTS70000"):
-        account_tools.auth.reauthenticate_account("acc-1")
+    with pytest.raises(account_service.auth.SignInRequiredError, match="AADSTS70000"):
+        account_service.auth.reauthenticate_account("acc-1")
 
 
 def test_reauthenticate_account_force_refreshes(
@@ -452,24 +275,18 @@ def test_reauthenticate_account_force_refreshes(
 
     captured: dict[str, Any] = {}
 
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (FakeApp(), "common"))
-    monkeypatch.setattr(
-        account_tools.auth,
-        "_get_account_type",
-        lambda account_id, username: "work_school",
-    )
+    monkeypatch.setattr(account_service.auth, "get_app", lambda: (FakeApp(), "common"))
 
-    result = account_tools.auth.reauthenticate_account("acc-1")
+    result = account_service.auth.reauthenticate_account("acc-1")
 
-    assert captured["scopes"] == account_tools.auth.SCOPES
+    assert captured["scopes"] == account_service.auth.SCOPES
     assert captured["account"]["home_account_id"] == "acc-1"
     assert captured["force_refresh"] is True
     assert result.expires_in == 3600
     assert result.account.account_id == "acc-1"
-    assert result.account.account_type == "work_school"
 
 
-def test_remove_account_clears_tokens_metadata_and_database_cache(
+def test_remove_account_clears_tokens_and_database_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Removing an account should clear every local cache layer."""
@@ -485,37 +302,27 @@ def test_remove_account_clears_tokens_metadata_and_database_cache(
             removed_accounts.append(account)
 
     removed_accounts: list[dict[str, str]] = []
-    metadata_writes: list[dict[str, dict[str, str]]] = []
-    metadata = {
-        "acc-1": {"account_type": "personal"},
-        "acc-2": {"account_type": "work_school"},
-    }
     database_counts = {
         "cache_entries": 2,
         "cache_tasks": 1,
         "cache_invalidation": 1,
     }
 
-    monkeypatch.setattr(account_tools.auth, "get_app", lambda: (FakeApp(), "common"))
-    monkeypatch.setattr(account_tools.auth, "_read_metadata", lambda: metadata.copy())
-    monkeypatch.setattr(account_tools.auth, "_write_metadata", metadata_writes.append)
+    monkeypatch.setattr(account_service.auth, "get_app", lambda: (FakeApp(), "common"))
     monkeypatch.setattr(
-        account_tools.auth,
+        account_service.auth,
         "_remove_account_database_cache",
         lambda account_id: database_counts,
     )
 
-    result = account_tools.auth.remove_account("ada@example.com")
+    result = account_service.auth.remove_account("ada@example.com")
 
     assert removed_accounts == [
         {"username": "ada@example.com", "home_account_id": "acc-1"}
     ]
-    assert metadata_writes == [{"acc-2": {"account_type": "work_school"}}]
     assert result.account.username == "ada@example.com"
     assert result.account.account_id == "acc-1"
-    assert result.account.account_type == "personal"
     assert result.token_cache_removed is True
-    assert result.metadata_removed is True
     assert result.database_cache_removed == database_counts
 
 
@@ -528,14 +335,14 @@ def test_authenticate_script_enables_interactive_auth(
     fake_auth = ModuleType("m365_mcp.auth")
 
     def fake_list_accounts() -> list[Any]:
-        assert os.environ[account_tools.auth.INTERACTIVE_AUTH_ENV_VAR] == "true"
+        assert os.environ[account_service.auth.INTERACTIVE_AUTH_ENV_VAR] == "true"
         return []
 
     fake_auth.list_accounts = fake_list_accounts  # type: ignore[attr-defined]
     fake_package = ModuleType("m365_mcp")
     fake_package.auth = fake_auth  # type: ignore[attr-defined]
 
-    monkeypatch.delenv(account_tools.auth.INTERACTIVE_AUTH_ENV_VAR, raising=False)
+    monkeypatch.delenv(account_service.auth.INTERACTIVE_AUTH_ENV_VAR, raising=False)
     monkeypatch.setenv("M365_MCP_CLIENT_ID", "client-id")
     monkeypatch.setitem(sys.modules, "m365_mcp", fake_package)
     monkeypatch.setitem(sys.modules, "m365_mcp.auth", fake_auth)
@@ -558,7 +365,6 @@ def test_authenticate_script_reauth_option(
     account = SimpleNamespace(
         username="ada@example.com",
         account_id="acc-1",
-        account_type="personal",
     )
     refresh_result = SimpleNamespace(account=account, expires_in=3600)
     calls: list[str] = []
@@ -601,12 +407,10 @@ def test_authenticate_script_remove_option(
     account = SimpleNamespace(
         username="ada@example.com",
         account_id="acc-1",
-        account_type="personal",
     )
     remove_result = SimpleNamespace(
         account=account,
         token_cache_removed=True,
-        metadata_removed=True,
         database_cache_removed={
             "cache_entries": 3,
             "cache_tasks": 1,
@@ -654,16 +458,14 @@ def _install_fake_auth(monkeypatch: pytest.MonkeyPatch, fake_auth: ModuleType) -
 
 def _expired_account_auth(signed_in: list[str]) -> ModuleType:
     """Fake auth module with one account whose refresh token has expired."""
-    account = SimpleNamespace(
-        username="ada@example.com", account_id="acc-1", account_type="personal"
-    )
+    account = SimpleNamespace(username="ada@example.com", account_id="acc-1")
     fake_auth = ModuleType("m365_mcp.auth")
-    fake_auth.SignInRequiredError = account_tools.auth.SignInRequiredError  # type: ignore[attr-defined]
+    fake_auth.SignInRequiredError = account_service.auth.SignInRequiredError  # type: ignore[attr-defined]
     fake_auth.list_accounts = lambda: [account]  # type: ignore[attr-defined]
 
     def fake_reauthenticate_account(account_id: str) -> Any:
         if not signed_in:
-            raise account_tools.auth.SignInRequiredError("grant is expired")
+            raise account_service.auth.SignInRequiredError("grant is expired")
         return SimpleNamespace(account=account, expires_in=3600)
 
     def fake_authenticate_new_account() -> Any:
@@ -758,39 +560,12 @@ def test_device_flow_records_issuing_tenant(monkeypatch: pytest.MonkeyPatch) -> 
 
     consumer_app = FakeApp(reject=False)
     monkeypatch.setattr(
-        account_tools.auth, "_build_app", lambda tenant_id: consumer_app
+        account_service.auth, "_build_app", lambda tenant_id: consumer_app
     )
 
-    app, flow = account_tools.auth._initiate_device_flow(FakeApp(True), "common")
+    app, flow = account_service.auth._initiate_device_flow(
+        cast(PublicClientApplication, FakeApp(True)), "common"
+    )
 
     assert app is consumer_app
-    assert flow[account_tools.auth.DEVICE_FLOW_TENANT_KEY] == "consumers"
-
-
-def test_account_complete_auth_uses_issuing_tenant(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The device code is redeemed with the authority that issued it."""
-    built: list[str] = []
-
-    class FakeApp:
-        def acquire_token_by_device_flow(
-            self, flow: dict[str, Any], **kwargs: Any
-        ) -> dict[str, str]:
-            return {"error": "authorization_pending", "error_description": "wait"}
-
-    def fake_build_app(tenant_id: str) -> FakeApp:
-        built.append(tenant_id)
-        return FakeApp()
-
-    def fail_get_app() -> None:
-        pytest.fail("get_app should not be used when the flow names its tenant")
-
-    monkeypatch.setattr(account_tools.auth, "_build_app", fake_build_app)
-    monkeypatch.setattr(account_tools.auth, "get_app", fail_get_app)
-
-    flow = {"device_code": "dc", account_tools.auth.DEVICE_FLOW_TENANT_KEY: "consumers"}
-    result = account_tools.account_complete_auth.fn(str(flow))
-
-    assert result["status"] == "pending"
-    assert built == ["consumers"]
+    assert flow[account_service.auth.DEVICE_FLOW_TENANT_KEY] == "consumers"

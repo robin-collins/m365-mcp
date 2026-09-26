@@ -6,10 +6,12 @@ the cache with frequently accessed data on server startup.
 
 import asyncio
 import logging
+from collections.abc import Callable
 from contextlib import suppress
-from datetime import datetime, timezone
-from typing import Any, Callable
+from datetime import UTC, datetime
+from typing import Any
 
+from . import resource_cache
 from .cache import CacheManager
 from .cache_config import CACHE_WARMING_OPERATIONS, CacheState
 
@@ -79,7 +81,7 @@ class CacheWarmer:
             return
 
         logger.info(f"Starting cache warming for {len(self.accounts)} account(s)")
-        self.warming_started_at = datetime.now(timezone.utc)
+        self.warming_started_at = datetime.now(UTC)
 
         # Build warming queue
         warming_queue = self._build_warming_queue()
@@ -114,6 +116,7 @@ class CacheWarmer:
                 queue_item = {
                     "account_id": account_id,
                     "operation": operation_config["operation"],
+                    "resource": operation_config["resource"],
                     "params": operation_config.get("params", {}),
                     "priority": operation_config.get("priority", 5),
                     "throttle_sec": operation_config.get("throttle_sec", 0.5),
@@ -135,7 +138,7 @@ class CacheWarmer:
 
         # Initialize started_at if not already set
         if not self.warming_started_at:
-            self.warming_started_at = datetime.now(timezone.utc)
+            self.warming_started_at = datetime.now(UTC)
 
         try:
             for item in queue:
@@ -144,43 +147,30 @@ class CacheWarmer:
                 params = item["params"]
                 throttle_sec = item["throttle_sec"]
 
+                resource = item["resource"]
                 try:
-                    # Check if already cached (skip if fresh)
-                    cached_result = self.cache_manager.get_cached(
-                        account_id, operation, params
-                    )
+                    # Skip when the entry the tools read is already fresh
+                    state = resource_cache.peek_state(account_id, resource, params)
+                    if state == CacheState.FRESH:
+                        logger.debug(
+                            f"Skipping {operation} for account {account_id[:8]}... "
+                            "(already cached)"
+                        )
+                        self.operations_skipped += 1
+                        self.operations_completed += 1
+                        continue
 
-                    if cached_result:
-                        data, state = cached_result
-                        if state == CacheState.FRESH:
-                            logger.debug(
-                                f"Skipping {operation} for account {account_id[:8]}... "
-                                "(already cached)"
-                            )
-                            self.operations_skipped += 1
-                            self.operations_completed += 1
-                            continue
-
-                    # Execute operation
+                    # Execute operation. The executor re-runs the tool with
+                    # refresh=true, which stores the result under the
+                    # resource key that later tool calls read.
                     logger.debug(
                         f"Warming cache: {operation} for account {account_id[:8]}..."
                     )
-                    result = await self._execute_warming_operation(
-                        account_id, operation, params
-                    )
-
-                    if result:
-                        # Store in cache
-                        self.cache_manager.set_cached(
-                            account_id, operation, params, result
-                        )
-                        logger.debug(
-                            f"Cached {operation} for account {account_id[:8]}..."
-                        )
+                    await self._execute_warming_operation(account_id, operation, params)
 
                     self.operations_completed += 1
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 - one failing warm-up must not stop the others
                     logger.warning(
                         f"Failed to warm cache for {operation} "
                         f"(account {account_id[:8]}...): {e}"
@@ -192,7 +182,7 @@ class CacheWarmer:
                 if throttle_sec > 0:
                     await asyncio.sleep(throttle_sec)
 
-            self.warming_completed_at = datetime.now(timezone.utc)
+            self.warming_completed_at = datetime.now(UTC)
             duration = (
                 self.warming_completed_at - self.warming_started_at
             ).total_seconds()
@@ -259,9 +249,7 @@ class CacheWarmer:
         elif self.is_warming:
             # Calculate current duration if still warming
             if self.warming_started_at:
-                duration = (
-                    datetime.now(timezone.utc) - self.warming_started_at
-                ).total_seconds()
+                duration = (datetime.now(UTC) - self.warming_started_at).total_seconds()
                 status["duration_seconds"] = round(duration, 2)
 
         # Calculate progress percentage

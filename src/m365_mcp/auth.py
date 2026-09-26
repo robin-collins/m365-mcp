@@ -1,7 +1,6 @@
-import pathlib as pl
-import json
 import logging
 import os
+import pathlib as pl
 import sys
 import threading
 from typing import Any, NamedTuple
@@ -14,7 +13,6 @@ import msal_extensions
 
 # Store token cache in user's home directory for proper permissions and portability
 CACHE_FILE = pl.Path.home() / ".m365_mcp_token_cache.json"
-METADATA_FILE = pl.Path.home() / ".m365_mcp_account_metadata.json"
 
 # MSAL treats OIDC scopes such as offline_access as reserved and adds them
 # internally, so callers must only provide Graph scopes.
@@ -24,6 +22,10 @@ INTERACTIVE_AUTH_ENV_VAR = "M365_MCP_INTERACTIVE_AUTH"
 # Flow key recording which tenant authority issued a device code, so the
 # code is redeemed against the same authority.
 DEVICE_FLOW_TENANT_KEY = "_m365_tenant_id"
+# Only personal Microsoft accounts are supported (concept D1). Every
+# personal account's home tenant is the fixed Microsoft-account tenant.
+DEFAULT_TENANT_ID = "consumers"
+PERSONAL_TENANT_ID = "9188040d-6c67-4c5b-b112-36a304b66dad"
 
 # MSAL error codes meaning the refresh token can no longer be used and the
 # user must sign in again (expired, revoked, or new consent required).
@@ -41,14 +43,21 @@ _APPS: dict[tuple[str, str], msal.PublicClientApplication] = {}
 _TOKEN_CACHE: msal_extensions.PersistedTokenCache | None = None
 
 
+class AuthenticationError(RuntimeError):
+    """Raised when a device-code or MSAL sign-in attempt fails."""
+
+
 class SignInRequiredError(RuntimeError):
     """Raised when an account has no usable refresh token and must sign in."""
+
+
+class PersonalAccountRequiredError(ValueError):
+    """Raised when a work or school account completes sign-in."""
 
 
 class Account(NamedTuple):
     username: str
     account_id: str
-    account_type: str  # "personal", "work_school", or "unknown"
 
 
 class ReauthenticationResult(NamedTuple):
@@ -59,7 +68,6 @@ class ReauthenticationResult(NamedTuple):
 class AccountRemovalResult(NamedTuple):
     account: Account
     token_cache_removed: bool
-    metadata_removed: bool
     database_cache_removed: dict[str, int]
 
 
@@ -130,8 +138,8 @@ def _build_app(tenant_id: str) -> msal.PublicClientApplication:
     performs a network authority discovery each time an app is constructed.
 
     Args:
-        tenant_id: Tenant segment for the authority (for example, "common",
-            "consumers", or a specific directory ID).
+        tenant_id: Tenant segment for the authority (for example,
+            "consumers").
 
     Returns:
         Initialized PublicClientApplication using the shared token cache.
@@ -152,29 +160,6 @@ def _build_app(tenant_id: str) -> msal.PublicClientApplication:
             )
             _APPS[key] = app
         return app
-
-
-def _read_metadata() -> dict[str, dict]:
-    """Read account metadata cache containing account types and other metadata.
-
-    Returns:
-        Dictionary mapping account_id to metadata dict with 'account_type' field.
-    """
-    try:
-        content = METADATA_FILE.read_text()
-        return json.loads(content)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
-def _write_metadata(metadata: dict[str, dict]) -> None:
-    """Write account metadata cache.
-
-    Args:
-        metadata: Dictionary mapping account_id to metadata dict.
-    """
-    METADATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-    METADATA_FILE.write_text(json.dumps(metadata, indent=2))
 
 
 def _initiate_device_flow(
@@ -198,7 +183,7 @@ def _initiate_device_flow(
         error_message = flow.get(
             "error_description", flow.get("error", "Unknown error")
         )
-        raise Exception(error_message)
+        raise AuthenticationError(error_message)
 
     try:
         return app, _start(app, tenant_id)
@@ -219,53 +204,12 @@ def _initiate_device_flow(
         return consumer_app, _start(consumer_app, "consumers")
 
 
-def _get_account_type(account_id: str, username: str) -> str:
-    """Get or detect account type for an account.
-
-    Args:
-        account_id: Account identifier.
-        username: User's principal name (email).
-
-    Returns:
-        Account type: "personal", "work_school", or "unknown"
-    """
-    # Check metadata cache first
-    metadata = _read_metadata()
-    if account_id in metadata and "account_type" in metadata[account_id]:
-        return metadata[account_id]["account_type"]
-
-    # Detect account type using domain checking
-    # Note: Microsoft Graph API access tokens are opaque and cannot be decoded
-    # We rely on username (UPN) domain matching for detection
-    try:
-        from m365_mcp.account_type import _check_upn_domain
-
-        account_type = _check_upn_domain(username)
-
-        if not account_type:
-            logger.warning(
-                f"Could not determine account type from username: {username}"
-            )
-            return "unknown"
-
-        # Store in metadata cache
-        if account_id not in metadata:
-            metadata[account_id] = {}
-        metadata[account_id]["account_type"] = account_type
-        _write_metadata(metadata)
-
-        logger.info(
-            f"Account type detected and cached for {account_id}: {account_type}"
-        )
-        return account_type
-
-    except Exception as e:
-        logger.warning(f"Failed to detect account type for {account_id}: {e}")
-        return "unknown"
-
-
 def get_app() -> tuple[msal.PublicClientApplication, str]:
-    tenant_id = os.getenv("M365_MCP_TENANT_ID", "common")
+    """Return the MSAL app for the configured authority and its tenant.
+
+    ``M365_MCP_TENANT_ID`` defaults to ``consumers`` (personal accounts).
+    """
+    tenant_id = os.getenv("M365_MCP_TENANT_ID", DEFAULT_TENANT_ID)
     app = _build_app(tenant_id)
     return app, tenant_id
 
@@ -332,21 +276,87 @@ def _find_cached_account(
     return accounts[0]
 
 
-def _account_from_msal(account: dict[str, str], detect_type: bool = True) -> Account:
+def _account_from_msal(account: dict[str, str]) -> Account:
     """Convert an MSAL account dictionary into this module's public Account."""
-    account_id = account["home_account_id"]
-    username = account["username"]
-    if detect_type:
-        account_type = _get_account_type(account_id, username)
-    else:
-        metadata = _read_metadata()
-        account_type = metadata.get(account_id, {}).get("account_type", "unknown")
+    return Account(username=account["username"], account_id=account["home_account_id"])
 
-    return Account(
-        username=username,
-        account_id=account_id,
-        account_type=account_type,
+
+def _home_tenant(result: dict[str, Any], account: dict[str, str]) -> str:
+    """Return the home tenant of a signed-in account.
+
+    The id_token ``tid`` claim is preferred; MSAL's ``home_account_id``
+    (``<object id>.<tenant id>``) is the fallback.
+    """
+    claims = result.get("id_token_claims")
+    if isinstance(claims, dict) and claims.get("tid"):
+        return str(claims["tid"]).lower()
+    return account.get("home_account_id", "").rpartition(".")[2].lower()
+
+
+def finish_device_flow_sign_in(
+    app: msal.PublicClientApplication, result: dict[str, Any]
+) -> Account:
+    """Return the account a successful device flow signed in.
+
+    Work and school accounts are removed from the token cache again and
+    rejected, because only personal Microsoft accounts are supported.
+
+    Args:
+        app: MSAL app that redeemed the device code.
+        result: Successful MSAL token result from the device flow.
+
+    Returns:
+        The signed-in personal account.
+
+    Raises:
+        PersonalAccountRequiredError: If a work or school account signed in.
+        RuntimeError: If MSAL cached no account for the sign-in.
+    """
+    accounts = app.get_accounts()
+    if not accounts:
+        raise RuntimeError("Authentication succeeded but no account was found")
+
+    claims = result.get("id_token_claims")
+    username = claims.get("preferred_username", "") if isinstance(claims, dict) else ""
+    account = next(
+        (a for a in accounts if a.get("username", "").lower() == username.lower()),
+        accounts[-1],
     )
+
+    if _home_tenant(result, account) != PERSONAL_TENANT_ID:
+        app.remove_account(account)
+        raise PersonalAccountRequiredError(
+            "Only personal Microsoft accounts are supported. "
+            f"{account.get('username', 'This account')} is a work or school "
+            "account; sign in with a personal account (for example "
+            "outlook.com, hotmail.com or live.com)."
+        )
+
+    return _account_from_msal(account)
+
+
+def poll_device_flow_once(
+    flow: dict[str, Any],
+) -> tuple[msal.PublicClientApplication, dict[str, Any]]:
+    """Poll a device flow once without blocking until it expires.
+
+    The code is redeemed with the authority that issued it (the flow may
+    have fallen back to the consumers authority).
+
+    Args:
+        flow: MSAL device flow from ``_initiate_device_flow``.
+
+    Returns:
+        The MSAL app used and its token result (an ``error`` of
+        ``authorization_pending`` means the user has not finished).
+    """
+    flow_tenant = flow.get(DEVICE_FLOW_TENANT_KEY)
+    if flow_tenant:
+        app = _build_app(flow_tenant)
+    else:
+        app, _tenant_id = get_app()
+    result = app.acquire_token_by_device_flow(flow, exit_condition=lambda _flow: True)
+    return app, result
 
 
 def get_token(account_id: str | None = None, force_refresh: bool = False) -> str:
@@ -422,41 +432,21 @@ def get_token(account_id: str | None = None, force_refresh: bool = False) -> str
         account = _select_account(accounts, result, account)
 
     if "error" in result:
-        raise Exception(
+        raise AuthenticationError(
             f"Auth failed: {result.get('error_description', result['error'])}"
         )
-
-    # Detect and cache account type for this account
-    if account:
-        _get_account_type(account["home_account_id"], account["username"])
 
     return result["access_token"]
 
 
 def list_accounts() -> list[Account]:
-    """List all authenticated Microsoft accounts with their types.
+    """List all authenticated Microsoft accounts.
 
     Returns:
-        List of Account objects with username, account_id, and account_type.
-        Account type will be "unknown" if not yet detected.
+        List of Account objects with username and account_id.
     """
     app, _ = get_app()
-    metadata = _read_metadata()
-
-    accounts = []
-    for a in app.get_accounts():
-        account_id = a["home_account_id"]
-        # Get account type from metadata cache, default to "unknown"
-        account_type = metadata.get(account_id, {}).get("account_type", "unknown")
-        accounts.append(
-            Account(
-                username=a["username"],
-                account_id=account_id,
-                account_type=account_type,
-            )
-        )
-
-    return accounts
+    return [_account_from_msal(a) for a in app.get_accounts()]
 
 
 def reauthenticate_account(account_id: str | None = None) -> ReauthenticationResult:
@@ -529,7 +519,7 @@ def _remove_account_database_cache(account_id: str) -> dict[str, int]:
 
 
 def remove_account(account_id: str) -> AccountRemovalResult:
-    """Remove an account and its cached token, metadata, and data cache.
+    """Remove an account, its cached token and its data cache.
 
     Args:
         account_id: Account ID or username to remove.
@@ -543,33 +533,30 @@ def remove_account(account_id: str) -> AccountRemovalResult:
     """
     app, _tenant_id = get_app()
     account = _find_cached_account(app, account_id)
-    removed_account = _account_from_msal(account, detect_type=False)
+    removed_account = _account_from_msal(account)
 
     # The persisted cache writes the removal to disk immediately.
     app.remove_account(account)
     token_cache_removed = True
-
-    metadata = _read_metadata()
-    metadata_removed = metadata.pop(removed_account.account_id, None) is not None
-    if metadata_removed:
-        _write_metadata(metadata)
 
     database_cache_removed = _remove_account_database_cache(removed_account.account_id)
 
     return AccountRemovalResult(
         account=removed_account,
         token_cache_removed=token_cache_removed,
-        metadata_removed=metadata_removed,
         database_cache_removed=database_cache_removed,
     )
 
 
-def authenticate_new_account() -> Account | None:
-    """Authenticate a new account interactively and detect its type.
+def authenticate_new_account() -> Account:
+    """Authenticate a new personal account interactively.
 
     Returns:
-        Account object with username, account_id, and detected account_type,
-        or None if authentication failed.
+        The signed-in account.
+
+    Raises:
+        PersonalAccountRequiredError: If a work or school account signed in.
+        AuthenticationError: If the device flow fails.
     """
     app, tenant_id = get_app()
 
@@ -582,43 +569,14 @@ def authenticate_new_account() -> Account | None:
     )
     print(f"1. Visit: {verification_url}", file=sys.stderr)
     print(f"2. Enter code: {flow['user_code']}", file=sys.stderr)
-    print("3. Sign in with your Microsoft account", file=sys.stderr)
+    print("3. Sign in with your personal Microsoft account", file=sys.stderr)
     print("\nWaiting for authentication...", file=sys.stderr)
 
     result = app.acquire_token_by_device_flow(flow)
 
     if "error" in result:
-        raise Exception(
+        raise AuthenticationError(
             f"Auth failed: {result.get('error_description', result['error'])}"
         )
 
-    # Get the newly added account
-    accounts = app.get_accounts()
-    if accounts:
-        # Find the account that matches the token we just got
-        matched_account = None
-        for account in accounts:
-            if (
-                account.get("username", "").lower()
-                == result.get("id_token_claims", {})
-                .get("preferred_username", "")
-                .lower()
-            ):
-                matched_account = account
-                break
-
-        # If exact match not found, use the last account
-        if not matched_account:
-            matched_account = accounts[-1]
-
-        # Detect and cache account type
-        account_id = matched_account["home_account_id"]
-        account_type = _get_account_type(account_id, matched_account["username"])
-
-        return Account(
-            username=matched_account["username"],
-            account_id=account_id,
-            account_type=account_type,
-        )
-
-    return None
+    return finish_device_flow_sign_in(app, result)

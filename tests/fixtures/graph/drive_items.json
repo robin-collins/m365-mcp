@@ -1,0 +1,44 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#Collection(driveItem)",
+  "value": [
+    {
+      "id": "01ABCDEF9999",
+      "name": "My Notes\u202egpj.exe",
+      "createdDateTime": "2026-09-01T00:00:00Z",
+      "lastModifiedDateTime": "2026-09-02T00:00:00Z",
+      "size": 2048,
+      "webUrl": "https://onedrive.live.com/?id=01ABCDEF9999",
+      "parentReference": {"driveId": "abc123", "driveType": "personal", "id": "01ABCDEF0000", "path": "/drive/root:/Documents/Tax%20%26%20Super"},
+      "file": {"mimeType": "application/octet-stream"}
+    },
+    {
+      "id": "01ABCDEF0100",
+      "name": "Photos",
+      "createdDateTime": "2025-01-01T00:00:00Z",
+      "lastModifiedDateTime": "2026-01-01T00:00:00Z",
+      "size": 104857600,
+      "webUrl": "https://onedrive.live.com/?id=01ABCDEF0100",
+      "parentReference": {"driveId": "abc123", "driveType": "personal", "id": "01ABCDEF0ROOT", "path": "/drive/root:"},
+      "folder": {"childCount": 42}
+    },
+    {
+      "id": "01ABCDEF0200",
+      "name": "found-by-search.docx",
+      "lastModifiedDateTime": "2026-05-05T05:05:05Z",
+      "size": 1000,
+      "parentReference": {"driveId": "abc123", "id": "01ABCDEF0100"},
+      "file": {"mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+      "searchResult": {}
+    },
+    {
+      "id": "01ABCDEF0ROOT",
+      "name": "root",
+      "createdDateTime": "2020-01-01T00:00:00Z",
+      "lastModifiedDateTime": "2026-09-26T00:00:00Z",
+      "size": 999999,
+      "webUrl": "https://onedrive.live.com/?cid=abc123",
+      "root": {},
+      "folder": {"childCount": 7}
+    }
+  ]
+}

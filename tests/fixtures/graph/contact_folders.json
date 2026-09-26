@@ -1,0 +1,14 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('me')/contactFolders",
+  "value": [
+    {
+      "id": "AAMkADAwATM3FAMILYCONTACTS",
+      "parentFolderId": "AAMkADAwATM3CONTACTS",
+      "displayName": "Family"
+    },
+    {
+      "id": "AAMkADAwATM3ORPHAN",
+      "displayName": "Trades"
+    }
+  ]
+}

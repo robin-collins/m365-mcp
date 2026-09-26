@@ -1,0 +1,59 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('me')/messages(attachments())/$entity",
+  "@odata.etag": "W/\"CQAAABYAAAAiIsqMbYjsT5e/T7KzowPTAAABvPc8\"",
+  "id": "AAMkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgBGAAADLuyhVHZrsEWy",
+  "createdDateTime": "2026-09-19T22:45:02Z",
+  "lastModifiedDateTime": "2026-09-19T22:45:04Z",
+  "changeKey": "CQAAABYAAAAiIsqMbYjsT5e/T7KzowPTAAABvPc8",
+  "receivedDateTime": "2026-09-19T22:45:00Z",
+  "sentDateTime": "2026-09-19T22:44:58Z",
+  "hasAttachments": true,
+  "internetMessageId": "<inv-2026-09@example.com>",
+  "subject": "Your September invoice",
+  "bodyPreview": "Your invoice for September is attached.",
+  "importance": "high",
+  "parentFolderId": "AQMkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgAuAAADLuyhVHZrsEWyINBOX",
+  "conversationId": "AAQkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgAQAJlc4vtRiUpMm0e",
+  "conversationIndex": "AQHbD0mdmVzi+1GJSkybR6H0vH0bOg==",
+  "isDeliveryReceiptRequested": false,
+  "isReadReceiptRequested": false,
+  "isRead": true,
+  "isDraft": false,
+  "webLink": "https://outlook.live.com/owa/?ItemID=AAMkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgBGAAADLuyhVHZrsEWy&exvsurl=1&viewmodel=ReadMessageItem",
+  "inferenceClassification": "focused",
+  "body": {
+    "contentType": "text",
+    "content": "Hi Robin,\r\n\r\nYour invoice for September is attached.\r\n\r\nThanks,\r\nBilling"
+  },
+  "sender": {"emailAddress": {"name": "Billing Team", "address": "billing@example.com"}},
+  "from": {"emailAddress": {"name": "Billing Team", "address": "billing@example.com"}},
+  "toRecipients": [{"emailAddress": {"name": "Robin Collins", "address": "robin@example.com"}}],
+  "ccRecipients": [],
+  "bccRecipients": [{"emailAddress": {"name": "Archive", "address": "archive@example.com"}}],
+  "replyTo": [],
+  "flag": {"flagStatus": "notFlagged"},
+  "categories": ["Bills"],
+  "attachments": [
+    {
+      "@odata.type": "#microsoft.graph.fileAttachment",
+      "@odata.mediaContentType": "application/pdf",
+      "id": "AAMkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgBGAAADLuyhVHZrsEWyAAABEgAQAB",
+      "lastModifiedDateTime": "2026-09-19T22:45:00Z",
+      "name": "invoice-2026-09.pdf",
+      "contentType": "application/pdf",
+      "size": 48213,
+      "isInline": false,
+      "contentId": null,
+      "contentLocation": null
+    },
+    {
+      "@odata.type": "#microsoft.graph.fileAttachment",
+      "id": "AAMkADAwATM3ZmYAZS1kMzE0LTg4NzctMDACLTAwCgBGAAADLuyhVHZrsEWyAAABEgAQAC",
+      "lastModifiedDateTime": "2026-09-19T22:45:00Z",
+      "name": "logo.png",
+      "contentType": null,
+      "size": 1024,
+      "isInline": true
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [master, "2026*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # Headless runners have no keyring: use a throwaway cache key.
+      M365_MCP_CACHE_KEY: ci-only-cache-key-not-a-secret-0000000000
+      M365_MCP_CLIENT_ID: ci-client-id
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: uv sync
+      - name: Unit tests, including tools/list conformance (U3.32)
+        run: uv run pytest tests/ -q
+      - name: Spec and tool reference are current
+        run: |
+          uv run python scripts/build_unified_tool_specs.py --check
+          uv run python scripts/generate_tools_doc.py --check
+      - name: Type check
+        run: uv run pyright
+      - name: Lint
+        run: uvx ruff check .

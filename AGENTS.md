@@ -10,7 +10,7 @@
 - 
 ## Project Structure & Module Organization
 - Primary package lives in `src/microsoft_mcp/` with `server.py` as the CLI entrypoint and `auth.py`, `graph.py`, and `tools.py` providing authentication, Graph client, and tool registry layers.
-- Integration and regression tests reside in `tests/` and the root-level `test_fix.py`; keep new suites parallel to the feature folders they exercise.
+- Tests reside in `tests/`; keep new suites parallel to the feature folders they exercise.
 - CLI utilities and verification helpers (`authenticate.py`, `verify_*.py`, `verify_rule_tools.py`) sit at the repository root for direct invocation.
 - Documentation and operational references are in `README.md`, `QUICKSTART.md`, `SECURITY.md`, and `FILETREE.md`; update the matching file when changing behavior or setup expectations.
 

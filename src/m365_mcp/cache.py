@@ -5,14 +5,15 @@ This module provides a comprehensive caching system with encryption, compression
 TTL management, and automatic cleanup for Microsoft 365 data.
 """
 
-import json
+import atexit
 import gzip
+import json
 import logging
-import time
 import threading
-from pathlib import Path
+import time
 from contextlib import contextmanager
-from typing import Any, Optional
+from pathlib import Path
+from typing import Any
 
 try:
     import sqlcipher3 as sqlite3
@@ -23,18 +24,18 @@ except ImportError:
 
     USING_SQLCIPHER = False
 
-from .encryption import EncryptionKeyManager
 from .cache_config import (
     CACHE_DB_PATH,
-    TTL_POLICIES,
     CACHE_LIMITS,
+    CACHE_WARMING_ENABLED,
     CONNECTION_POOL_SIZE,
     CONNECTION_TIMEOUT,
-    CacheState,
-    CACHE_WARMING_ENABLED,
     SQLCIPHER_SETTINGS,
+    TTL_POLICIES,
+    CacheState,
     generate_cache_key,
 )
+from .encryption import EncryptionKeyManager
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ class CacheManager:
 
     def __init__(
         self,
-        db_path: Optional[str] = None,
+        db_path: str | None = None,
         encryption_enabled: bool = True,
         max_connections: int = CONNECTION_POOL_SIZE,
     ):
@@ -231,8 +232,12 @@ class CacheManager:
         logger.info("Database schema initialized")
 
     def get_cached(
-        self, account_id: str, resource_type: str, params: dict[str, Any]
-    ) -> Optional[tuple[Any, CacheState]]:
+        self,
+        account_id: str,
+        resource_type: str,
+        params: dict[str, Any],
+        enqueue_refresh: bool = True,
+    ) -> tuple[Any, CacheState] | None:
         """
         Retrieve cached data with state detection.
 
@@ -240,6 +245,8 @@ class CacheManager:
             account_id: Microsoft account identifier.
             resource_type: Type of resource (e.g., 'email_list', 'folder_tree').
             params: Parameters used to generate cache key.
+            enqueue_refresh: Whether a stale hit queues a background refresh
+                task. Callers without a registered refresher pass False.
 
         Returns:
             Tuple of (data, state) if found, None if not found or expired.
@@ -305,7 +312,7 @@ class CacheManager:
                 (time.time(), cache_key),
             )
 
-            if state == CacheState.STALE:
+            if state == CacheState.STALE and enqueue_refresh:
                 self._enqueue_refresh_task(conn, account_id, resource_type, params)
 
             return (data, state)
@@ -401,7 +408,7 @@ class CacheManager:
                 self._cleanup_to_target()
 
     def invalidate_pattern(
-        self, pattern: str, account_id: Optional[str] = None, reason: str = "manual"
+        self, pattern: str, account_id: str | None = None, reason: str = "manual"
     ) -> int:
         """
         Invalidate cache entries matching pattern.
@@ -567,6 +574,21 @@ class CacheManager:
         """Serialize task parameters deterministically for duplicate checks."""
         return json.dumps(parameters, sort_keys=True, separators=(",", ":"))
 
+    def enqueue_refresh(
+        self, account_id: str, operation: str, parameters: dict[str, Any]
+    ) -> None:
+        """Queue a background refresh unless one is already pending.
+
+        A no-op unless cache warming (``M365_MCP_CACHE_WARMING``) is enabled.
+
+        Args:
+            account_id: Account whose entry should be refreshed.
+            operation: Operation name understood by the refresh executor.
+            parameters: Parameters the executor re-runs the operation with.
+        """
+        with self._db() as conn:
+            self._enqueue_refresh_task(conn, account_id, operation, parameters)
+
     def _enqueue_refresh_task(
         self,
         conn,
@@ -729,7 +751,7 @@ class CacheManager:
 
         return task_id
 
-    def get_task_status(self, task_id: str) -> Optional[dict[str, Any]]:
+    def get_task_status(self, task_id: str) -> dict[str, Any] | None:
         """
         Get status of a specific task.
 
@@ -777,8 +799,8 @@ class CacheManager:
 
     def list_tasks(
         self,
-        account_id: Optional[str] = None,
-        status: Optional[str] = None,
+        account_id: str | None = None,
+        status: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """
@@ -836,3 +858,31 @@ class CacheManager:
                 }
                 for row in cursor
             ]
+
+
+# Process-wide cache manager (lazy-initialised). It lives here, outside the
+# tool layer, so the Graph services can use it without importing FastMCP.
+_cache_manager: CacheManager | None = None
+_cache_manager_atexit_registered = False
+
+
+def _close_cache_manager() -> None:
+    """Close the singleton cache manager during process shutdown."""
+    if _cache_manager is not None:
+        _cache_manager.close()
+
+
+def get_cache_manager() -> CacheManager:
+    """Get or create the process-wide cache manager.
+
+    Returns:
+        The shared ``CacheManager`` instance.
+    """
+    global _cache_manager
+    global _cache_manager_atexit_registered
+    if _cache_manager is None:
+        _cache_manager = CacheManager()
+        if not _cache_manager_atexit_registered:
+            atexit.register(_close_cache_manager)
+            _cache_manager_atexit_registered = True
+    return _cache_manager

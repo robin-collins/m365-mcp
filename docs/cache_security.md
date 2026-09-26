@@ -207,10 +207,15 @@ explicit test or diagnostic construction with encryption disabled.
 
 **Implementation**:
 ```python
-# Delete all cache for account
-cache_invalidate("*", account_id="account-123")
+# Delete all cache for one account (admin tier)
+admin_cache_invalidate(scope="all", account_id="account-123")
+```
 
-# Or delete entire cache database
+```bash
+# Or remove the account, its tokens and its cached rows
+uv run authenticate.py --remove <account-id-or-email>
+
+# Or delete the entire cache database
 rm ~/.m365_mcp_cache.db
 ```
 

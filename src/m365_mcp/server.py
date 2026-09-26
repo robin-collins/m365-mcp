@@ -1,17 +1,25 @@
-import os
-import sys
-import signal
-import atexit
 import argparse
 import asyncio
-import inspect
+import atexit
 import logging
-from pathlib import Path
+import os
+import signal
+import sys
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 from typing import Any
+
 from dotenv import load_dotenv
-from importlib.metadata import version, PackageNotFoundError
+from starlette.middleware import Middleware as StarletteMiddleware
+
+from .http_security import (
+    OriginValidationMiddleware,
+    allowed_origins_from_env,
+    token_matches,
+)
+from .resource_cache import UNIFIED_REFRESH_PREFIX
 
 # Logger will be initialized after argument parsing
 logger: logging.Logger | None = None
@@ -87,14 +95,14 @@ class CacheRuntime:
 
     async def stop(self) -> None:
         """Stop background services and release cache handles."""
-        from .tools import cache_tools
+        from . import warming_status
 
         active_logger = logger or logging.getLogger(__name__)
         try:
             await self.warmer.stop()
         finally:
             await self.worker.stop()
-            cache_tools.set_warming_status_provider(None)
+            warming_status.set_warming_status_provider(None)
             self.cache_manager.close()
             active_logger.info("Cache runtime stopped")
 
@@ -114,31 +122,22 @@ async def _execute_cache_refresh_tool(
     operation: str,
     parameters: dict[str, Any],
 ) -> Any:
-    """Execute a cacheable tool operation for warming or stale refresh."""
-    from .tools import contact, email, file, folder
+    """Re-run a cached read for warming or stale refresh.
 
-    tool_functions = {
-        "contact_list": contact.contact_list.fn,
-        "email_list": email.email_list.fn,
-        "file_list": file.file_list.fn,
-        "folder_get_tree": folder.folder_get_tree.fn,
-    }
-    tool_function = tool_functions.get(operation)
-    if tool_function is None:
+    Args:
+        account_id: Account to run as.
+        operation: ``unified:<tool>``, for example ``unified:m365_list``.
+        parameters: The tool arguments (without ``account_id``).
+
+    Raises:
+        ValueError: If ``operation`` is not a unified refresh operation.
+    """
+    if not operation.startswith(UNIFIED_REFRESH_PREFIX):
         raise ValueError(f"Unsupported cache refresh operation: {operation}")
+    from .tools import registry
 
-    call_parameters = dict(parameters)
-    call_parameters["account_id"] = account_id
-    signature = inspect.signature(tool_function)
-    if "force_refresh" in signature.parameters:
-        call_parameters["force_refresh"] = True
-    if "use_cache" in signature.parameters:
-        call_parameters.setdefault("use_cache", True)
-
-    result = tool_function(**call_parameters)
-    if asyncio.iscoroutine(result):
-        return await result
-    return result
+    tool = operation[len(UNIFIED_REFRESH_PREFIX) :]
+    return await registry.run_refresh(tool, {**parameters, "account_id": account_id})
 
 
 async def _execute_background_refresh(
@@ -164,30 +163,30 @@ async def _execute_warming_operation(
 
 async def _start_cache_runtime() -> CacheRuntime | None:
     """Start cache warming/background refresh services when enabled."""
+    from . import cache, warming_status
     from .background_worker import BackgroundWorker
     from .cache_config import CACHE_WARMING_ENABLED
     from .cache_warming import CacheWarmer
-    from .tools import cache_tools
 
     active_logger = logger or logging.getLogger(__name__)
     if not CACHE_WARMING_ENABLED:
-        cache_tools.set_warming_status_provider(None)
+        warming_status.set_warming_status_provider(None)
         active_logger.info("Cache warming/background refresh disabled")
         return None
 
-    cache_manager = cache_tools.get_cache_manager()
+    cache_manager = cache.get_cache_manager()
     worker = BackgroundWorker(cache_manager, _execute_background_refresh)
     accounts = _get_cache_warming_accounts()
     warmer = CacheWarmer(cache_manager, _execute_warming_operation, accounts)
     worker.set_cache_warmer(warmer)
-    cache_tools.set_background_worker(worker)
+    warming_status.set_warming_status_provider(worker)
 
     try:
         await worker.start()
         await warmer.start_warming()
     except Exception:
         await worker.stop()
-        cache_tools.set_warming_status_provider(None)
+        warming_status.set_warming_status_provider(None)
         cache_manager.close()
         active_logger.exception("Failed to start cache runtime")
         raise
@@ -199,6 +198,25 @@ async def _start_cache_runtime() -> CacheRuntime | None:
     return CacheRuntime(cache_manager=cache_manager, worker=worker, warmer=warmer)
 
 
+def _start_reauth_monitor() -> "asyncio.Task[None] | None":
+    """Start the weekly re-auth schedule check when MCP_WEEKLY_RE_AUTH is set."""
+    from . import reauth_schedule
+
+    active_logger = logger or logging.getLogger(__name__)
+    try:
+        scheduler = reauth_schedule.Scheduler.from_environment()
+    except ValueError as exc:
+        active_logger.error(f"Weekly re-auth schedule not managed: {exc}")
+        return None
+    if scheduler.cfg.enabled is None:
+        return None
+    active_logger.info(
+        f"Weekly re-auth schedule check enabled ({reauth_schedule.ENV_ENABLE}="
+        f"{str(scheduler.cfg.enabled).lower()})"
+    )
+    return asyncio.create_task(reauth_schedule.monitor(scheduler))
+
+
 async def _run_mcp_with_cache_lifecycle(
     mcp,
     transport: str | None = None,
@@ -206,9 +224,12 @@ async def _run_mcp_with_cache_lifecycle(
 ) -> None:
     """Run FastMCP with cache runtime startup and shutdown."""
     runtime = await _start_cache_runtime()
+    reauth_monitor = _start_reauth_monitor()
     try:
         await mcp.run_async(transport=transport, **transport_kwargs)
     finally:
+        if reauth_monitor is not None:
+            reauth_monitor.cancel()
         if runtime is not None:
             await runtime.stop()
 
@@ -221,6 +242,8 @@ def main() -> None:
     env_file = args.env_file
     if env_file.exists():
         load_dotenv(dotenv_path=env_file)
+        # Lets the scheduled re-auth job find the same .env.
+        os.environ["M365_MCP_ENV_FILE"] = str(env_file.resolve())
         print(f"Loaded environment from: {env_file}", file=sys.stderr)
     else:
         print(f"Warning: Environment file not found: {env_file}", file=sys.stderr)
@@ -228,8 +251,8 @@ def main() -> None:
 
     # Import local modules after loading environment
     # (This allows auth.py to access environment variables)
-    from .tools import mcp
-    from .logging_config import setup_logging, get_logger
+    from .logging_config import get_logger, setup_logging
+    from .tools.registry import build_server
 
     # Initialize logger after loading environment
     global logger
@@ -262,6 +285,13 @@ def main() -> None:
         )
         sys.exit(1)
 
+    try:
+        mcp = build_server()
+    except ValueError as exc:
+        logger.error(f"Invalid M365_MCP_TOOLSETS: {exc}")
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
     # Configure transport based on environment variable
     transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
     logger.info(f"Transport mode: {transport}")
@@ -284,6 +314,23 @@ def main() -> None:
         # SECURITY: Check for auth configuration
         auth_method = os.getenv("MCP_AUTH_METHOD", "none").lower()
         logger.info(f"Authentication method: {auth_method}")
+
+        if auth_method == "oauth":
+            logger.error("MCP_AUTH_METHOD=oauth is not supported")
+            print(
+                "Error: MCP_AUTH_METHOD=oauth is not supported. "
+                "Use MCP_AUTH_METHOD=bearer with MCP_AUTH_TOKEN=<token>.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if auth_method not in ("none", "bearer"):
+            logger.error(f"Invalid MCP_AUTH_METHOD '{auth_method}'")
+            print(
+                f"Error: Invalid MCP_AUTH_METHOD '{auth_method}'. "
+                "Must be 'bearer' or 'none'.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
         if auth_method == "none":
             logger.warning("Running HTTP server without authentication!")
@@ -320,19 +367,6 @@ def main() -> None:
         try:
             if auth_method == "bearer":
                 _run_http_with_bearer_auth(mcp, host, port, path)
-            elif auth_method == "oauth":
-                logger.info("Using FastMCP built-in OAuth authentication")
-                # Use FastMCP built-in OAuth (requires FastMCP 2.0+)
-                asyncio.run(
-                    _run_mcp_with_cache_lifecycle(
-                        mcp,
-                        transport="http",
-                        host=host,
-                        port=port,
-                        path=path,
-                        auth="oauth",
-                    )
-                )
             else:
                 logger.warning("Running in insecure mode (no authentication)")
                 # No auth (insecure mode - requires MCP_ALLOW_INSECURE=true)
@@ -343,6 +377,12 @@ def main() -> None:
                         host=host,
                         port=port,
                         path=path,
+                        middleware=[
+                            StarletteMiddleware(
+                                OriginValidationMiddleware,
+                                allowed_origins=allowed_origins_from_env(),
+                            )
+                        ],
                     )
                 )
         except Exception as e:
@@ -368,7 +408,6 @@ def main() -> None:
 def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
     """Run Streamable HTTP server with bearer token authentication"""
     assert logger is not None
-    from fastapi import FastAPI, Request
     import uvicorn
 
     logger.info("Configuring bearer token authentication")
@@ -396,6 +435,31 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
             file=sys.stderr,
         )
 
+    app = build_bearer_app(mcp, auth_token, allowed_origins_from_env())
+
+    print("✅ Bearer token authentication enabled", file=sys.stderr)
+    print(f"✅ Health check available at http://{host}:{port}/health", file=sys.stderr)
+    print(f"✅ MCP endpoint: http://{host}:{port}{path}", file=sys.stderr)
+
+    # Run the server
+    uvicorn.run(app, host=host, port=port, log_level="info")
+
+
+def build_bearer_app(mcp, auth_token: str, allowed_origins: list[str]):
+    """Build the FastAPI app that serves MCP behind bearer-token auth.
+
+    Args:
+        mcp: The FastMCP server to mount.
+        auth_token: The token every request must present.
+        allowed_origins: Origin patterns accepted from browsers.
+
+    Returns:
+        The ASGI application (Origin check, then bearer check, then MCP).
+    """
+    from fastapi import FastAPI, Request
+
+    log = logger or logging.getLogger(__name__)
+
     # Get the Streamable HTTP app from FastMCP and mount it.
     # Note: http_app() already includes routes at the configured path (e.g., /mcp)
     # so we mount it at root "/" to avoid double-pathing (e.g., /mcp/mcp).
@@ -422,30 +486,28 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
         """Validate bearer token on all requests"""
-        assert logger is not None
-        from fastapi.responses import JSONResponse
         import time
+
+        from fastapi.responses import JSONResponse
 
         start_time = time.time()
         client_ip = request.client.host if request.client else "unknown"
 
         # Skip auth for health check endpoint
         if request.url.path == "/health":
-            logger.debug(f"Health check request from {client_ip}")
+            log.debug(f"Health check request from {client_ip}")
             return await call_next(request)
 
         # Skip auth for common browser requests (return 404 instead of 401)
         if request.url.path in ["/favicon.ico", "/robots.txt"]:
-            logger.debug(
-                f"Ignoring browser request: {request.url.path} from {client_ip}"
-            )
+            log.debug(f"Ignoring browser request: {request.url.path} from {client_ip}")
             return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
-        logger.debug(f"Request: {request.method} {request.url.path} from {client_ip}")
+        log.debug(f"Request: {request.method} {request.url.path} from {client_ip}")
 
         auth_header = request.headers.get("Authorization")
         if not auth_header:
-            logger.warning(
+            log.warning(
                 f"Unauthorized request (missing auth header) from {client_ip} to {request.url.path}"
             )
             return JSONResponse(
@@ -455,7 +517,7 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
             )
 
         if not auth_header.startswith("Bearer "):
-            logger.warning(
+            log.warning(
                 f"Unauthorized request (invalid auth format) from {client_ip} to {request.url.path}"
             )
             return JSONResponse(
@@ -467,8 +529,8 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
             )
 
         token = auth_header[7:]  # Remove "Bearer " prefix
-        if token != auth_token:
-            logger.warning(
+        if not token_matches(token, auth_token):
+            log.warning(
                 f"Unauthorized request (invalid token) from {client_ip} to {request.url.path}"
             )
             return JSONResponse(
@@ -481,7 +543,7 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
         response = await call_next(request)
         duration = (time.time() - start_time) * 1000  # Convert to ms
 
-        logger.info(
+        log.info(
             f"Request processed: {request.method} {request.url.path} from {client_ip} - "
             f"Status: {response.status_code} - Duration: {duration:.2f}ms"
         )
@@ -495,13 +557,9 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
 
     # Mount at root since http_app already has path-prefixed routes
     app.mount("/", http_app)
-
-    print("✅ Bearer token authentication enabled", file=sys.stderr)
-    print(f"✅ Health check available at http://{host}:{port}/health", file=sys.stderr)
-    print(f"✅ MCP endpoint: http://{host}:{port}{path}", file=sys.stderr)
-
-    # Run the server
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    # Added last, so it runs first: reject foreign origins before auth.
+    app.add_middleware(OriginValidationMiddleware, allowed_origins=allowed_origins)
+    return app
 
 
 if __name__ == "__main__":

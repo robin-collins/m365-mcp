@@ -1,0 +1,80 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('me')/mailFolders('inbox')/messageRules",
+  "value": [
+    {
+      "id": "AQAAAJ5dZqA=",
+      "displayName": "Bills to folder",
+      "sequence": 1,
+      "isEnabled": true,
+      "hasError": false,
+      "isReadOnly": false,
+      "conditions": {
+        "fromAddresses": [
+          {"emailAddress": {"name": "Billing Team", "address": "billing@example.com"}}
+        ]
+      },
+      "actions": {
+        "moveToFolder": "AQMkADAwATM3ZmYAZS1kBILL",
+        "stopProcessingRules": true
+      }
+    },
+    {
+      "id": "AQAAAJ5dZqB=",
+      "displayName": "Every predicate and action",
+      "sequence": 2,
+      "isEnabled": false,
+      "hasError": false,
+      "isReadOnly": false,
+      "conditions": {
+        "bodyContains": ["invoice"],
+        "bodyOrSubjectContains": ["receipt"],
+        "categories": ["Bills"],
+        "fromAddresses": [{"emailAddress": {"name": "Shop", "address": "shop@example.com"}}],
+        "hasAttachments": true,
+        "headerContains": ["X-Mailer: Shop"],
+        "importance": "high",
+        "isApprovalRequest": false,
+        "isAutomaticForward": false,
+        "isAutomaticReply": false,
+        "isEncrypted": false,
+        "isMeetingRequest": false,
+        "isMeetingResponse": false,
+        "isNonDeliveryReport": false,
+        "isPermissionControlled": false,
+        "isReadReceipt": false,
+        "isSigned": false,
+        "isVoicemail": false,
+        "messageActionFlag": "followUp",
+        "notSentToMe": false,
+        "recipientContains": ["robin"],
+        "senderContains": ["shop"],
+        "sensitivity": "personal",
+        "sentCcMe": false,
+        "sentOnlyToMe": true,
+        "sentToAddresses": [{"emailAddress": {"address": "robin@example.com"}}],
+        "sentToMe": true,
+        "sentToOrCcMe": true,
+        "subjectContains": ["order"],
+        "withinSizeRange": {"minimumSize": 10, "maximumSize": 2048}
+      },
+      "actions": {
+        "assignCategories": ["Shopping"],
+        "copyToFolder": "AQMkADAwATM3ZmYAZS1kCOPY",
+        "delete": false,
+        "forwardAsAttachmentTo": [{"emailAddress": {"name": "Archive", "address": "archive@example.com"}}],
+        "forwardTo": [{"emailAddress": {"name": "Partner", "address": "partner@example.com"}}],
+        "markAsRead": true,
+        "markImportance": "low",
+        "moveToFolder": "AQMkADAwATM3ZmYAZS1kSHOP",
+        "permanentDelete": false,
+        "redirectTo": [{"emailAddress": {"address": "redirect@example.com"}}],
+        "stopProcessingRules": false
+      },
+      "exceptions": {
+        "subjectContains": ["newsletter"],
+        "withinSizeRange": null,
+        "isVoicemail": null
+      }
+    }
+  ]
+}

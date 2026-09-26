@@ -1,0 +1,262 @@
+{
+  "spec_version": "1.0.0",
+  "name": "admin_reauth_schedule",
+  "title": "Weekly Re-auth Schedule",
+  "description": "Manage the weekly job that refreshes every signed-in account's token so it never expires from disuse (Windows Task Scheduler, or cron on Linux and macOS). action='status' reports the schedule, next and last run and any problems; 'install' creates or repairs the job; 'remove' deletes it. install and remove require confirm=true after the user approves. With MCP_WEEKLY_RE_AUTH=true the server also keeps the job installed by itself.",
+  "annotations": {
+    "title": "Weekly Re-auth Schedule",
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": true
+  },
+  "meta": {
+    "category": "admin",
+    "tier": "admin",
+    "safety_level": "moderate",
+    "confirm": "conditional",
+    "confirm_rule": "Required for action install and remove; not for status."
+  },
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "status",
+          "install",
+          "remove"
+        ],
+        "description": "status reports, install creates or repairs the job, remove deletes it."
+      },
+      "confirm": {
+        "type": "boolean",
+        "description": "Must be true to install or remove the scheduled job; set only after the user approves.",
+        "default": false
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "description": "Schedule state. configured is MCP_WEEKLY_RE_AUTH (null when unset); problems is empty when healthy; changed is true if install or remove modified the scheduler.",
+    "properties": {
+      "action": {
+        "enum": [
+          "status",
+          "install",
+          "remove"
+        ]
+      },
+      "changed": {
+        "type": "boolean"
+      },
+      "supported": {
+        "type": "boolean"
+      },
+      "backend": {
+        "enum": [
+          "windows_task_scheduler",
+          "cron",
+          "none"
+        ]
+      },
+      "task_name": {
+        "type": "string"
+      },
+      "configured": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "installed": {
+        "type": "boolean"
+      },
+      "schedule": {
+        "anyOf": [
+          {
+            "type": "object",
+            "description": "Day of the week and local HH:MM the job runs.",
+            "properties": {
+              "day": {
+                "type": "string"
+              },
+              "time": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "day",
+              "time"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "matches_expected": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "next_run": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "date-time"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "last_run": {
+        "anyOf": [
+          {
+            "type": "object",
+            "description": "Outcome of the most recent run.",
+            "properties": {
+              "finished_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "success": {
+                "type": "boolean"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "finished_at",
+              "success",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "healthy": {
+        "type": "boolean"
+      },
+      "problems": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "summary": {
+        "type": "string",
+        "description": "One-line human summary. The tool's text content is this result serialized as JSON (summary included), so a client that ignores structuredContent still sees every field."
+      }
+    },
+    "required": [
+      "action",
+      "changed",
+      "supported",
+      "backend",
+      "task_name",
+      "configured",
+      "installed",
+      "schedule",
+      "matches_expected",
+      "next_run",
+      "last_run",
+      "healthy",
+      "problems",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "graph_calls": [
+    "None (operating-system scheduler)."
+  ],
+  "validation_rules": [
+    {
+      "rule": "action='install' requires confirm=true.",
+      "error": "Invalid confirm 'False': installing the schedule requires confirm=True to proceed. Expected: Explicit user confirmation"
+    },
+    {
+      "rule": "action='remove' requires confirm=true.",
+      "error": "Invalid confirm 'False': removing the schedule requires confirm=True to proceed. Expected: Explicit user confirmation"
+    }
+  ],
+  "replaces": [],
+  "examples": [
+    {
+      "title": "Check the schedule",
+      "input": {
+        "action": "status"
+      },
+      "output": {
+        "action": "status",
+        "changed": false,
+        "supported": true,
+        "backend": "cron",
+        "task_name": "M365-MCP-ReAuth",
+        "configured": true,
+        "installed": true,
+        "schedule": {
+          "day": "Sunday",
+          "time": "09:00"
+        },
+        "matches_expected": true,
+        "next_run": "2026-09-27T09:00:00+09:30",
+        "last_run": {
+          "finished_at": "2026-09-20T09:00:04+09:30",
+          "success": true,
+          "message": "Refreshed 1 account."
+        },
+        "healthy": true,
+        "problems": [],
+        "summary": "Weekly re-auth is installed (Sunday 09:00) and healthy."
+      }
+    },
+    {
+      "title": "Install the job",
+      "input": {
+        "action": "install",
+        "confirm": true
+      },
+      "output": {
+        "action": "install",
+        "changed": true,
+        "supported": true,
+        "backend": "windows_task_scheduler",
+        "task_name": "M365-MCP-ReAuth",
+        "configured": true,
+        "installed": true,
+        "schedule": {
+          "day": "Sunday",
+          "time": "09:00"
+        },
+        "matches_expected": true,
+        "next_run": "2026-09-27T09:00:00+09:30",
+        "last_run": null,
+        "healthy": true,
+        "problems": [],
+        "summary": "Installed the weekly re-auth job (Sunday 09:00)."
+      }
+    }
+  ]
+}

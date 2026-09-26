@@ -4,15 +4,18 @@ This module tests the CacheWarmer class and cache warming operations.
 """
 
 import asyncio
-import pytest
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from src.m365_mcp.cache import CacheManager
-from src.m365_mcp.cache_warming import CacheWarmer, get_inactive_warming_status
-from src.m365_mcp.cache_config import CacheState
+import pytest
+
+from m365_mcp import cache as cache_module
+from m365_mcp import resource_cache
+from m365_mcp.cache import CacheManager
+from m365_mcp.cache_config import CACHE_WARMING_OPERATIONS, CacheState
+from m365_mcp.cache_warming import CacheWarmer, get_inactive_warming_status
 
 
 @pytest.fixture
@@ -28,9 +31,10 @@ def temp_db():
 
 
 @pytest.fixture
-def cache_manager(temp_db):
-    """Create CacheManager instance for testing."""
+def cache_manager(temp_db, monkeypatch):
+    """Create the process-wide CacheManager for testing."""
     manager = CacheManager(db_path=temp_db, encryption_enabled=False)
+    monkeypatch.setattr(cache_module, "_cache_manager", manager)
     yield manager
     manager.close()
 
@@ -46,50 +50,26 @@ def mock_accounts():
 
 @pytest.fixture
 def mock_tool_executor():
-    """Create mock tool executor function."""
+    """Mock executor: logs calls and stores through the resource cache.
+
+    The real executor re-runs a tool with ``refresh=true``, which stores the
+    result under the resource key; this stand-in does the same.
+    """
     call_log = []
 
     def executor(
         account_id: str, operation: str, params: dict[str, Any]
     ) -> dict[str, Any]:
-        """Mock tool executor that logs calls and returns test data."""
         call_log.append(
-            {
-                "account_id": account_id,
-                "operation": operation,
-                "params": params,
-            }
+            {"account_id": account_id, "operation": operation, "params": params}
         )
+        result = {"resource": params["resource"], "items": [{"id": "item-1"}]}
+        resource_cache.get_or_fetch(
+            account_id, params["resource"], params, lambda: result, refresh=True
+        )
+        return result
 
-        # Return operation-specific test data
-        if operation == "folder_get_tree":
-            return {
-                "folder_id": params.get("folder_id", "root"),
-                "children": [
-                    {"id": "folder-1", "name": "Documents"},
-                    {"id": "folder-2", "name": "Pictures"},
-                ],
-            }
-        elif operation == "email_list":
-            return {
-                "emails": [
-                    {"id": "email-1", "subject": "Test 1"},
-                    {"id": "email-2", "subject": "Test 2"},
-                ]
-            }
-        elif operation == "contact_list":
-            return {
-                "contacts": [
-                    {"id": "contact-1", "name": "Alice"},
-                    {"id": "contact-2", "name": "Bob"},
-                ]
-            }
-        else:
-            return {"result": "success"}
-
-    # Attach call log to function for inspection
     executor.call_log = call_log
-
     return executor
 
 
@@ -145,12 +125,13 @@ class TestBuildWarmingQueue:
 
         queue = warmer._build_warming_queue()
 
-        # Should have 3 operations per account (from CACHE_WARMING_OPERATIONS)
-        assert len(queue) == 3
+        # One item per configured operation for the account
+        assert len(queue) == len(CACHE_WARMING_OPERATIONS)
 
-        # Check first operation
+        # Check first operation: the mail folder tree, highest priority
         assert queue[0]["account_id"] == "account-1"
-        assert queue[0]["operation"] == "folder_get_tree"
+        assert queue[0]["operation"] == "unified:m365_list"
+        assert queue[0]["resource"] == "email_folder"
         assert queue[0]["priority"] == 1
         assert queue[0]["throttle_sec"] == 5
 
@@ -162,8 +143,8 @@ class TestBuildWarmingQueue:
 
         queue = warmer._build_warming_queue()
 
-        # Should have 3 operations × 2 accounts = 6 total
-        assert len(queue) == 6
+        # Every operation for both accounts
+        assert len(queue) == 2 * len(CACHE_WARMING_OPERATIONS)
 
         # Verify both accounts are represented
         account_ids = {item["account_id"] for item in queue}
@@ -205,14 +186,11 @@ class TestWarmingLoop:
         queue = warmer._build_warming_queue()
         await warmer._warming_loop(queue)
 
-        # Should have executed 3 operations
-        assert len(mock_tool_executor.call_log) == 3
+        # Every configured operation ran once
+        assert len(mock_tool_executor.call_log) == len(CACHE_WARMING_OPERATIONS)
 
-        # Verify all operations were called
-        operations = [call["operation"] for call in mock_tool_executor.call_log]
-        assert "folder_get_tree" in operations
-        assert "email_list" in operations
-        assert "contact_list" in operations
+        resources = {call["params"]["resource"] for call in mock_tool_executor.call_log}
+        assert resources == {"email_folder", "email", "event", "contact"}
 
     async def test_warming_loop_caches_results(
         self, cache_manager, mock_accounts, mock_tool_executor
@@ -224,15 +202,12 @@ class TestWarmingLoop:
         queue = warmer._build_warming_queue()
         await warmer._warming_loop(queue)
 
-        # Check that results are cached
-        cached = cache_manager.get_cached(
-            "account-1", "folder_get_tree", {"folder_id": "root", "max_depth": 10}
-        )
-
-        assert cached is not None
-        data, state = cached
-        assert "folder_id" in data
-        assert state in [CacheState.FRESH, CacheState.STALE]
+        # Every warmed resource is now a fresh cache entry for later calls
+        for operation in CACHE_WARMING_OPERATIONS:
+            state = resource_cache.peek_state(
+                "account-1", operation["resource"], operation["params"]
+            )
+            assert state == CacheState.FRESH
 
     async def test_warming_loop_skips_fresh_cache(
         self, cache_manager, mock_accounts, mock_tool_executor
@@ -241,27 +216,30 @@ class TestWarmingLoop:
         single_account = [mock_accounts[0]]
         warmer = CacheWarmer(cache_manager, mock_tool_executor, single_account)
 
-        # Pre-populate cache with fresh data
-        cache_manager.set_cached(
+        # Pre-populate the first operation's entry with fresh data
+        first = CACHE_WARMING_OPERATIONS[0]
+        resource_cache.get_or_fetch(
             "account-1",
-            "folder_get_tree",
-            {"folder_id": "root", "max_depth": 10},
-            {"pre_cached": True},
+            first["resource"],
+            first["params"],
+            lambda: {"pre_cached": True},
         )
 
         queue = warmer._build_warming_queue()
         await warmer._warming_loop(queue)
 
-        # Should have skipped folder_get_tree (already cached)
-        assert warmer.operations_skipped >= 1
+        # Should have skipped it (already fresh) and warmed the others
+        assert warmer.operations_skipped == 1
+        assert len(mock_tool_executor.call_log) == len(CACHE_WARMING_OPERATIONS) - 1
 
-        # Check that the cached data wasn't overwritten
+        # The cached data was not overwritten
         cached = cache_manager.get_cached(
-            "account-1", "folder_get_tree", {"folder_id": "root", "max_depth": 10}
+            "account-1",
+            first["resource"],
+            resource_cache._key_parameters(first["resource"], first["params"]),
         )
         assert cached is not None
-        data, state = cached
-        assert data["pre_cached"] is True
+        assert cached[0]["pre_cached"] is True
 
     async def test_warming_loop_handles_failures_gracefully(
         self, cache_manager, mock_accounts
@@ -270,7 +248,7 @@ class TestWarmingLoop:
 
         def failing_executor(account_id: str, operation: str, params: dict[str, Any]):
             """Executor that always fails."""
-            raise Exception("Simulated failure")
+            raise RuntimeError("Simulated failure")
 
         single_account = [mock_accounts[0]]
         warmer = CacheWarmer(cache_manager, failing_executor, single_account)
@@ -387,7 +365,7 @@ class TestWarmingStatus:
 
         # Execute warming synchronously for this test
         queue = warmer._build_warming_queue()
-        warmer.warming_started_at = datetime.now(timezone.utc)
+        warmer.warming_started_at = datetime.now(UTC)
         warmer.operations_total = len(queue)
         await warmer._warming_loop(queue)
 

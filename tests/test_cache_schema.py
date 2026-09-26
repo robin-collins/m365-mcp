@@ -10,18 +10,19 @@ This module tests:
 import os
 import tempfile
 from pathlib import Path
+
 import pytest
 import sqlcipher3.dbapi2 as sqlcipher
 
-from src.m365_mcp.encryption import EncryptionKeyManager
 from src.m365_mcp.cache_config import (
-    generate_cache_key,
-    parse_cache_key,
-    get_ttl_policy,
-    TTL_POLICIES,
     CACHE_LIMITS,
+    TTL_POLICIES,
     CacheState,
+    generate_cache_key,
+    get_ttl_policy,
+    parse_cache_key,
 )
+from src.m365_mcp.encryption import EncryptionKeyManager
 
 
 class TestDatabaseCreation:

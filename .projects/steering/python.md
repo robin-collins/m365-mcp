@@ -4,7 +4,7 @@
 
 ### PEP 8 Compliance
 - **Indentation**: 4 spaces (no tabs)
-- **Line length**: Maximum 79 characters for code, 72 for docstrings
+- **Line length**: 88 characters, as enforced by `ruff format` (its default)
 - **Blank lines**: 2 blank lines between top-level function/class definitions
 - **Encoding**: UTF-8 for all source files
 
@@ -17,7 +17,10 @@
 ### Project Structure
 - **Layout**: Use src/ layout (src/m365_mcp/)
 - **Configuration**: pyproject.toml as single source of truth
-- **Dependencies**: Pinned exact versions (package==X.Y.Z)
+- **Dependencies**: Minimum versions (`package>=X.Y.Z`) in pyproject.toml;
+  `uv.lock` pins the exact resolved set for reproducible installs. Pin an
+  exact version (`==`) only where a newer release is known to break us
+  (for example `sqlcipher3-wheels`)
 - **Imports**: Group standard library, third-party, then local imports
 
 ## Documentation Standards (PEP 257)
@@ -82,7 +85,7 @@ class GraphAPIError(MicrosoftMCPServerError):
 from typing import Any, Optional, Union
 from collections.abc import Iterator
 
-def email_list(
+def message_list(
     account_id: str,
     folder_id: Optional[str] = None,
     limit: int = 10,
@@ -105,21 +108,21 @@ class EmailProcessor:
 3. **Refactor Stage**: Improve structure while maintaining test compliance
 
 ### Code Quality Tools
-- **Formatting**: Black for uncompromising code formatting
-- **Import sorting**: isort for PEP 8 compliant imports
-- **Linting**: Ruff for style violations and error detection
-- **Type checking**: mypy for static type analysis
+- **Formatting**: `ruff format` (Black-compatible style)
+- **Import sorting**: `ruff check` rule set `I` (isort-compatible)
+- **Linting**: `ruff check` for style violations and error detection
+- **Type checking**: pyright (`pyrightconfig.json`, basic mode)
 
 ### Pre-commit Hooks
 All code must pass automated quality checks before commit:
 ```bash
-# Format code
-black src/ tests/
-isort src/ tests/
+# Format code and sort imports
+uvx ruff format .
+uvx ruff check --fix .
 
 # Lint and check types
-ruff check src/ tests/
-mypy src/
+uvx ruff check .
+uv run pyright
 ```
 
 ## Async and Concurrency Patterns

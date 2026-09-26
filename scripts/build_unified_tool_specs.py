@@ -14,8 +14,11 @@ writes, under ``docs/unified-tools/``:
 - ``SCHEMA_REFERENCE.md``: the human-readable reference generated from the
   above.
 
+``tools/<tool>.json`` and ``index.json`` are also written, byte for byte, to
+``src/m365_mcp/tool_specs/`` so the server can load them as package data.
+
 Edit this file, never the generated output. ``--check`` exits with status 1
-when the generated files are stale (used by
+when any generated file (docs or package copy) is stale (used by
 ``tests/test_unified_tool_specs.py``).
 
 Usage:
@@ -33,6 +36,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "docs" / "unified-tools"
+PKG_DIR = ROOT / "src" / "m365_mcp" / "tool_specs"
 SPEC_VERSION = "1.0.0"
 SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema"
 
@@ -544,7 +548,11 @@ DEFS["operation"] = out_obj(
 
 SUMMARY = {
     "type": "string",
-    "description": "One-line human summary; also returned as the text content.",
+    "description": (
+        "One-line human summary. The tool's text content is this result "
+        "serialized as JSON (summary included), so a client that ignores "
+        "structuredContent still sees every field."
+    ),
 }
 NEXT_CURSOR = nullable(OUT_STR)
 
@@ -3487,11 +3495,131 @@ tool(
                 "version": "1.0.0",
                 "protocol_versions": ["2025-06-18"],
                 "toolsets_enabled": ["core", "extended", "admin"],
-                "tool_count": 29,
+                "tool_count": 30,
                 "cache_enabled": True,
-                "summary": "m365-mcp 1.0.0, 29 tools.",
+                "summary": "m365-mcp 1.0.0, 30 tools.",
             },
         }
+    ],
+)
+
+tool(
+    name="admin_reauth_schedule",
+    title="Weekly Re-auth Schedule",
+    tier="admin",
+    category="admin",
+    safety="moderate",
+    confirm_mode="conditional",
+    confirm_rule="Required for action install and remove; not for status.",
+    read_only=False,
+    destructive=False,
+    idempotent=True,
+    description=(
+        "Manage the weekly job that refreshes every signed-in account's token "
+        "so it never expires from disuse (Windows Task Scheduler, or cron on "
+        "Linux and macOS). action='status' reports the schedule, next and last "
+        "run and any problems; 'install' creates or repairs the job; 'remove' "
+        "deletes it. install and remove require confirm=true after the user "
+        "approves. With MCP_WEEKLY_RE_AUTH=true the server also keeps the job "
+        "installed by itself."
+    ),
+    input_schema=obj(
+        {
+            "action": enum(
+                ["status", "install", "remove"],
+                "status reports, install creates or repairs the job, remove deletes it.",
+            ),
+            "confirm": confirm("install or remove the scheduled job"),
+        },
+        ["action"],
+    ),
+    output_schema=output(
+        {
+            "action": {"enum": ["status", "install", "remove"]},
+            "changed": OUT_BOOL,
+            "supported": OUT_BOOL,
+            "backend": {"enum": ["windows_task_scheduler", "cron", "none"]},
+            "task_name": OUT_STR,
+            "configured": nullable(OUT_BOOL),
+            "installed": OUT_BOOL,
+            "schedule": nullable(
+                out_obj(
+                    {"day": OUT_STR, "time": OUT_STR},
+                    "Day of the week and local HH:MM the job runs.",
+                )
+            ),
+            "matches_expected": nullable(OUT_BOOL),
+            "next_run": nullable(OUT_DT),
+            "last_run": nullable(
+                out_obj(
+                    {"finished_at": OUT_DT, "success": OUT_BOOL, "message": OUT_STR},
+                    "Outcome of the most recent run.",
+                )
+            ),
+            "healthy": OUT_BOOL,
+            "problems": out_array(OUT_STR),
+        },
+        "Schedule state. configured is MCP_WEEKLY_RE_AUTH (null when unset); "
+        "problems is empty when healthy; changed is true if install or remove "
+        "modified the scheduler.",
+    ),
+    graph=["None (operating-system scheduler)."],
+    rules=[
+        (
+            "action='install' requires confirm=true.",
+            "Invalid confirm 'False': installing the schedule requires confirm=True to proceed. Expected: Explicit user confirmation",
+        ),
+        (
+            "action='remove' requires confirm=true.",
+            "Invalid confirm 'False': removing the schedule requires confirm=True to proceed. Expected: Explicit user confirmation",
+        ),
+    ],
+    replaces=[],
+    examples=[
+        {
+            "title": "Check the schedule",
+            "input": {"action": "status"},
+            "output": {
+                "action": "status",
+                "changed": False,
+                "supported": True,
+                "backend": "cron",
+                "task_name": "M365-MCP-ReAuth",
+                "configured": True,
+                "installed": True,
+                "schedule": {"day": "Sunday", "time": "09:00"},
+                "matches_expected": True,
+                "next_run": "2026-09-27T09:00:00+09:30",
+                "last_run": {
+                    "finished_at": "2026-09-20T09:00:04+09:30",
+                    "success": True,
+                    "message": "Refreshed 1 account.",
+                },
+                "healthy": True,
+                "problems": [],
+                "summary": "Weekly re-auth is installed (Sunday 09:00) and healthy.",
+            },
+        },
+        {
+            "title": "Install the job",
+            "input": {"action": "install", "confirm": True},
+            "output": {
+                "action": "install",
+                "changed": True,
+                "supported": True,
+                "backend": "windows_task_scheduler",
+                "task_name": "M365-MCP-ReAuth",
+                "configured": True,
+                "installed": True,
+                "schedule": {"day": "Sunday", "time": "09:00"},
+                "matches_expected": True,
+                "next_run": "2026-09-27T09:00:00+09:30",
+                "last_run": None,
+                "healthy": True,
+                "problems": [],
+                "summary": "Installed the weekly re-auth job (Sunday 09:00).",
+            },
+        },
     ],
 )
 
@@ -3504,7 +3632,7 @@ TOOL_ORDER = [
     "drive_share", "email_folder_mark_all_read", "email_folder_empty",
     "email_rule_manage", "calendar_forward", "account_list", "account_auth_begin",
     "account_auth_complete", "admin_cache_get", "admin_cache_invalidate",
-    "admin_server_info",
+    "admin_server_info", "admin_reauth_schedule",
 ]  # fmt: skip
 
 # ---------------------------------------------------------------------------
@@ -3819,7 +3947,7 @@ def render_reference(tools: list[dict[str, Any]]) -> str:
         md.append(
             f"| {i} | [`{t['name']}`](#{t['name']}) | {t['meta']['tier']} | "
             f"{t['meta']['safety_level']} | {t['meta']['confirm']} | "
-            + ", ".join(f"`{r}`" for r in t["replaces"])
+            + (", ".join(f"`{r}`" for r in t["replaces"]) or "new in 1.0.0")
             + " |"
         )
     md.append("")
@@ -3954,6 +4082,10 @@ def build() -> dict[Path, str]:
         }
     )
     files[OUT_DIR / "SCHEMA_REFERENCE.md"] = render_reference(tools) + "\n"
+    # Package-data copy loaded by the server (m365_mcp.tool_specs).
+    for path, content in list(files.items()):
+        if path.parent.name == "tools" or path.name == "index.json":
+            files[PKG_DIR / path.relative_to(OUT_DIR)] = content
     return files
 
 
@@ -3971,11 +4103,12 @@ def main() -> int:
         if not path.exists() or path.read_text(encoding="utf-8") != content
     ]
     expected = set(files)
-    extra = (
-        [p for p in (OUT_DIR / "tools").glob("*.json") if p not in expected]
-        if (OUT_DIR / "tools").exists()
-        else []
-    )
+    extra = [
+        p
+        for tools_dir in (OUT_DIR / "tools", PKG_DIR / "tools")
+        for p in sorted(tools_dir.glob("*.json"))
+        if p not in expected
+    ]
 
     if args.check:
         if stale or extra:
@@ -3991,7 +4124,8 @@ def main() -> int:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
     print(
-        f"Wrote {len(files)} files for {len(TOOLS)} tools to {OUT_DIR.relative_to(ROOT)}."
+        f"Wrote {len(files)} files for {len(TOOLS)} tools to "
+        f"{OUT_DIR.relative_to(ROOT)} and {PKG_DIR.relative_to(ROOT)}."
     )
     return 0
 

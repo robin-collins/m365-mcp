@@ -1,3 +1,5 @@
+> **Historical (v0.2.3).** This document was written against the removed 85-tool server. Tool names in it (`email_list`, `emailfolders_*`, `file_list`, `cache_get_stats`, `account_authenticate` and so on) no longer exist; see [`legacy_mapping.json`](unified-tools/legacy_mapping.json) for their replacements and [`../MCP_SERVER_TOOLS.md`](../MCP_SERVER_TOOLS.md) for the current tools.
+
 ## 📜 Write Tool Audit Failure Report
 
 This report summarizes API failures and errors encountered during the execution of the write-tool audit plan. The failures are categorized by the original test group.

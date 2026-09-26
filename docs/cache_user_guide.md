@@ -1,13 +1,13 @@
 # M365 MCP Cache User Guide
 
-**Version**: 1.0
-**Last Updated**: 2026-05-30
+**Version**: 1.0.0
+**Last Updated**: 2026-09-26
 
 ## Table of Contents
 
 1. [Overview](#overview)
 2. [Getting Started](#getting-started)
-3. [Using Cache Parameters](#using-cache-parameters)
+3. [The refresh Parameter](#the-refresh-parameter)
 4. [Viewing Cache Statistics](#viewing-cache-statistics)
 5. [Manual Cache Invalidation](#manual-cache-invalidation)
 6. [Cache Warming](#cache-warming)
@@ -18,20 +18,31 @@
 
 ## Overview
 
-The M365 MCP cache system dramatically improves performance by reducing redundant calls to Microsoft Graph API. The cache is:
+The M365 MCP cache reduces redundant calls to Microsoft Graph. The cache is:
 
-- **Automatic**: Works out-of-the-box with no configuration required
-- **Encrypted**: All data encrypted at rest with AES-256
-- **Intelligent**: Three-state lifecycle (Fresh/Stale/Expired) ensures data freshness
-- **Fast**: 300x performance improvement for common operations
+- **Automatic**: works out of the box with no configuration
+- **Encrypted**: all data is encrypted at rest with AES-256 (SQLCipher)
+- **Resource-based**: entries are keyed by account and resource, not by tool
+- **Invisible to the model**: results never contain cache metadata; the only
+  model-facing control is the `refresh` parameter
+- **Intelligent**: a three-state lifecycle (Fresh, Stale, Expired) keeps data
+  reasonably current
 
-### Performance Benefits
+Repeated reads of the same mailbox folder, calendar window, contact list or
+OneDrive folder are served from the local cache instead of Graph.
 
-| Operation | Without Cache | With Cache | Improvement |
-|-----------|---------------|------------|-------------|
-| `folder_get_tree` | 30 seconds | <100ms | **300x faster** |
-| `email_list` | 2-5 seconds | <50ms | **40-100x faster** |
-| `file_list` | 1-3 seconds | <30ms | **30-100x faster** |
+### How entries are keyed
+
+A cache key combines:
+
+1. the resolved account ID (so accounts never share entries)
+2. the resource (`email`, `email_folder`, `email_rule`, `event`, `calendar`,
+   `contact`, `contact_folder`, `drive_item`)
+3. a hash of the normalised request parameters
+4. the cursor, for later pages
+
+`refresh` and `account_id` spelling (ID or email address) do not change the
+key, so the same request always hits the same entry.
 
 ---
 
@@ -39,279 +50,249 @@ The M365 MCP cache system dramatically improves performance by reducing redundan
 
 ### Automatic Caching
 
-The cache works automatically for these operations:
-
-- `folder_get_tree` - OneDrive folder navigation
-- `email_list` - Email inbox/folder listings
-- `file_list` - File and folder listings
-
-**No configuration needed!** Just call these tools normally:
+`m365_list` and `m365_get` read through the cache. Other tools (search,
+content, and every write) always go to Graph. No configuration is needed:
 
 ```python
-# Cache is used automatically
-result = folder_get_tree(account_id, path="/Documents")
+# Served from the cache when the entry is fresh
+m365_list(resource="drive_item", path="/Documents")
+m365_list(resource="email", container_id="inbox", limit=20)
+m365_get(resource="event", id=event_id)
 ```
+
+### Freshness by resource
+
+Each resource has its own lifecycle:
+
+| Resource | Fresh (served immediately) | Stale (still served) | Expired (refetched) |
+|---|---|---|---|
+| `email` | 0-2 min | 2-10 min | after 10 min |
+| `email_folder` | 0-5 min | 5-30 min | after 30 min |
+| `email_rule` | 0-15 min | 15-60 min | after 1 hour |
+| `event` | 0-5 min | 5-30 min | after 30 min |
+| `calendar` | 0-30 min | 30 min-2 h | after 2 hours |
+| `contact` | 0-20 min | 20 min-2 h | after 2 hours |
+| `contact_folder` | 0-30 min | 30 min-4 h | after 4 hours |
+| `drive_item` | 0-10 min | 10-60 min | after 1 hour |
+
+Stale entries for the unified tools are simply served until they expire; no
+background refresh is queued for them.
 
 ### First Use
 
 On first server startup:
 
-1. Cache is empty (no cached data)
+1. The cache is empty
 2. Startup warming is disabled by default
-3. First requests may be slower (cache miss)
-4. Subsequent requests are fast (cache hit)
-
-Set `M365_MCP_CACHE_WARMING=true` before starting the server to enable the
-background worker, startup warming, and stale-cache refresh queue.
-
-**Expected Timeline**:
-- Server startup: Instant
-- Cache warming: Inactive by default, active when `M365_MCP_CACHE_WARMING=true`
-- First request: Normal API speed
-- Second+ request: 40-300x faster
+3. First requests go to Graph (cache miss)
+4. Repeated requests are served from the cache (cache hit)
 
 ---
 
-## Using Cache Parameters
+## The refresh Parameter
 
-### Default Behavior (Recommended)
-
-Use cache automatically - fastest option:
-
-```python
-# Uses cache if available
-folder_get_tree(account_id, path="/Documents")
-email_list(account_id, folder="inbox", limit=10)
-file_list(account_id, folder_id="root")
-```
-
-### Force Refresh
-
-Bypass cache and fetch fresh data:
+`refresh` is the only cache control a tool exposes. It exists on `m365_list`
+and `m365_get`.
 
 ```python
-# Forces API call, updates cache with fresh data
-folder_get_tree(account_id, path="/Documents", force_refresh=True)
+# Default: use the cache when fresh
+m365_list(resource="email", container_id="inbox")
+
+# Bypass the cache, fetch from Graph and update the entry
+m365_list(resource="email", container_id="inbox", refresh=True)
+m365_get(resource="email", id=email_id, refresh=True)
 ```
 
-**When to use `force_refresh=True`**:
-- After making changes (uploaded files, moved folders)
-- When you need real-time data
-- Troubleshooting cache issues
+**When to use `refresh=true`:**
 
-### Disable Cache
+- something changed outside this server (in Outlook or on another device)
+  and you need it right now
+- troubleshooting a result that looks stale
 
-Disable cache for a single request:
+You do not need it after changes made through this server: every write clears
+the affected entries for that account automatically.
 
-```python
-# Bypasses cache completely (no read, no write)
-email_list(account_id, folder="inbox", use_cache=False)
-```
-
-**When to use `use_cache=False`**:
-- Testing/debugging
-- One-time operations
-- When cache would be misleading
-
-### Cache Parameter Summary
-
-| Parameter | Default | Effect |
-|-----------|---------|--------|
-| (none) | Cache enabled | Use cache if fresh, refresh if stale/expired |
-| `force_refresh=True` | Override | Bypass cache, fetch fresh, update cache |
-| `use_cache=False` | Disable | No cache interaction at all |
+There is no parameter to disable the cache for a single request; use
+`refresh=true` for a guaranteed fresh read.
 
 ---
 
 ## Viewing Cache Statistics
 
-### Get Cache Stats
+The cache tools are in the `admin` tier, hidden by default. Enable them by
+adding `admin` to `M365_MCP_TOOLSETS`:
 
-View comprehensive cache statistics:
-
-```python
-stats = cache_get_stats()
+```bash
+export M365_MCP_TOOLSETS=core,extended,admin
 ```
 
-### Statistics Returned
+### admin_cache_get
+
+```python
+admin_cache_get(view="stats")
+```
+
+Returns:
 
 ```json
 {
-  "total_entries": 150,
-  "total_size_bytes": 45000000,
-  "total_size_mb": 42.9,
-  "total_hits": 5432,
-  "total_requests": 6000,
-  "hit_rate": 0.905,
-  "oldest_entry": "2025-10-14T10:30:00Z",
-  "newest_entry": "2025-10-14T15:45:00Z"
+  "view": "stats",
+  "stats": {
+    "entry_count": 150,
+    "total_bytes": 45000000,
+    "max_bytes": 2147483648,
+    "usage_percent": 2.1,
+    "total_hits": 5432,
+    "by_resource": {"email": {}, "drive_item": {}}
+  },
+  "tasks": null,
+  "warming": null,
+  "summary": "<one-line summary of the cache statistics>"
 }
 ```
 
-### Understanding the Statistics
+Other views:
 
-- **total_entries**: Number of cached items
-- **total_size_mb**: Cache size in megabytes
-- **hit_rate**: Percentage of requests served from cache (0.0-1.0)
-- **total_hits**: Number of cache hits
-- **total_requests**: Total cache lookups
-
-**Good hit rate**: >0.80 (80%)
-**Excellent hit rate**: >0.90 (90%)
+| Call | Shows |
+|---|---|
+| `admin_cache_get(view="tasks", status="running", limit=50)` | Queued, running, completed or failed background tasks |
+| `admin_cache_get(view="task", task_id="...")` | One background task |
+| `admin_cache_get(view="warming")` | Warming status and progress; `disabled` when warming is off |
 
 ---
 
 ## Manual Cache Invalidation
 
-### Invalidate by Pattern
+### admin_cache_invalidate
 
-Manually clear cache entries:
-
-```python
-# Invalidate all email caches
-cache_invalidate("email_*")
-
-# Invalidate all folder caches
-cache_invalidate("folder_*")
-
-# Invalidate all file caches
-cache_invalidate("file_*")
-```
-
-### Invalidate for Specific Account
-
-Clear cache for one account only:
+Clear cached results by resource type instead of by pattern:
 
 ```python
-# Clear email cache for specific account
-cache_invalidate("email_*", account_id="account-123")
+# All cached emails (all accounts)
+admin_cache_invalidate(scope="email")
+
+# Cached OneDrive items for one account
+admin_cache_invalidate(scope="drive_item", account_id="me@outlook.com")
+
+# Everything, with an audit note
+admin_cache_invalidate(scope="all", reason="testing")
 ```
 
-### Invalidate with Reason
-
-Add audit trail for invalidation:
-
-```python
-# Invalidate with reason (logged)
-cache_invalidate("folder_*", reason="User uploaded new files")
-```
+`scope` is one of `email`, `email_folder`, `email_rule`, `event`, `calendar`,
+`contact`, `contact_folder`, `drive_item` or `all`. `account_id` is optional;
+`reason` is recorded in the audit log.
 
 ### Automatic Invalidation
 
-The cache automatically invalidates on write operations:
+Every mutating tool clears the affected resources for its own account, so you
+rarely need manual invalidation:
 
-- **File upload**: Invalidates `folder_get_tree` and `file_list`
-- **Email send**: Invalidates `email_list` for sent folder
-- **Email move**: Invalidates `email_list` for both folders
-- **Folder create**: Invalidates `folder_get_tree`
+| Tool | Clears |
+|---|---|
+| `m365_create`, `m365_update`, `m365_move` | the matching resource; email changes also clear `email_folder`, because unread counts change |
+| `m365_delete` | the deleted resource; a deleted mail folder also clears `email`, a deleted calendar also clears `event`, a deleted contact folder also clears `contact` |
+| `email_create_draft`, `email_send`, `email_reply`, `email_forward`, `calendar_forward`, `email_folder_mark_all_read`, `email_folder_empty` | `email` and `email_folder` |
+| `calendar_create_event`, `calendar_update_event`, `calendar_respond` | `event` |
+| `drive_upload`, `drive_copy`, `drive_share` | `drive_item` |
+| `email_rule_manage` | `email_rule` |
+| `m365_get_content` | nothing (it only writes a local file or reads) |
 
-**You rarely need manual invalidation!**
+The authoritative table is `MUTATION_INVALIDATES` in
+`src/m365_mcp/resource_cache.py`.
 
 ---
 
 ## Cache Warming
 
-### What is Cache Warming?
+Cache warming pre-populates the cache in the background. It is opt-in.
 
-Cache warming pre-populates the cache in the background. It is wired into the
-server lifecycle but remains opt-in.
+Default behaviour: the server starts without a warming worker and the cache
+fills on demand.
 
-Default behavior:
+Enabled behaviour (`M365_MCP_CACHE_WARMING=true`): the server starts the
+background worker and warmer, and stops them on shutdown. For every signed-in
+account it warms the mail folder tree, the newest inbox messages, upcoming
+events and contacts: the same entries a first `m365_list` call reads. Entries
+that are already fresh are skipped.
 
-1. Server starts without a warming worker
-2. The cache fills on demand as tools are called
-3. Stale entries are served until TTL expiry or invalidation, without queuing a
-   background refresh task
+Stale entries (older than the fresh window but still inside the stale window)
+are still served immediately; with warming enabled, serving one also queues a
+background refresh of that exact `m365_list` or `m365_get` request, so the next
+call is fresh. Without warming, a stale entry is served until it expires.
 
-Enabled behavior (`M365_MCP_CACHE_WARMING=true`):
+```bash
+export M365_MCP_CACHE_WARMING=true
+uv run m365-mcp
+```
 
-1. Server starts the background worker and `CacheWarmer`
-2. Startup warming queues configured operations for authenticated accounts
-3. Stale cache reads enqueue one background refresh task per stale key
-4. Server shutdown stops the worker and closes cache handles
-
-### Monitor Cache Warming
-
-`cache_warming_status` reports inactive status when no worker has been
-initialized. When warming is enabled, the tool reports real progress from the
-background worker and cache warmer.
-
-### Priority Order
-
-Cache warming prioritizes:
-
-1. **High**: `folder_get_tree` (slowest without cache)
-2. **Medium**: `email_list` (inbox, sent)
-3. **Low**: `file_list` (recent files)
+Check progress with `admin_cache_get(view="warming")`.
 
 ---
 
 ## Troubleshooting
 
-### Problem: Stale Data
+### Problem: Stale data
 
-**Symptoms**: Seeing old data, recent changes not reflected
+**Symptoms**: old data, recent changes made elsewhere not shown.
 
 **Solutions**:
-```python
-# Force refresh to get latest data
-folder_get_tree(account_id, path="/Documents", force_refresh=True)
 
-# Or invalidate and retry
-cache_invalidate("folder_*", account_id=account_id)
-folder_get_tree(account_id, path="/Documents")
+```python
+# Fetch fresh data for this request
+m365_list(resource="drive_item", path="/Documents", refresh=True)
+
+# Or clear the cache for the resource and retry
+admin_cache_invalidate(scope="drive_item")
 ```
 
-### Problem: Cache Not Working
-
-**Symptoms**: All requests are slow, no performance improvement
+### Problem: Cache not helping
 
 **Check**:
-1. View cache stats: `cache_get_stats()`
-2. Check hit rate (should be >0.80)
-3. Verify encryption key: Check system keyring or `M365_MCP_CACHE_KEY` env var
+
+1. `admin_cache_get(view="stats")`: is `total_hits` growing?
+2. Are requests identical? Changing `limit`, filters or cursor creates a new key.
+3. Encryption key: check the system keyring or `M365_MCP_CACHE_KEY`.
 
 **Solutions**:
+
 ```bash
-# Reset cache database
+# Reset the cache database
 rm ~/.m365_mcp_cache.db
 
-# Restart server (cache will rebuild)
+# Restart the server (the cache rebuilds)
 uv run m365-mcp
 ```
 
-### Problem: Cache Too Large
+### Problem: Cache too large
 
-**Symptoms**: Cache size approaching 2GB limit
-
-**Automatic**: Cache cleanup triggers at 80% (1.6GB), reduces to 60% (1.2GB)
+**Automatic**: cleanup starts at 80% of 2 GB (1.6 GB) and reduces to 60%
+(1.2 GB), removing the oldest entries first.
 
 **Manual**:
-```python
-# View size
-stats = cache_get_stats()
-print(f"Cache size: {stats['total_size_mb']} MB")
 
-# Clear specific caches
-cache_invalidate("email_*")  # Typically largest
+```python
+admin_cache_get(view="stats")            # see usage
+admin_cache_invalidate(scope="email")    # emails are usually largest
 ```
 
-### Problem: Encryption Or SQLCipher Error
+### Problem: Encryption or SQLCipher error
 
-**Symptoms**: "Invalid encryption key", "Cannot decrypt cache", or SQLCipher import failure
+**Symptoms**: "Invalid encryption key", "Cannot decrypt cache", or a SQLCipher
+import failure.
 
-**Cause**: Encryption key changed or lost, SQLCipher is unavailable, or the
-cache database is corrupt. If the database cannot be opened due to a key
+**Cause**: the encryption key changed or was lost, SQLCipher is unavailable, or
+the database is corrupt. If the database cannot be opened because of a key
 mismatch or recoverable corruption, M365 MCP recreates the cache file and
 rebuilds entries on demand. If SQLCipher is unavailable while encryption is
 enabled, startup fails instead of falling back to plaintext.
 
 **Solution**:
+
 ```bash
-# Delete and recreate cache
+# Delete and recreate the cache
 rm ~/.m365_mcp_cache.db
 
-# For headless servers, set key explicitly
+# For headless servers, set the key explicitly
 export M365_MCP_CACHE_KEY="your-base64-key-here"
 ```
 
@@ -319,89 +300,37 @@ export M365_MCP_CACHE_KEY="your-base64-key-here"
 
 ## Best Practices
 
-### 1. Use Default Caching
+1. **Use the default.** Do not pass `refresh=true` on every call; it defeats the
+   cache.
+2. **Trust automatic invalidation** after writes made through this server.
+3. **Use `refresh=true` after outside changes** or when a result looks stale.
+4. **Trust account isolation.** Entries are keyed by account, so calls with
+   different `account_id` values never share data.
+5. **Trust automatic cleanup.** Manage size manually only if needed.
+6. **Protect the key.** Use the system keyring, or for headless servers:
 
-✅ **DO**: Let cache work automatically
-```python
-folder_get_tree(account_id, path="/Documents")
-```
+   ```bash
+   export M365_MCP_CACHE_KEY=$(openssl rand -base64 32)
+   ```
 
-❌ **DON'T**: Disable cache unnecessarily
-```python
-folder_get_tree(account_id, path="/Documents", use_cache=False)
-```
-
-### 2. Force Refresh After Writes
-
-✅ **DO**: Refresh cache after modifications
-```python
-# Upload file
-file_create(onedrive_path="/Uploads/file.pdf", local_file_path="/tmp/file.pdf", account_id=account_id)
-
-# Force refresh to see new file
-file_list(account_id, folder_id="root", force_refresh=True)
-```
-
-### 3. Monitor Cache Hit Rate
-
-✅ **DO**: Check periodically
-```python
-stats = cache_get_stats()
-if stats['hit_rate'] < 0.70:
-    print("Warning: Low cache hit rate")
-```
-
-### 4. Multi-Account Isolation
-
-✅ **DO**: Trust account isolation
-```python
-# These are completely isolated
-email_list("account-1", folder="inbox")
-email_list("account-2", folder="inbox")
-```
-
-### 5. Cache Size Management
-
-✅ **DO**: Trust automatic cleanup
-
-❌ **DON'T**: Manually manage unless necessary
-
-### 6. Security Best Practices
-
-✅ **DO**: Use system keyring (automatic)
-
-✅ **DO**: For headless servers, use environment variable:
-```bash
-export M365_MCP_CACHE_KEY=$(openssl rand -base64 32)
-```
-
-❌ **DON'T**: Hardcode encryption keys in code
-
-### 7. Performance Optimization
-
-✅ **DO**: Let cache warm on startup
-✅ **DO**: Batch operations when possible
-✅ **DO**: Use cache for read-heavy workloads
-
-❌ **DON'T**: Force refresh on every request
-❌ **DON'T**: Disable cache for performance-critical operations
+   Never hardcode encryption keys.
 
 ---
 
 ## Summary
 
-- **Cache is automatic** - Works out-of-the-box
-- **300x faster** - Massive performance improvements
-- **Encrypted & secure** - AES-256 SQLCipher by default, with controls for GDPR/HIPAA-aligned deployments
-- **Intelligent** - Three-state TTL ensures freshness
-- **Low maintenance** - Automatic cleanup and management
+- **Automatic**: `m365_list` and `m365_get` read through the cache
+- **One control**: `refresh=true` bypasses it
+- **Encrypted**: AES-256 SQLCipher by default
+- **Per resource**: separate freshness rules and invalidation per resource,
+  keyed by account
+- **Admin tools**: `admin_cache_get` and `admin_cache_invalidate` (enable with
+  `M365_MCP_TOOLSETS=core,extended,admin`)
 
-**For most users**: Just use the cache! It works automatically and requires no configuration.
-
-**Questions or Issues?** See the security guide for encryption details or check the troubleshooting section above.
+See `cache_security.md` for encryption details and `cache_examples.md` for
+workflows.
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: 2026-05-30
-**Next Review**: After user feedback or major changes
+**Document Version**: 1.0.0
+**Last Updated**: 2026-09-26

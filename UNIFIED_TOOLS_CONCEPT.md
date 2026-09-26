@@ -1,6 +1,10 @@
 # Unified MCP Tool Architecture — Microsoft 365 Home Accounts
 
-**Status:** Approved design (revision 2). Decisions are recorded in §2.
+**Status:** Approved design (revision 2), implemented in v1.0.0. This
+document describes the design as approved; it is not updated after
+implementation. For the tool surface as it exists today, see
+`MCP_SERVER_TOOLS.md` (generated) and `docs/unified-tools/`. Decisions are
+recorded in §2.
 **Supersedes:** revision 1 (the original concept).
 **Scope:** The `m365-mcp` server (FastMCP 2.13 / Python), personal Microsoft
 accounts (outlook.com, hotmail.com, live.com), and Microsoft Graph v1.0:
@@ -216,9 +220,19 @@ Common parameters on every M365 tool:
 | `account_id` | `string`, optional | Omit to use the only signed-in account (D6). Accepts the account ID or email address. With several accounts and none given: error listing `account_id` and email for each. |
 
 Common result envelope: `{"resource", "items"|"item", "next_cursor",
-"has_more", "summary"}`, plus tool-specific fields. The text content block
-is the one-line `summary` (for example "Returned 20 of many emails from
-inbox; pass next_cursor for more.").
+"has_more", "summary"}`, plus tool-specific fields.
+
+> **Correction (implementation, 2026-09-26):** this section originally said
+> the text content block was the one-line `summary` alone. A live
+> evaluation run showed that collapses task success (91% → 50%), because
+> `structuredContent` is not guaranteed to reach the model (many clients,
+> including a plain Anthropic-API tool loop, only forward `content`), so
+> the model could never see an item's id or subject to act on it. The
+> implementation instead serializes the whole result (summary included) as
+> JSON into the single text block, matching the MCP spec's own guidance
+> that unstructured content should be "functionally equivalent" to
+> structured content. See `docs/unified-tools/README.md` §"Implementation
+> contract" for the corrected text.
 
 ### 6.1 `m365_list`
 

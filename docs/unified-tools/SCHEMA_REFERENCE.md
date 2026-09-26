@@ -37,6 +37,7 @@ The JSON files are the implementation source of truth: the server's `tools/list`
 | 27 | [`admin_cache_get`](#admin_cache_get) | admin | safe | never | `cache_get_stats`, `cache_task_list`, `cache_task_get_status`, `cache_warming_status` |
 | 28 | [`admin_cache_invalidate`](#admin_cache_invalidate) | admin | moderate | never | `cache_invalidate` |
 | 29 | [`admin_server_info`](#admin_server_info) | admin | safe | never | `server_get_version` |
+| 30 | [`admin_reauth_schedule`](#admin_reauth_schedule) | admin | moderate | conditional | new in 1.0.0 |
 
 <a id="m365_list"></a>
 
@@ -2248,9 +2249,121 @@ Server information.
       "extended",
       "admin"
     ],
-    "tool_count": 29,
+    "tool_count": 30,
     "cache_enabled": true,
-    "summary": "m365-mcp 1.0.0, 29 tools."
+    "summary": "m365-mcp 1.0.0, 30 tools."
+  }
+}
+```
+
+<a id="admin_reauth_schedule"></a>
+
+## `admin_reauth_schedule` — Weekly Re-auth Schedule
+
+Manage the weekly job that refreshes every signed-in account's token so it never expires from disuse (Windows Task Scheduler, or cron on Linux and macOS). action='status' reports the schedule, next and last run and any problems; 'install' creates or repairs the job; 'remove' deletes it. install and remove require confirm=true after the user approves. With MCP_WEEKLY_RE_AUTH=true the server also keeps the job installed by itself.
+
+- **Tier:** admin · **Category:** admin · **Safety:** moderate
+- **Confirm:** conditional — Required for action install and remove; not for status.
+- **Annotations:** readOnly=false, destructive=false, idempotent=true, openWorld=true
+
+### Input
+
+| Parameter | Type | Required | Default | Constraints | Description |
+|---|---|---|---|---|---|
+| `action` | `status` \| `install` \| `remove` | yes | — | — | status reports, install creates or repairs the job, remove deletes it. |
+| `confirm` | boolean | no | `false` | — | Must be true to install or remove the scheduled job; set only after the user approves. |
+
+### Output
+
+Schedule state. configured is MCP_WEEKLY_RE_AUTH (null when unset); problems is empty when healthy; changed is true if install or remove modified the scheduler.
+
+| Field | Type |
+|---|---|
+| `action` | `status` \| `install` \| `remove` |
+| `changed` | boolean |
+| `supported` | boolean |
+| `backend` | `windows_task_scheduler` \| `cron` \| `none` |
+| `task_name` | string |
+| `configured` | boolean or null |
+| `installed` | boolean |
+| `schedule` | object or null |
+| `matches_expected` | boolean or null |
+| `next_run` | string (date-time) or null |
+| `last_run` | object or null |
+| `healthy` | boolean |
+| `problems` | array of string |
+| `summary` | string |
+
+### Microsoft Graph calls
+
+- None (operating-system scheduler).
+
+### Server-side validation
+
+| Rule | Error returned |
+|---|---|
+| action='install' requires confirm=true. | Invalid confirm 'False': installing the schedule requires confirm=True to proceed. Expected: Explicit user confirmation |
+| action='remove' requires confirm=true. | Invalid confirm 'False': removing the schedule requires confirm=True to proceed. Expected: Explicit user confirmation |
+
+### Example — Check the schedule
+
+```json
+{
+  "arguments": {
+    "action": "status"
+  },
+  "structuredContent": {
+    "action": "status",
+    "changed": false,
+    "supported": true,
+    "backend": "cron",
+    "task_name": "M365-MCP-ReAuth",
+    "configured": true,
+    "installed": true,
+    "schedule": {
+      "day": "Sunday",
+      "time": "09:00"
+    },
+    "matches_expected": true,
+    "next_run": "2026-09-27T09:00:00+09:30",
+    "last_run": {
+      "finished_at": "2026-09-20T09:00:04+09:30",
+      "success": true,
+      "message": "Refreshed 1 account."
+    },
+    "healthy": true,
+    "problems": [],
+    "summary": "Weekly re-auth is installed (Sunday 09:00) and healthy."
+  }
+}
+```
+
+### Example — Install the job
+
+```json
+{
+  "arguments": {
+    "action": "install",
+    "confirm": true
+  },
+  "structuredContent": {
+    "action": "install",
+    "changed": true,
+    "supported": true,
+    "backend": "windows_task_scheduler",
+    "task_name": "M365-MCP-ReAuth",
+    "configured": true,
+    "installed": true,
+    "schedule": {
+      "day": "Sunday",
+      "time": "09:00"
+    },
+    "matches_expected": true,
+    "next_run": "2026-09-27T09:00:00+09:30",
+    "last_run": null,
+    "healthy": true,
+    "problems": [],
+    "summary": "Installed the weekly re-auth job (Sunday 09:00)."
   }
 }
 ```

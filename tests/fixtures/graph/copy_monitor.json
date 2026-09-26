@@ -1,0 +1,26 @@
+{
+  "in_progress": {
+    "@odata.context": "https://api.onedrive.com/v1.0/$metadata#oneDrive.asynchronousOperationStatus",
+    "operation": "ItemCopy",
+    "percentageComplete": 37.5,
+    "status": "inProgress"
+  },
+  "not_started": {
+    "operation": "ItemCopy",
+    "percentageComplete": 0.0,
+    "status": "notStarted"
+  },
+  "completed": {
+    "@odata.context": "https://api.onedrive.com/v1.0/$metadata#oneDrive.asynchronousOperationStatus",
+    "operation": "ItemCopy",
+    "percentageComplete": 100.0,
+    "resourceId": "01ABCDEF2345",
+    "status": "completed"
+  },
+  "failed": {
+    "operation": "ItemCopy",
+    "percentageComplete": 12.0,
+    "status": "failed",
+    "error": {"code": "nameAlreadyExists", "message": "An item with the same name already exists."}
+  }
+}

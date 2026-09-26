@@ -5,7 +5,339 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] - 2026-09-26
+
+Version 1.0.0 replaces the 85-tool surface with 30 intent-based tools and
+supports **personal Microsoft accounts only**. It is a hard cut: the 85 old
+tool names are removed with no aliases. The tool contract is defined in
+[`docs/unified-tools/`](docs/unified-tools/README.md) and the design in
+[`UNIFIED_TOOLS_CONCEPT.md`](UNIFIED_TOOLS_CONCEPT.md). Definition size drops
+from about 22k tokens (85 tools, no parameter descriptions) to about 13.5k
+for the default 23 tools (about 9.4k for the 16 core tools), with every
+parameter documented.
+
+### Breaking Changes
+
+Every change below breaks existing clients, saved tool calls or
+configurations. Move each old call using the [migration table](#migration-table-85-removed-tools)
+below.
+
+- **Personal accounts only.** Work and school accounts are rejected when
+  sign-in completes and are removed from the token cache. The default
+  authority is now `consumers` (it was `common`). The Microsoft Search API
+  path, organisation-scope sharing and participant free/busy are removed
+  because personal accounts do not support them.
+- **All 85 legacy tool names are removed**, with no aliases. The
+  replacements are 29 tools: eight generic `m365_*` tools, `email_*`,
+  `calendar_*`, `drive_*`, `account_*` and `admin_*` tools.
+- **Signatures are new.** `account_id` is now optional on every tool (it was
+  required and its position varied per tool). Omitted means the only
+  signed-in account; with several accounts the call fails and lists them.
+  `account_id` accepts the ID or the email address. Recipients are always
+  lists of strings.
+- **Email search covers the whole mailbox.** It uses server-side `$search`.
+  The old client-side filter only looked at the newest `max(limit x 5, 50)`
+  messages, so older mail was never found.
+- **Availability is own-calendar only, and `attendees` inputs are dropped.**
+  `calendar_get_free_busy` and `calendar_check_availability` become
+  `calendar_find_availability`, computed from `calendarView` and your working
+  hours, because Graph cannot return other people's free/busy for personal
+  accounts. It also suggests free slots.
+- **`contact_add_to_list` is now a real move.** `m365_move(resource="contact")`
+  creates the contact in the destination folder and deletes the original,
+  so the contact gets a **new ID** (returned). The old tool created a
+  duplicate. "Contact lists" are now the `contact_folder` resource.
+- **Lists return previews, not bodies.** List and search results are compact
+  projections (`preview` of at most 255 characters); use `m365_get` for the
+  body. Results no longer contain raw Graph objects, `@odata.*` fields or
+  cache metadata, and every field is always present (`null` when absent).
+  `email_get` returns at most 20,000 body characters by default (it was
+  50,000), controlled by `body_max_chars`.
+- **`confirm` is now required** for: `calendar_create_event` and
+  `calendar_update_event` when attendees would be emailed; `calendar_respond`
+  when a response is sent (including proposing a new time); forwarding
+  meeting invitations (`calendar_forward`); creating, updating or deleting
+  Inbox rules that forward, redirect or delete mail (`email_rule_manage`);
+  deleting a rule; and all sharing (`drive_share`). Sends, forwards, replies
+  and deletes already required it.
+- **`drive_share` has no default scope.** Choose `mode="link"` (view, edit or
+  embed) or `mode="invite"`. The `organization` scope is removed and the old
+  anonymous default is gone. It always requires `confirm=true`.
+- **`drive_upload` defaults to `if_exists="fail"`.** It no longer silently
+  overwrites; pass `if_exists="replace"` (or an `item_id`) to replace.
+  Downloads via `m365_get_content` refuse to overwrite unless
+  `overwrite=true`.
+- **Cache controls reduced to `refresh`.** The `use_cache` and
+  `force_refresh` parameters are removed from all tools; `refresh` exists on
+  `m365_list` and `m365_get`. The five cache tools are now two admin tools,
+  `admin_cache_get` and `admin_cache_invalidate` (typed `scope` instead of glob
+  patterns), and cache keys are by account and resource, not tool name.
+- **Result shapes changed.** Every tool returns `structuredContent` that
+  validates against a published `outputSchema` plus a one-line text summary.
+  Lists return `next_cursor` and `has_more`; the opaque cursor is only valid
+  for the identical request, for 24 hours.
+- **Folders and files unified.** `file_*` and `folder_*` become the
+  `drive_item` resource; `emailfolders_*` becomes `email_folder`,
+  `emailrules_*` becomes `email_rule`; move and rename are separate
+  operations (`m365_move`, `m365_update`).
+- **Moved emails and contacts get a new ID**, returned in the result.
+- **Sign-in tools changed.** `account_authenticate` and
+  `account_complete_auth` become `account_auth_begin` and
+  `account_auth_complete` (admin tier). The device code and MSAL flow stay on
+  the server behind an opaque `auth_session_id`; completion polls once and
+  does not block. `account_list` no longer returns `account_type`.
+- **Admin tools are hidden by default.** `account_list`, `account_auth_*`,
+  `admin_cache_*` and `admin_server_info` register only when
+  `M365_MCP_TOOLSETS` includes `admin`. The default is `core,extended`.
+- **Local paths are restricted.** File tools accept only paths inside the
+  working directory, the temp directory or `MCP_FILE_ALLOWED_ROOTS`, and refuse
+  hidden and secret-like files for both reads and writes.
+- **HTTP transport:** `MCP_AUTH_METHOD=oauth` and unknown values now fail at
+  startup (an unknown value previously ran the server without
+  authentication), and requests with a disallowed `Origin` header are
+  rejected.
+
+### Added
+
+- `admin_reauth_schedule` (admin tier) and the `MCP_WEEKLY_RE_AUTH` setting: the
+  server installs, repairs and health-checks a weekly job (Windows Task
+  Scheduler, or cron on Linux and macOS) that refreshes every signed-in
+  account's token so it never expires from disuse. New variables
+  `MCP_RE_AUTH_DAY`, `MCP_RE_AUTH_TIME`, `MCP_RE_AUTH_CHECK_HOURS`; the job is
+  `python -m m365_mcp.reauth_job`. Has no v0.x predecessor.
+- MCP protocol 2026-07-28 support: the server runs on FastMCP 4.0 and the MCP
+  Python SDK 2.2, and negotiates every revision from 2024-11-05 to 2026-07-28
+  (`tests/test_protocol_versions.py` covers the handshake, auto and pinned
+  2026-07-28 connect modes). `null` values in tool `_meta` (for example
+  `confirm_rule`) are omitted on the wire by the SDK; clients should treat a
+  missing key as `null`.
+- 30 tools defined by generated JSON specs: 16 `core`, 7 `extended`, 7
+  `admin` (see `docs/unified-tools/`). The server registers them from the spec
+  in a fixed order, so `tools/list` is deterministic; `M365_MCP_TOOLSETS`
+  selects tiers (default `core,extended`).
+- Typed input and output schemas for every tool: descriptions on every
+  parameter, enums, bounds and closed objects; `structuredContent` plus a
+  text `summary`; input validated with JSON Schema 2020-12 (RFC 3339
+  date-times) and per-tool rules with actionable errors.
+- `m365_list`, `m365_get`, `m365_search`, `m365_get_content`, `m365_create`,
+  `m365_update`, `m365_move` and `m365_delete` across email, mail folders,
+  inbox rules, events, calendars, contacts, contact folders and OneDrive.
+- Semantic email list filters (unread, sender, dates, attachments,
+  importance, flagged, category); tree listing for mail and OneDrive folders;
+  contact vCard export; OneDrive download URLs.
+- `email_send(mode="draft")` to send an existing draft; BCC, CC and
+  attachments on reply and forward; `body_format` and `importance` on drafts.
+- `calendar_find_availability`: busy blocks and suggested free slots inside
+  working hours.
+- `drive_share(mode="invite")`, idempotent link creation, and `embed` links.
+- `drive_copy` returns an `operation_id`; `m365_get(resource="operation")`
+  reports progress.
+- `email_folder_mark_all_read` and `email_folder_empty` use `$batch` and are
+  bounded per call, reporting `remaining_unread` or partial failures.
+- Opaque HMAC-protected pagination cursors (`M365_MCP_CURSOR_KEY`).
+- Graph `$batch` support, a per-call deadline (45 s reads, 60 s writes) and
+  server-side polling of asynchronous operations.
+- Actionable error mapping for Graph failures (no URLs, codes or request IDs);
+  `mask_error_details` hides unexpected errors from clients.
+- Per-call JSON audit log (tool, resource, hashed account, duration, outcome,
+  retries, result bytes, mutation flag; never argument values).
+- Per-account rate limits: 20 per minute for sends, shares and deletes; 300
+  per minute overall.
+- Server `instructions` telling the model that `account_id` is optional, to ask
+  the user before `confirm=true`, and to treat mail, event, contact and file
+  content as untrusted data.
+- Untrusted-content handling: control, zero-width and bidirectional
+  characters stripped, HTML converted to text, previews and bodies capped.
+- `services/` layer for all Graph logic, `projections.py`, `cursors.py`,
+  `errors.py`, `resource_cache.py`, `observability.py`, `http_security.py`,
+  `local_files.py`, `rate_limit.py`, `operations.py`, `auth_sessions.py`.
+- New environment variables: `M365_MCP_TOOLSETS`, `M365_MCP_CURSOR_KEY`,
+  `MCP_ALLOWED_ORIGINS`, `MCP_FILE_ALLOWED_ROOTS` and
+  `MCP_FILE_DOWNLOAD_MAX_MB` (documented in `.env.example`).
+- Golden-prompt evaluation harness in `evals/` (115 cases, 25% held out,
+  mocked Graph), a CI workflow, and parity tests covering every row of the
+  migration table.
+- `jsonschema` is now a direct dependency (runtime input and output
+  validation).
+
+### Changed
+
+- Cache warming and stale-entry refresh now work on the unified tools
+  (`M365_MCP_CACHE_WARMING=true`): warming pre-loads the mail folder tree,
+  inbox, upcoming events and contacts per account, and a stale `m365_list` or
+  `m365_get` entry queues a background refresh of that request. Previously the
+  refresh executor only knew the removed 0.x tool names.
+- The documented Azure app permissions were corrected against Microsoft's
+  permission tables: added `Mail.Send` (sending, replying and forwarding need
+  it; `Mail.ReadWrite` does not cover them), `MailboxSettings.Read` (working
+  hours and time zone for `calendar_find_availability`) and
+  `Contacts.ReadWrite` (the contact tools create, update and delete); removed
+  `People.Read`, which no tool uses. Grant them in the app registration.
+- Default authority is `consumers`; the MSAL cache is cleaned of work and
+  school accounts at sign-in.
+- Cache keys are by account, resource, normalised parameters and cursor, with
+  per-resource freshness rules; every write invalidates only the affected
+  resources for its own account.
+- The Graph client raises `GraphAPIError` (a subclass of `httpx.HTTPStatusError`)
+  that carries the status, code and request ID for the audit log only.
+- Steering documents, README, QUICKSTART, SECURITY, FILETREE, CLAUDE.md and the
+  cache guides describe the unified surface. Breaking changes are now allowed
+  only in a major version and must be listed here.
+- Deleting a OneDrive item is described as a move to the recycle bin;
+  deleting a meeting you organise states that cancellations are sent.
+
+### Removed
+
+- All 85 legacy tools (see the migration table) and their modules:
+  `tools/account.py`, `cache_tools.py`, `calendar.py`, `contact.py`,
+  `email.py`, `email_folders.py`, `email_rules.py`, `file.py`, `folder.py`,
+  `search.py` and `server.py`, plus `search_router.py` and `account_type.py`.
+- The Microsoft Search API path, organisation-scope sharing links and
+  participant free/busy.
+- The `use_cache` and `force_refresh` tool parameters and the emoji safety
+  prefixes in tool descriptions (safety is expressed by annotations and
+  `meta.safety_level`).
+- `pyjwt` as a direct dependency (it was unused; MSAL still installs it
+  transitively).
+
+### Security
+
+- HTTP transport: Origin validation on every request (loopback by default,
+  `MCP_ALLOWED_ORIGINS` to change), constant-time bearer token comparison, and
+  unsupported `MCP_AUTH_METHOD` values (including `oauth`) fail at startup.
+- Personal accounts only; work and school sign-ins are rejected.
+- Server-enforced `confirm` gates for sends, replies, forwards, sharing,
+  deletes, rule changes that act silently, and calendar changes that notify
+  attendees.
+- Local file allowed roots and a deny-list (dotfiles, `*.pem`, `*.key`, token
+  caches) for reads and writes, symlink resolution, no silent overwrite.
+- Sign-in device codes and MSAL flow data no longer enter model context.
+- Per-account rate limits, a per-call audit log without argument values or
+  secrets, and HMAC-protected cursors.
+- Untrusted third-party text is sanitised and labelled as data.
+
+### Migration table (85 removed tools)
+
+Generated from [`docs/unified-tools/legacy_mapping.json`](docs/unified-tools/legacy_mapping.json).
+`account_id` is optional in every replacement. Calls that send, share, delete
+or notify others need `confirm=true`.
+
+| Removed tool (v0.x) | Replacement (v1.0.0) | Behaviour change |
+|---|---|---|
+| `account_list` | `account_list` | account_type removed |
+| `account_authenticate` | `account_auth_begin` | opaque auth_session_id; device code stays server-side |
+| `account_complete_auth` | `account_auth_complete` | session handle instead of flow dump; non-blocking; personal accounts only |
+| `cache_task_get_status` | `admin_cache_get(view='task')` | None |
+| `cache_task_list` | `admin_cache_get(view='tasks')` | None |
+| `cache_get_stats` | `admin_cache_get(view='stats')` | None |
+| `cache_invalidate` | `admin_cache_invalidate` | typed scope instead of glob pattern |
+| `cache_warming_status` | `admin_cache_get(view='warming')` | None |
+| `calendar_list_events` | `m365_list(resource='event', start, end)` | time window instead of days_ahead; recurrences expanded |
+| `calendar_get_event` | `m365_get(resource='event')` | None |
+| `calendar_create_event` | `calendar_create_event` | confirm when attendees; calendar_id, is_all_day, reminder, show_as added |
+| `calendar_update_event` | `calendar_update_event` | typed changes; confirm when attendees affected |
+| `calendar_delete_event` | `m365_delete(resource='event')` | organiser cancellation automatic; cancellation_message |
+| `calendar_respond_event` | `calendar_respond` | confirm when a response is sent |
+| `calendar_check_availability` | `calendar_find_availability` | own calendar only (Graph limitation for personal accounts) |
+| `calendar_forward_event` | `calendar_forward` | None |
+| `calendar_list_calendars` | `m365_list(resource='calendar')` | None |
+| `calendar_create_calendar` | `m365_create(resource='calendar')` | None |
+| `calendar_delete_calendar` | `m365_delete(resource='calendar')` | default calendar refused |
+| `calendar_propose_new_time` | `calendar_respond(action='tentative'\|'decline', proposed_start, proposed_end)` | confirm when sending |
+| `calendar_get_free_busy` | `calendar_find_availability` | own calendar only; free slots added |
+| `contact_list` | `m365_list(resource='contact')` | optional contact folder |
+| `contact_get` | `m365_get(resource='contact')` | None |
+| `contact_create` | `m365_create(resource='contact')` | more fields; optional folder |
+| `contact_update` | `m365_update(resource='contact')` | typed changes |
+| `contact_delete` | `m365_delete(resource='contact')` | None |
+| `contact_create_list` | `m365_create(resource='contact_folder')` | named contact_folder |
+| `contact_add_to_list` | `m365_move(resource='contact', destination_id)` | real move instead of duplicate; new ID |
+| `contact_export` | `m365_get_content(resource='contact', mode='vcard')` | None |
+| `emailfolders_list` | `m365_list(resource='email_folder')` | None |
+| `emailfolders_get` | `m365_get(resource='email_folder')` | None |
+| `emailfolders_get_tree` | `m365_list(resource='email_folder', recursive=true)` | None |
+| `emailfolders_create` | `m365_create(resource='email_folder')` | None |
+| `emailfolders_rename` | `m365_update(resource='email_folder')` | None |
+| `emailfolders_move` | `m365_move(resource='email_folder')` | None |
+| `emailfolders_delete` | `m365_delete(resource='email_folder')` | well-known folders refused |
+| `emailfolders_mark_all_as_read` | `email_folder_mark_all_read` | batched; bounded per call |
+| `emailfolders_empty` | `email_folder_empty` | batched; bounded per call |
+| `emailrules_list` | `m365_list(resource='email_rule')` | None |
+| `emailrules_get` | `m365_get(resource='email_rule')` | None |
+| `emailrules_create` | `email_rule_manage(action='create')` | typed Graph predicate/action set; confirm for forward/redirect/delete |
+| `emailrules_update` | `email_rule_manage(action='update')` | as create |
+| `emailrules_delete` | `m365_delete(resource='email_rule')` | None |
+| `emailrules_move_top` | `email_rule_manage(action='reorder', position='top')` | None |
+| `emailrules_move_bottom` | `email_rule_manage(action='reorder', position='bottom')` | None |
+| `emailrules_move_up` | `email_rule_manage(action='reorder', position='up')` | None |
+| `emailrules_move_down` | `email_rule_manage(action='reorder', position='down')` | None |
+| `email_list` | `m365_list(resource='email')` | preview instead of body; filters; cursor |
+| `email_get` | `m365_get(resource='email')` | default body cap 20k characters (was 50k) |
+| `email_create_draft` | `email_create_draft` | bcc, body_format, importance |
+| `email_send` | `email_send(mode='new')` | bcc; mode='draft' added |
+| `email_update` | `m365_update(resource='email')` | typed changes |
+| `email_delete` | `m365_delete(resource='email')` | None |
+| `email_move` | `m365_move(resource='email')` | returns new ID |
+| `email_reply` | `email_reply(mode='sender')` | cc and attachments added |
+| `email_reply_all` | `email_reply(mode='all')` | cc and attachments added |
+| `email_forward` | `email_forward` | bcc and attachments added |
+| `email_get_attachment` | `m365_get_content(resource='email', mode='download')` | no silent overwrite |
+| `email_mark_read` | `m365_update(resource='email', email_changes.is_read)` | None |
+| `email_flag` | `m365_update(resource='email', email_changes.flag)` | None |
+| `email_add_category` | `m365_update(resource='email', email_changes.categories_add)` | remove/set also available |
+| `email_archive` | `m365_move(resource='email', destination_id='archive')` | None |
+| `file_list` | `m365_list(resource='drive_item', item_type='file')` | None |
+| `file_get` | `m365_get(resource='drive_item') + m365_get_content(mode='download')` | details and download split |
+| `file_create` | `drive_upload(parent_id\|parent_path, local_path)` | if_exists default fail |
+| `file_update` | `drive_upload(item_id, local_path)` | None |
+| `file_delete` | `m365_delete(resource='drive_item')` | described as recycle bin |
+| `file_copy` | `drive_copy` | operation handle + status |
+| `file_move` | `m365_move(resource='drive_item')` | None |
+| `file_rename` | `m365_update(resource='drive_item', drive_item_changes.name)` | None |
+| `file_share` | `drive_share(mode='link')` | confirm; no default scope; invite mode added |
+| `file_download_url` | `m365_get_content(resource='drive_item', mode='download_url')` | None |
+| `folder_list` | `m365_list(resource='drive_item', item_type='folder')` | None |
+| `folder_get` | `m365_get(resource='drive_item')` | None |
+| `folder_get_tree` | `m365_list(resource='drive_item', item_type='folder', recursive=true)` | None |
+| `folder_create` | `m365_create(resource='drive_item', drive_folder)` | None |
+| `folder_delete` | `m365_delete(resource='drive_item')` | recycle bin |
+| `folder_rename` | `m365_update(resource='drive_item')` | None |
+| `folder_move` | `m365_move(resource='drive_item')` | None |
+| `search_files` | `m365_search(resources=['drive_item'])` | None |
+| `search_emails` | `m365_search(resources=['email'])` | whole mailbox via server-side $search |
+| `search_events` | `m365_search(resources=['event'])` | explicit window |
+| `search_contacts` | `m365_search(resources=['contact'])` | None |
+| `search_unified` | `m365_search(resources=[...])` | Search API path removed |
+| `server_get_version` | `admin_server_info` | None |
+
+## [0.2.3] - 2026-09-26 (final 0.x release, tag `v0.2.3-final`)
+
+This is the last release of the 85-tool surface. Everything below refers to
+tools that 1.0.0 removes; see the migration table under
+[1.0.0](#100---2026-09-26) for the replacement of each one.
+
+### Fixed (reliability and authentication review, September 2026)
+
+- `authenticate.py` checks every account with a forced token refresh, offers
+  re-sign-in for expired accounts, and exits 1 unless all accounts are usable.
+- The token cache uses `msal-extensions` (cross-process lock, reload on
+  change), and one MSAL app is reused per client ID and tenant.
+- Sign-in errors carry the MSAL reason; an account that needs sign-in raises
+  `SignInRequiredError` instead of a generic failure.
+- `account_complete_auth` polls once instead of blocking for up to 15
+  minutes.
+- A 401 triggers one forced token refresh and a retry; network errors are
+  retried (connect errors for every method, timeouts only for idempotent
+  ones) with a fresh token per attempt.
+- `Retry-After` accepts seconds or an HTTP date and is honoured on 503.
+- POST requests are no longer retried after an ambiguous 5xx or a read
+  timeout, so a send cannot be duplicated.
+- Chunked uploads no longer send `Authorization` to the pre-authenticated
+  upload URL, and an empty final 201 no longer crashes.
+- Pagination resends the first page's query headers on every page (plain-text
+  bodies and `ConsistencyLevel`), and `graph.request()` no longer mutates the
+  caller's `params`.
+- The device flow completes against the authority that issued the code.
 
 ### Added
 

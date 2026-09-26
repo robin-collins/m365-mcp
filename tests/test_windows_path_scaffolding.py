@@ -7,7 +7,6 @@ import pytest
 
 from src.m365_mcp import validators
 
-
 pytestmark = pytest.mark.skipif(
     os.name != "nt",
     reason="Windows-specific filesystem validation scaffolding",

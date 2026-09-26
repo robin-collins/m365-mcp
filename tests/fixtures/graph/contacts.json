@@ -1,0 +1,43 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('me')/contacts",
+  "value": [
+    {
+      "@odata.etag": "W/\"EQAAABYAAAAiIsqMbYjsT5e/T7KzowPTAAABvRA1\"",
+      "id": "AAMkADAwATM3CONTACT1",
+      "createdDateTime": "2025-01-01T00:00:00Z",
+      "lastModifiedDateTime": "2026-02-01T00:00:00Z",
+      "parentFolderId": "AAMkADAwATM3CONTACTS",
+      "birthday": null,
+      "fileAs": "Doe, Jane",
+      "displayName": "Jane Doe",
+      "givenName": "Jane",
+      "initials": null,
+      "middleName": null,
+      "nickName": null,
+      "surname": "Doe",
+      "title": null,
+      "companyName": "Contoso",
+      "department": "Finance",
+      "jobTitle": "Accountant",
+      "businessHomePage": null,
+      "mobilePhone": "+61 400 000 000",
+      "businessPhones": ["+61 8 8000 0000"],
+      "homePhones": [],
+      "emailAddresses": [
+        {"name": "Jane Doe", "address": "jane@example.com"},
+        {"name": "jane.doe@contoso.com", "address": "jane.doe@contoso.com"}
+      ],
+      "categories": []
+    },
+    {
+      "id": "AAMkADAwATM3CONTACT2",
+      "parentFolderId": "AAMkADAwATM3CONTACTS",
+      "displayName": "Plumber",
+      "givenName": null,
+      "surname": null,
+      "businessPhones": [],
+      "homePhones": ["+61 8 8111 1111"],
+      "emailAddresses": []
+    }
+  ]
+}

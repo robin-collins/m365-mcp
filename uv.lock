@@ -901,14 +901,12 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "anthropic" },
     { name = "mcp" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
-]
-evals = [
-    { name = "anthropic" },
 ]
 
 [package.metadata]
@@ -929,13 +927,13 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "anthropic", specifier = ">=1.8.0" },
     { name = "mcp", specifier = ">=1.9.3" },
     { name = "pyright", specifier = ">=1.1.406" },
     { name = "pytest", specifier = ">=8.4.0" },
     { name = "pytest-asyncio", specifier = ">=1.0.0" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
 ]
-evals = [{ name = "anthropic", specifier = ">=1.8.0" }]
 
 [[package]]
 name = "markdown-it-py"

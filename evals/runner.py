@@ -2,8 +2,8 @@
 
 Usage::
 
-    uv run --group evals python -m evals.runner --surface unified --split smoke
-    uv run --group evals python -m evals.runner --surface unified --split all \
+    uv run python -m evals.runner --surface unified --split smoke
+    uv run python -m evals.runner --surface unified --split all \
         --out evals/results/unified-v1
 
 The model sees the surface's real ``tools/list`` (names, descriptions and

@@ -54,12 +54,10 @@ artifacts = ["src/m365_mcp/tool_specs/**/*.json"]
 
 [dependency-groups]
 dev = [
+    "anthropic>=1.8.0",
     "mcp>=1.9.3",
     "pyright>=1.1.406",
     "pytest>=8.4.0",
     "pytest-asyncio>=1.0.0",
     "pytest-cov>=5.0.0",
-]
-evals = [
-    "anthropic>=1.8.0",
 ]

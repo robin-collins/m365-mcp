@@ -26,26 +26,14 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install
-        run: uv sync --group evals
+        run: uv sync
       - name: Unit tests, including tools/list conformance (U3.32)
-        run: uv run pytest tests/ -q --ignore=tests/test_integration.py
+        run: uv run pytest tests/ -q
       - name: Spec and tool reference are current
         run: |
           uv run python scripts/build_unified_tool_specs.py --check
           uv run python scripts/generate_tools_doc.py --check
       - name: Type check
         run: uv run pyright
-      # Legacy code moved into services/{accounts,calendar,contacts,drive,
-      # mail,search}.py still carries old findings; H5 widens this scope.
-      - name: Lint new code
-        run: >-
-          uvx ruff check src/m365_mcp/tools/unified src/m365_mcp/tools/registry.py
-          src/m365_mcp/tools/handlers.py src/m365_mcp/tool_specs
-          src/m365_mcp/services/__init__.py src/m365_mcp/services/mail_compose.py
-          src/m365_mcp/services/mail_folders.py src/m365_mcp/services/mail_rules.py
-          src/m365_mcp/projections.py src/m365_mcp/untrusted.py
-          src/m365_mcp/cursors.py src/m365_mcp/errors.py
-          src/m365_mcp/observability.py src/m365_mcp/resource_cache.py
-          src/m365_mcp/http_security.py src/m365_mcp/local_files.py
-          src/m365_mcp/rate_limit.py src/m365_mcp/operations.py
-          src/m365_mcp/auth_sessions.py evals
+      - name: Lint
+        run: uvx ruff check .

@@ -196,11 +196,21 @@ def test_operation_expires_after_24_hours(clock: FakeClock) -> None:
     assert len(monitor.urls) == 1
 
 
-def test_record_requires_https(clock: FakeClock) -> None:
+@pytest.mark.parametrize(
+    "monitor_url",
+    [
+        "http://api.onedrive.com/monitor/1",
+        "https://example.com/monitor/1",
+        "https://user:password@api.onedrive.com/monitor/1",
+    ],
+)
+def test_record_rejects_untrusted_monitor_urls(
+    clock: FakeClock, monitor_url: str
+) -> None:
     store = OperationStore(fetch=FakeMonitor(), clock=clock)
 
-    with pytest.raises(ValueError):
-        store.record("http://api.onedrive.com/monitor/1", "acc-1")
+    with pytest.raises(ValidationError):
+        store.record(monitor_url, "acc-1")
 
 
 def test_default_fetch_sends_no_authorization_header(

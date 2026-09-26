@@ -630,6 +630,9 @@ class TestCacheEncryption:
             assert f"PRAGMA {setting} = {pragma_value}" in statements
         assert "PRAGMA cipher_compatibility = 4" in statements
 
+        # A partially initialized instance must also be safe to finalize.
+        manager.__del__()
+
     def test_encryption_requires_sqlcipher(self, tmp_path, monkeypatch):
         """Encrypted mode should fail loudly without SQLCipher."""
         monkeypatch.setattr(cache_module, "USING_SQLCIPHER", False)

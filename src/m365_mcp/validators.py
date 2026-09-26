@@ -21,6 +21,7 @@ EMAIL_PATTERN = re.compile(
 )
 
 GRAPH_ALLOWED_HOSTS = {
+    "api.onedrive.com",
     "graph.microsoft.com",
     "graph.microsoft.us",
     "graph.microsoft.de",

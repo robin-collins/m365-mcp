@@ -1,6 +1,6 @@
 {
   "spec_version": "1.0.0",
-  "tool_count": 29,
+  "tool_count": 30,
   "tool_order": [
     "m365_list",
     "m365_get",
@@ -30,7 +30,8 @@
     "account_auth_complete",
     "admin_cache_get",
     "admin_cache_invalidate",
-    "admin_server_info"
+    "admin_server_info",
+    "admin_reauth_schedule"
   ],
   "tiers": {
     "core": [
@@ -66,7 +67,8 @@
       "account_auth_complete",
       "admin_cache_get",
       "admin_cache_invalidate",
-      "admin_server_info"
+      "admin_server_info",
+      "admin_reauth_schedule"
     ]
   },
   "default_toolsets": [

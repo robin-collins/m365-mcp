@@ -39,7 +39,7 @@ def _spec_files(base: Path) -> dict[str, bytes]:
 def test_package_copy_equals_docs_copy() -> None:
     docs = _spec_files(DOCS_DIR)
     package = _spec_files(PKG_DIR)
-    assert len(docs) == 30
+    assert len(docs) == 31
     assert package == docs
 
 

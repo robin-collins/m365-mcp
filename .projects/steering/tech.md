@@ -94,7 +94,7 @@ uv run m365-mcp
 
 **Tool exposure:** `M365_MCP_TOOLSETS` (comma separated, default
 `core,extended`) selects the tiers: `core` (16 tools), `extended` (7) and
-`admin` (6, hidden by default). Unknown values fail at startup.
+`admin` (7, hidden by default). Unknown values fail at startup.
 
 **HTTP Mode:**
 ```bash

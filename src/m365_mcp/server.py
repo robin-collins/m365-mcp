@@ -198,6 +198,25 @@ async def _start_cache_runtime() -> CacheRuntime | None:
     return CacheRuntime(cache_manager=cache_manager, worker=worker, warmer=warmer)
 
 
+def _start_reauth_monitor() -> "asyncio.Task[None] | None":
+    """Start the weekly re-auth schedule check when MCP_WEEKLY_RE_AUTH is set."""
+    from . import reauth_schedule
+
+    active_logger = logger or logging.getLogger(__name__)
+    try:
+        scheduler = reauth_schedule.Scheduler.from_environment()
+    except ValueError as exc:
+        active_logger.error(f"Weekly re-auth schedule not managed: {exc}")
+        return None
+    if scheduler.cfg.enabled is None:
+        return None
+    active_logger.info(
+        f"Weekly re-auth schedule check enabled ({reauth_schedule.ENV_ENABLE}="
+        f"{str(scheduler.cfg.enabled).lower()})"
+    )
+    return asyncio.create_task(reauth_schedule.monitor(scheduler))
+
+
 async def _run_mcp_with_cache_lifecycle(
     mcp,
     transport: str | None = None,
@@ -205,9 +224,12 @@ async def _run_mcp_with_cache_lifecycle(
 ) -> None:
     """Run FastMCP with cache runtime startup and shutdown."""
     runtime = await _start_cache_runtime()
+    reauth_monitor = _start_reauth_monitor()
     try:
         await mcp.run_async(transport=transport, **transport_kwargs)
     finally:
+        if reauth_monitor is not None:
+            reauth_monitor.cancel()
         if runtime is not None:
             await runtime.stop()
 
@@ -220,6 +242,8 @@ def main() -> None:
     env_file = args.env_file
     if env_file.exists():
         load_dotenv(dotenv_path=env_file)
+        # Lets the scheduled re-auth job find the same .env.
+        os.environ["M365_MCP_ENV_FILE"] = str(env_file.resolve())
         print(f"Loaded environment from: {env_file}", file=sys.stderr)
     else:
         print(f"Warning: Environment file not found: {env_file}", file=sys.stderr)

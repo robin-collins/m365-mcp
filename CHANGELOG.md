@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2026-09-26 (unreleased)
 
-Version 1.0.0 replaces the 85-tool surface with 29 intent-based tools and
+Version 1.0.0 replaces the 85-tool surface with 30 intent-based tools and
 supports **personal Microsoft accounts only**. It is a hard cut: the 85 old
 tool names are removed with no aliases. The tool contract is defined in
 [`docs/unified-tools/`](docs/unified-tools/README.md) and the design in
@@ -99,13 +99,19 @@ below.
 
 ### Added
 
+- `admin_reauth_schedule` (admin tier) and the `MCP_WEEKLY_RE_AUTH` setting: the
+  server installs, repairs and health-checks a weekly job (Windows Task
+  Scheduler, or cron on Linux and macOS) that refreshes every signed-in
+  account's token so it never expires from disuse. New variables
+  `MCP_RE_AUTH_DAY`, `MCP_RE_AUTH_TIME`, `MCP_RE_AUTH_CHECK_HOURS`; the job is
+  `python -m m365_mcp.reauth_job`. Has no v0.x predecessor.
 - MCP protocol 2026-07-28 support: the server runs on FastMCP 4.0 and the MCP
   Python SDK 2.2, and negotiates every revision from 2024-11-05 to 2026-07-28
   (`tests/test_protocol_versions.py` covers the handshake, auto and pinned
   2026-07-28 connect modes). `null` values in tool `_meta` (for example
   `confirm_rule`) are omitted on the wire by the SDK; clients should treat a
   missing key as `null`.
-- 29 tools defined by generated JSON specs: 16 `core`, 7 `extended`, 6
+- 30 tools defined by generated JSON specs: 16 `core`, 7 `extended`, 7
   `admin` (see `docs/unified-tools/`). The server registers them from the spec
   in a fixed order, so `tools/list` is deterministic; `M365_MCP_TOOLSETS`
   selects tiers (default `core,extended`).

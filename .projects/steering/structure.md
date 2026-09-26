@@ -29,6 +29,8 @@ m365-mcp/
 │   ├── local_files.py         # Allowed roots, deny-list, safe file names
 │   ├── rate_limit.py          # Per-account token buckets
 │   ├── operations.py          # Async copy operation store
+│   ├── reauth_schedule.py     # Weekly re-auth job: Task Scheduler / cron install, checks
+│   ├── reauth_job.py          # The scheduled job: refresh every signed-in account
 │   ├── observability.py       # Per-call JSON audit log middleware
 │   ├── cache.py               # Encrypted SQLite cache manager (AES-256)
 │   ├── cache_config.py        # TTL policies, cache configuration
@@ -100,7 +102,7 @@ m365-mcp/
 
 ### MCP Tool Pattern
 All Microsoft 365 operations are exposed as stateless MCP tools with:
-- **Spec-defined surface** - 29 tools defined in `docs/unified-tools/`;
+- **Spec-defined surface** - 30 tools defined in `docs/unified-tools/`;
   optional `account_id` on every Microsoft 365 tool
 - **Typed results** - `outputSchema`, `structuredContent` and a `summary`
 - **Actionable errors** - Graph errors mapped to fix-it text; no URLs

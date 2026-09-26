@@ -43,4 +43,4 @@
 
 ## Current Status
 
-Version 1.0.0 exposes 29 intent-based MCP tools in three tiers (`core`, `extended`, `admin`) for personal Microsoft accounts; see `docs/unified-tools/`.
+Version 1.0.0 exposes 30 intent-based MCP tools in three tiers (`core`, `extended`, `admin`) for personal Microsoft accounts; see `docs/unified-tools/`.

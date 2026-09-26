@@ -77,16 +77,16 @@ def test_generated_files_are_current() -> None:
 
 
 def test_catalog_shape() -> None:
-    assert INDEX["tool_count"] == 29
+    assert INDEX["tool_count"] == 30
     assert len(INDEX["tiers"]["core"]) == 16
     assert len(INDEX["tiers"]["extended"]) == 7
-    assert len(INDEX["tiers"]["admin"]) == 6
+    assert len(INDEX["tiers"]["admin"]) == 7
     assert INDEX["default_toolsets"] == ["core", "extended"]
     ordered = (
         INDEX["tiers"]["core"] + INDEX["tiers"]["extended"] + INDEX["tiers"]["admin"]
     )
     assert ordered == INDEX["tool_order"], "tools must be ordered by tier"
-    assert len(set(INDEX["tool_order"])) == 29
+    assert len(set(INDEX["tool_order"])) == 30
 
 
 @pytest.mark.parametrize("name", INDEX["tool_order"])
@@ -166,11 +166,16 @@ def test_examples_validate(name: str) -> None:
         output_validator.validate(example["output"])
 
 
+# Tools with no v0.x predecessor: nothing in the 85-row legacy mapping.
+NEW_IN_1_0 = {"admin_reauth_schedule"}
+
+
 @pytest.mark.parametrize("name", INDEX["tool_order"])
 def test_tool_is_fully_specified(name: str) -> None:
     tool = TOOLS[name]
     assert tool["graph_calls"], f"{name} must list its Microsoft Graph calls"
-    assert tool["replaces"], f"{name} must list the legacy tools it replaces"
+    if name not in NEW_IN_1_0:
+        assert tool["replaces"], f"{name} must list the legacy tools it replaces"
     for rule in tool["validation_rules"]:
         assert rule["rule"] and rule["error"]
 

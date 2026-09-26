@@ -15,12 +15,19 @@ from typing import Any
 from fastmcp.exceptions import ToolError
 from mcp_types.version import SUPPORTED_PROTOCOL_VERSIONS
 
-from ... import auth, auth_sessions, cache, resource_cache, warming_status
+from ... import (
+    auth,
+    auth_sessions,
+    cache,
+    reauth_schedule,
+    resource_cache,
+    warming_status,
+)
 from ...services import accounts as accounts_service
 from ...tool_specs import load_index
 from ...validators import ValidationError, format_validation_error
 from ..handlers import register_handler, register_validation_rule
-from .common import account, arg, invalid
+from .common import account, arg, invalid, require_confirm
 
 PACKAGE = "m365-mcp"
 PERSONAL_ONLY_ERROR = "Only personal Microsoft accounts are supported"
@@ -298,4 +305,97 @@ def admin_server_info(args: dict[str, Any]) -> dict[str, Any]:
         "tool_count": tool_count,
         "cache_enabled": _cache_enabled(),
         "summary": f"{PACKAGE} {pkg_version}, {_plural(tool_count, 'tool')}.",
+    }
+
+
+# ----------------------------------------------------------------------
+# Weekly re-auth schedule
+# ----------------------------------------------------------------------
+
+
+@register_validation_rule("admin_reauth_schedule")
+def _reauth_changes_need_confirm(args: dict[str, Any]) -> None:
+    """Require ``confirm`` for ``install`` and ``remove``."""
+    if args["action"] == "install":
+        require_confirm(args, "installing the schedule")
+    elif args["action"] == "remove":
+        require_confirm(args, "removing the schedule")
+
+
+def _reauth_summary(action: str, changed: bool, status: dict[str, Any]) -> str:
+    """Describe the outcome of an ``admin_reauth_schedule`` call."""
+    schedule = status["schedule"]
+    when = f"{schedule['day']} {schedule['time']}" if schedule else ""
+    if action == "remove":
+        return (
+            "Removed the weekly re-auth job."
+            if changed
+            else "No weekly re-auth job was installed."
+        )
+    if action == "install":
+        text = (
+            f"Installed the weekly re-auth job ({when})."
+            if changed
+            else f"The weekly re-auth job was already installed and correct ({when})."
+        )
+        if status["configured"] is not True:
+            text += (
+                f" Set {reauth_schedule.ENV_ENABLE}=true so the server keeps it "
+                "installed."
+            )
+        return text
+    if not status["supported"]:
+        return "Scheduled re-auth is not supported on this platform."
+    if not status["installed"]:
+        return "Weekly re-auth is not installed." + (
+            f" {_plural(len(status['problems']), 'problem')}: {status['problems'][0]}."
+            if status["problems"]
+            else ""
+        )
+    if status["healthy"]:
+        return f"Weekly re-auth is installed ({when}) and healthy."
+    problems = status["problems"]
+    return (
+        f"Weekly re-auth is installed ({when}) with "
+        f"{_plural(len(problems), 'problem')}: {problems[0]}."
+    )
+
+
+@register_handler("admin_reauth_schedule")
+def admin_reauth_schedule(args: dict[str, Any]) -> dict[str, Any]:
+    """Report, install or remove the weekly re-auth job.
+
+    Args:
+        args: Validated ``admin_reauth_schedule`` arguments.
+
+    Returns:
+        ``action``, ``changed``, the schedule state (``supported``,
+        ``backend``, ``installed``, ``healthy``, ``problems`` and so on)
+        and ``summary``.
+
+    Raises:
+        ToolError: If the configuration is invalid or the operating-system
+            scheduler cannot be used.
+    """
+    action = args["action"]
+    try:
+        scheduler = reauth_schedule.Scheduler.from_environment()
+    except ValueError as exc:
+        raise ToolError(f"admin_reauth_schedule failed: {exc}") from exc
+    try:
+        if action == "install":
+            outcome = scheduler.install()
+        elif action == "remove":
+            outcome = scheduler.remove()
+        else:
+            outcome = {"changed": False, "status": scheduler.status()}
+    except reauth_schedule.ScheduleError as exc:
+        raise ToolError(f"admin_reauth_schedule failed: {exc}") from exc
+    status = outcome["status"]
+    changed = bool(outcome["changed"])
+    return {
+        "action": action,
+        "changed": changed,
+        **status,
+        "summary": _reauth_summary(action, changed, status),
     }

@@ -401,9 +401,9 @@ def test_server_info_reports_running_configuration(harness: UnifiedHarness) -> N
         "version": pkg_version,
         "protocol_versions": list(SUPPORTED_PROTOCOL_VERSIONS),
         "toolsets_enabled": ["core", "extended", "admin"],
-        "tool_count": 29,
+        "tool_count": 30,
         "cache_enabled": True,
-        "summary": f"m365-mcp {pkg_version}, 29 tools.",
+        "summary": f"m365-mcp {pkg_version}, 30 tools.",
     }
 
 
@@ -415,7 +415,7 @@ def test_server_info_follows_toolsets_env(
     result = harness.ok("admin_server_info", {})
 
     assert result["toolsets_enabled"] == ["core", "admin"]
-    assert result["tool_count"] == 22
+    assert result["tool_count"] == 23
 
 
 def test_server_info_spec_example_shape(harness: UnifiedHarness) -> None:

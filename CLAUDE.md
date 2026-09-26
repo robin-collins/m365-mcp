@@ -10,7 +10,7 @@ hotmail.com, live.com): Outlook mail, Calendar, Contacts and OneDrive. Several
 personal accounts can be signed in at once. Work and school accounts are not
 supported and are rejected at sign-in.
 
-Version 1.0.0 exposes 29 intent-based tools (16 `core`, 7 `extended`, 6
+Version 1.0.0 exposes 30 intent-based tools (16 `core`, 7 `extended`, 7
 `admin`). The full contract for every tool lives in `docs/unified-tools/`.
 
 ## Architecture
@@ -80,6 +80,15 @@ the same specs as package data in `src/m365_mcp/tool_specs/` (also generated;
 - **`auth_sessions.py`**: server-side device-code sessions for
   `account_auth_begin` / `account_auth_complete` (opaque ID, single use,
   15 minute TTL; the device code and MSAL flow never reach the model).
+- **`reauth_schedule.py`** / **`reauth_job.py`**: the weekly re-auth job.
+  `MCP_WEEKLY_RE_AUTH=true` makes the server install it (Windows Task
+  Scheduler through PowerShell, cron elsewhere), repair drift and check every
+  `MCP_RE_AUTH_CHECK_HOURS` that it is installed and its last run
+  succeeded; `false` removes it, unset leaves it alone. The job is
+  `python -m m365_mcp.reauth_job` (forced refresh of every signed-in account)
+  and records its result in `~/.m365_mcp_reauth_state.json`. Tests set
+  `M365_MCP_SCHEDULER_LOCKED=1`, which makes every real scheduler command
+  fail, so a test can never register a task or edit the crontab.
 - **`untrusted.py`**: strips control and bidirectional characters, converts
   HTML to text and caps previews and bodies.
 - **`auth.py`**: MSAL public client, device flow, token cache at

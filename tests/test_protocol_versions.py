@@ -37,7 +37,7 @@ def test_negotiation_and_call(harness, mode: str, expected: tuple[str, ...]) -> 
 
     version, tools, result = asyncio.run(run())
     assert version in expected
-    assert len(tools.tools) == 29  # the harness registers every tier
+    assert len(tools.tools) == 30  # the harness registers every tier
     assert not result.is_error, result.content
     assert result.structured_content is not None
 

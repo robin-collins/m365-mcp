@@ -1,12 +1,12 @@
 # M365 MCP
 
-MCP server for Microsoft Graph: 29 intent-based tools that give an AI
+MCP server for Microsoft Graph: 30 intent-based tools that give an AI
 assistant safe access to Outlook mail, Calendar, Contacts and OneDrive on
 **personal Microsoft accounts** (outlook.com, hotmail.com, live.com).
 
 ## Features
 
-- **Small tool surface**: 29 tools in three tiers (16 core, 7 extended, 6 admin,
+- **Small tool surface**: 30 tools in three tiers (16 core, 7 extended, 7 admin,
   hidden by default) instead of one tool per Graph endpoint. Eight generic
   `m365_*` tools browse, read, search, create, update, move and delete across
   eight resource types; dedicated tools cover sending mail, calendar
@@ -89,7 +89,7 @@ claude
 
 ## Available Tools
 
-The server exposes 29 tools. `M365_MCP_TOOLSETS` (default `core,extended`)
+The server exposes 30 tools. `M365_MCP_TOOLSETS` (default `core,extended`)
 chooses the tiers; see [Client Configuration](#client-configuration). Every
 Microsoft 365 tool takes an optional `account_id`. The complete input and
 output schema of each tool is in
@@ -134,7 +134,7 @@ cases, as described).
 | `email_rule_manage` | dangerous, conditional | Create, change, enable/disable or reorder an inbox rule; confirm required for rules that forward, redirect or delete |
 | `calendar_forward` | dangerous, confirm | Forward a meeting invitation to named people |
 
-### Admin tier (6, hidden by default; add `admin` to `M365_MCP_TOOLSETS`)
+### Admin tier (7, hidden by default; add `admin` to `M365_MCP_TOOLSETS`)
 
 | Tool | Safety | What it does |
 |---|---|---|
@@ -144,6 +144,7 @@ cases, as described).
 | `admin_cache_get` | safe | Cache statistics, background tasks, one task, or warming progress (`view`) |
 | `admin_cache_invalidate` | moderate | Clear cached results for one resource type or all, for one account or all |
 | `admin_server_info` | safe | Server version, protocol versions, enabled toolsets |
+| `admin_reauth_schedule` | moderate | Status, install or remove the weekly re-auth job (`install` and `remove` need `confirm=true`) |
 
 ## High-Performance Caching
 
@@ -308,10 +309,35 @@ Or for local development:
 }
 ```
 
+## Keeping Sign-in Alive (weekly re-auth)
+
+A personal account's refresh token expires after 90 days without use. Set
+`MCP_WEEKLY_RE_AUTH=true` and the server installs a weekly job that refreshes
+every signed-in account: Windows Task Scheduler on Windows, cron on Linux and
+macOS. While the server runs it re-checks the job every
+`MCP_RE_AUTH_CHECK_HOURS` (default 6): a missing or changed job is put back,
+and a failed or overdue run (for example, a sign-in that needs renewing) is
+logged as a warning. `MCP_WEEKLY_RE_AUTH=false` removes the job; leaving the
+variable unset never touches an existing one.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MCP_WEEKLY_RE_AUTH` | unset | `true` keep installed and repaired, `false` remove, unset leave alone |
+| `MCP_RE_AUTH_DAY` | `Sunday` | Day the job runs |
+| `MCP_RE_AUTH_TIME` | `09:00` | Local 24-hour time |
+| `MCP_RE_AUTH_CHECK_HOURS` | `6` | How often the running server checks the job |
+
+With the `admin` tier enabled, `admin_reauth_schedule` reports the schedule,
+next and last run and any problems (`action="status"`), and installs or
+removes the job (`action="install"` / `"remove"`, each with `confirm=true`).
+The job itself is `python -m m365_mcp.reauth_job`; its last result is in
+`~/.m365_mcp_reauth_state.json` and its log in `~/.m365_mcp_reauth.log`. If a
+run reports that sign-in is required, run `uv run authenticate.py`.
+
 ## Client Configuration
 
-The server exposes 29 tools in three tiers: `core` (16), `extended` (7) and
-`admin` (6, hidden by default). `M365_MCP_TOOLSETS` (comma separated, default
+The server exposes 30 tools in three tiers: `core` (16), `extended` (7) and
+`admin` (7, hidden by default). `M365_MCP_TOOLSETS` (comma separated, default
 `core,extended`) chooses which tiers the server registers. Cutting the tool
 list saves model context: the core tier costs about 9.4k tokens of tool
 definitions and the default `core,extended` about 13.5k. Unknown values fail
@@ -327,7 +353,7 @@ Tier contents:
 
 - **core:** "m365_list", "m365_get", "m365_search", "m365_get_content", "m365_create", "m365_update", "m365_move", "m365_delete", "email_create_draft", "email_send", "email_reply", "email_forward", "calendar_create_event", "calendar_update_event", "calendar_respond", "calendar_find_availability"
 - **extended:** "drive_upload", "drive_copy", "drive_share", "email_folder_mark_all_read", "email_folder_empty", "email_rule_manage", "calendar_forward"
-- **admin:** "account_list", "account_auth_begin", "account_auth_complete", "admin_cache_get", "admin_cache_invalidate", "admin_server_info"
+- **admin:** "account_list", "account_auth_begin", "account_auth_complete", "admin_cache_get", "admin_cache_invalidate", "admin_server_info", "admin_reauth_schedule"
 
 ### Claude Desktop and Claude Code (stdio)
 

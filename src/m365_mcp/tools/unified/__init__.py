@@ -1,4 +1,4 @@
-"""Handlers for the unified 29-tool surface.
+"""Handlers for the unified 30-tool surface.
 
 Importing this package imports every module in it, so each domain module
 (mail, calendar, drive, ...) registers its handlers and per-resource

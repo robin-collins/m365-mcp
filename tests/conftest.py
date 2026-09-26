@@ -19,6 +19,9 @@ if Path(test_env_file).exists():
 else:
     load_dotenv()
 
+# Never let a test register a real scheduled task or edit the crontab.
+os.environ["M365_MCP_SCHEDULER_LOCKED"] = "1"
+
 from tests.unified_harness import harness  # noqa: F401  (shared fixture)
 
 

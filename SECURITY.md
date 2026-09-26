@@ -22,6 +22,12 @@ authentication for Microsoft Graph.
 - If no cached token is available, normal requests fail immediately with an
   actionable message instead of starting an interactive prompt.
 - `M365_MCP_INTERACTIVE_AUTH=true` is reserved for explicit interactive flows.
+- `MCP_WEEKLY_RE_AUTH=true` (or the admin tool `admin_reauth_schedule`, which
+  needs `confirm=true`) installs a weekly Task Scheduler or cron job that runs
+  `python -m m365_mcp.reauth_job` as your user to keep refresh tokens from
+  expiring. It holds no credentials: it uses the token cache above and
+  records its outcome in `~/.m365_mcp_reauth_state.json`. It changes only its
+  own task (`M365-MCP-ReAuth`) or crontab line (marked `m365-mcp-reauth`).
 - The admin tools `account_auth_begin` and `account_auth_complete` (hidden
   unless `M365_MCP_TOOLSETS` includes `admin`) start and finish a device-code
   sign-in from a client. The MSAL flow stays on the server in a single-use

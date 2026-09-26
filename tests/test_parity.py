@@ -2167,7 +2167,7 @@ def _(h: UnifiedHarness) -> None:
 def _(h: UnifiedHarness) -> None:
     info = h.ok("admin_server_info", {})
     assert info["version"] == version("m365-mcp")
-    assert info["tool_count"] == 29 and "admin" in info["toolsets_enabled"]
+    assert info["tool_count"] == 30 and "admin" in info["toolsets_enabled"]
 
 
 # ----------------------------------------------------------------------

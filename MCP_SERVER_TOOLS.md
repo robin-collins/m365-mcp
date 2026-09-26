@@ -1,6 +1,6 @@
 # M365 MCP Server — Tool Reference
 
-Authoritative reference for the 29 tools the M365 MCP server exposes in
+Authoritative reference for the 30 tools the M365 MCP server exposes in
 version 1.0.0. The design rationale is in
 [`UNIFIED_TOOLS_CONCEPT.md`](UNIFIED_TOOLS_CONCEPT.md); the per-tool JSON
 specifications are in [`docs/unified-tools/`](docs/unified-tools/README.md).
@@ -11,7 +11,7 @@ specifications are in [`docs/unified-tools/`](docs/unified-tools/README.md).
 | Package version | `m365-mcp` 1.0.0 |
 | MCP runtime | FastMCP 4.0.10 on the `mcp` Python SDK 2.2.0 |
 | Protocol versions negotiated | `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25`, `2026-07-28` (newest offered: `2026-07-28`) |
-| Tools exposed | **29** in three tiers (default `core,extended`: 23; `admin` adds 6) |
+| Tools exposed | **30** in three tiers (default `core,extended`: 23; `admin` adds 7) |
 | Accounts | Personal Microsoft accounts only |
 | Snapshot date | 2026-09-26 |
 
@@ -58,7 +58,7 @@ Tool tiers are selected with `M365_MCP_TOOLSETS` (comma-separated, default
 |---|---|---|
 | `core` | 16: `m365_list`, `m365_get`, `m365_search`, `m365_get_content`, `m365_create`, `m365_update`, `m365_move`, `m365_delete`, `email_create_draft`, `email_send`, `email_reply`, `email_forward`, `calendar_create_event`, `calendar_update_event`, `calendar_respond`, `calendar_find_availability` | on |
 | `extended` | 7: `drive_upload`, `drive_copy`, `drive_share`, `email_folder_mark_all_read`, `email_folder_empty`, `email_rule_manage`, `calendar_forward` | on |
-| `admin` | 6: `account_list`, `account_auth_begin`, `account_auth_complete`, `admin_cache_get`, `admin_cache_invalidate`, `admin_server_info` | off |
+| `admin` | 7: `account_list`, `account_auth_begin`, `account_auth_complete`, `admin_cache_get`, `admin_cache_invalidate`, `admin_server_info`, `admin_reauth_schedule` | off |
 
 An unknown tier name stops the server at startup with the list of valid
 tiers. Tools are always registered in core, extended, admin order.
@@ -395,6 +395,7 @@ Legend: **Tier** = toolset that exposes the tool (`M365_MCP_TOOLSETS`), **RO** =
 | 27 | [`admin_cache_get`](#admin_cache_get) | Cache Status | admin | safe | yes | no | yes | never |
 | 28 | [`admin_cache_invalidate`](#admin_cache_invalidate) | Clear Cache | admin | moderate | no | no | yes | never |
 | 29 | [`admin_server_info`](#admin_server_info) | Server Info | admin | safe | yes | no | yes | never |
+| 30 | [`admin_reauth_schedule`](#admin_reauth_schedule) | Weekly Re-auth Schedule | admin | moderate | no | no | yes | conditional |
 
 ## 5. Tool reference
 
@@ -1131,7 +1132,7 @@ Finish a sign-in started with account_auth_begin, after the user has entered the
 
 ---
 
-### 5.6 Administration (3 tools)
+### 5.6 Administration (4 tools)
 
 Inspect and control the cache and the server.
 
@@ -1199,5 +1200,27 @@ Report the server version, supported MCP protocol versions and enabled toolsets.
 _No parameters._
 
 **Output** (`structuredContent`): `version`, `protocol_versions`, `toolsets_enabled`, `tool_count`, `cache_enabled`, `summary`.
+
+---
+
+<a id="admin_reauth_schedule"></a>
+
+#### `admin_reauth_schedule`
+
+Manage the weekly job that refreshes every signed-in account's token so it never expires from disuse (Windows Task Scheduler, or cron on Linux and macOS). action='status' reports the schedule, next and last run and any problems; 'install' creates or repairs the job; 'remove' deletes it. install and remove require confirm=true after the user approves. With MCP_WEEKLY_RE_AUTH=true the server also keeps the job installed by itself.
+
+**Title:** Weekly Re-auth Schedule  
+**Tier:** `admin`  
+**Safety level:** `moderate`  
+**Category:** `admin`  
+**Hints:** readOnlyHint=`false`, destructiveHint=`false`, idempotentHint=`true`, openWorldHint=`true`  
+**Confirm:** `conditional` (Required for action install and remove; not for status.)
+
+| Parameter | Type | Required | Default | Limits | Description |
+|---|---|---|---|---|---|
+| `action` | `"status" \| "install" \| "remove"` | yes | — | — | status reports, install creates or repairs the job, remove deletes it. |
+| `confirm` | `boolean` | no | `false` | — | Must be true to install or remove the scheduled job; set only after the user approves. |
+
+**Output** (`structuredContent`): `action`, `changed`, `supported`, `backend`, `task_name`, `configured`, `installed`, `schedule`, `matches_expected`, `next_run`, `last_run`, `healthy`, `problems`, `summary`.
 
 ---

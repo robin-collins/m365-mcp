@@ -1,7 +1,7 @@
 # M365 MCP Quick Start
 
 This guide gets the server installed, authenticated, and running with the
-current runtime behavior (v1.0.0, 29 tools, personal Microsoft accounts only).
+current runtime behavior (v1.0.0, 30 tools, personal Microsoft accounts only).
 
 ## Prerequisites
 
@@ -39,7 +39,7 @@ unset.
 Optional settings you may want early (all documented in `.env.example`):
 
 - `M365_MCP_TOOLSETS`: tiers to expose. Default `core,extended` (23 tools);
-  use `core` (16) for clients without tool search, or add `admin` (6 more) to
+  use `core` (16) for clients without tool search, or add `admin` (7 more) to
   sign in and inspect the cache from the client.
 - `MCP_FILE_ALLOWED_ROOTS`: extra local folders the file tools may read or
   write (the working directory and temp directory are always allowed).

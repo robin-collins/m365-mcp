@@ -1,6 +1,6 @@
 # Unified Tools Specification (v1.0.0)
 
-This directory is the **implementation source of truth** for the 29 tools
+This directory is the **implementation source of truth** for the 30 tools
 designed in [`UNIFIED_TOOLS_CONCEPT.md`](../../UNIFIED_TOOLS_CONCEPT.md). The
 concept explains *why*; these files define *exactly what* the server exposes
 and how each tool must behave.

@@ -64,6 +64,8 @@ m365-mcp/
 │   ├── local_files.py                      # Allowed local roots, deny-list, safe file names
 │   ├── rate_limit.py                       # Per-account token buckets
 │   ├── operations.py                       # Server-side store for asynchronous copy operations
+│   ├── reauth_schedule.py                  # Weekly re-auth job: Task Scheduler / cron install, health checks
+│   ├── reauth_job.py                       # The scheduled job (python -m m365_mcp.reauth_job)
 │   ├── observability.py                    # Per-call JSON audit log middleware
 │   ├── http_security.py                    # Origin validation, constant-time bearer check
 │   ├── resource_cache.py                   # Cache keyed by account and resource, mutation invalidation
@@ -89,7 +91,7 @@ m365-mcp/
 │   ├── tool_specs/                         # Packaged copy of the specs (generated)
 │   │   ├── __init__.py
 │   │   ├── index.json
-│   │   └── tools/                          # 29 tool JSON files
+│   │   └── tools/                          # 30 tool JSON files
 │   └── tools/
 │       ├── __init__.py
 │       ├── registry.py                     # build_server(): registers tools from specs, validation pipeline
@@ -133,6 +135,8 @@ m365-mcp/
 │   │   test_rate_limit.py, test_operations.py, test_observability.py, test_http_security.py,
 │   │   test_resource_cache.py, test_registry_caching.py, test_graph_errors.py,
 │   │   test_graph_batch.py, test_graph_deadline.py, test_graph_client.py
+│   ├── test_reauth_schedule.py, test_reauth_job.py, test_reauth_monitor.py,
+│   │   test_unified_reauth_schedule.py, test_protocol_versions.py
 │   ├── test_account_resolution.py, test_account_validation.py, test_auth_sessions.py,
 │   │   test_personal_only_auth.py
 │   ├── test_cache.py, test_cache_schema.py, test_cache_warming.py, test_background_worker.py,

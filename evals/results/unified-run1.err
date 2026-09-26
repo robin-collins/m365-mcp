@@ -1,0 +1,66 @@
+ANTHROPIC_API_KEY is set and takes precedence over the SDK's profile / federation auto-discovery; unset ANTHROPIC_API_KEY to use the auto-discovered credential.
+Model: Claude Sonnet 5 (claude-sonnet-5)
+[09/26/26 15:09:18] ERROR    [Client-6b91] Error parsing structured content: Field names must not be keywords: 'from'                                                        client.py:990
+[09/26/26 15:09:22] ERROR    [Client-6b91] Error parsing structured content: `TypeAdapter[ForwardRef('Root')]` is not fully defined; you should define `ForwardRef('Root')`  client.py:990
+                             and all referenced types, then call `.rebuild()` on the instance.                                                                                            
+                                                                                                                                                                                          
+                             For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined                                                                     
+[09/26/26 15:09:24] ERROR    [Client-6b91] Error parsing structured content: `TypeAdapter[ForwardRef('Root')]` is not fully defined; you should define `ForwardRef('Root')`  client.py:990
+                             and all referenced types, then call `.rebuild()` on the instance.                                                                                            
+                                                                                                                                                                                          
+                             For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined                                                                     
+[09/26/26 15:09:31] ERROR    [Client-6b91] Error parsing structured content: `TypeAdapter[ForwardRef('Root')]` is not fully defined; you should define `ForwardRef('Root')`  client.py:990
+                             and all referenced types, then call `.rebuild()` on the instance.                                                                                            
+                                                                                                                                                                                          
+                             For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined                                                                     
+[1/115] d01  first=m365_list                        ok=True  success=True  calls=4 
+[09/26/26 15:09:38] ERROR    [Client-5c71] Error parsing structured content: `TypeAdapter[ForwardRef('Root')]` is not fully defined; you should define `ForwardRef('Root')`  client.py:990
+                             and all referenced types, then call `.rebuild()` on the instance.                                                                                            
+                                                                                                                                                                                          
+                             For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined                                                                     
+[09/26/26 15:09:39] ERROR    [Client-5c71] Error parsing structured content: `TypeAdapter[ForwardRef('Root')]` is not fully defined; you should define `ForwardRef('Root')`  client.py:990
+                             and all referenced types, then call `.rebuild()` on the instance.                                                                                            
+                                                                                                                                                                                          
+                             For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined                                                                     
+[09/26/26 15:09:43] ERROR    [Client-5c71] Error parsing structured content: `TypeAdapter[ForwardRef('Root')]` is not fully defined; you should define `ForwardRef('Root')`  client.py:990
+                             and all referenced types, then call `.rebuild()` on the instance.                                                                                            
+                                                                                                                                                                                          
+                             For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined                                                                     
+[09/26/26 15:09:47] ERROR    [Client-5c71] Error parsing structured content: `TypeAdapter[ForwardRef('Root')]` is not fully defined; you should define `ForwardRef('Root')`  client.py:990
+                             and all referenced types, then call `.rebuild()` on the instance.                                                                                            
+                                                                                                                                                                                          
+                             For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined                                                                     
+[09/26/26 15:09:54] ERROR    [Client-5c71] Error parsing structured content: Field names must not be keywords: 'from'                                                        client.py:990
+                    ERROR    [Client-5c71] Error parsing structured content: `TypeAdapter[ForwardRef('Root')]` is not fully defined; you should define `ForwardRef('Root')`  client.py:990
+                             and all referenced types, then call `.rebuild()` on the instance.                                                                                            
+                                                                                                                                                                                          
+                             For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined                                                                     
+                    ERROR    [Client-5c71] Error parsing structured content: `TypeAdapter[ForwardRef('Root')]` is not fully defined; you should define `ForwardRef('Root')`  client.py:990
+                             and all referenced types, then call `.rebuild()` on the instance.                                                                                            
+                                                                                                                                                                                          
+                             For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined                                                                     
+                    ERROR    [Client-5c71] Error parsing structured content: `TypeAdapter[ForwardRef('Root')]` is not fully defined; you should define `ForwardRef('Root')`  client.py:990
+                             and all referenced types, then call `.rebuild()` on the instance.                                                                                            
+                                                                                                                                                                                          
+                             For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined                                                                     
+                    ERROR    [Client-5c71] Error parsing structured content: `TypeAdapter[ForwardRef('Root')]` is not fully defined; you should define `ForwardRef('Root')`  client.py:990
+                             and all referenced types, then call `.rebuild()` on the instance.                                                                                            
+                                                                                                                                                                                          
+                             For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined                                                                     
+                    ERROR    [Client-5c71] Error parsing structured content: `TypeAdapter[ForwardRef('Root')]` is not fully defined; you should define `ForwardRef('Root')`  client.py:990
+                             and all referenced types, then call `.rebuild()` on the instance.                                                                                            
+                                                                                                                                                                                          
+                             For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined                                                                     
+[2/115] d02  first=m365_list                        ok=True  success=True  calls=10 
+[09/26/26 15:09:59] ERROR    [Client-f35f] Error parsing structured content: `TypeAdapter[ForwardRef('Root')]` is not fully defined; you should define `ForwardRef('Root')`  client.py:990
+                             and all referenced types, then call `.rebuild()` on the instance.                                                                                            
+                                                                                                                                                                                          
+                             For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined                                                                     
+[09/26/26 15:10:02] ERROR    [Client-f35f] Error parsing structured content: `TypeAdapter[ForwardRef('Root')]` is not fully defined; you should define `ForwardRef('Root')`  client.py:990
+                             and all referenced types, then call `.rebuild()` on the instance.                                                                                            
+                                                                                                                                                                                          
+                             For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined                                                                     
+[09/26/26 15:10:07] ERROR    [Client-f35f] Error parsing structured content: `TypeAdapter[ForwardRef('Root')]` is not fully defined; you should define `ForwardRef('Root')`  client.py:990
+                             and all referenced types, then call `.rebuild()` on the instance.                                                                                            
+                                                                                                                                                                                          
+                             For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined                                                                     

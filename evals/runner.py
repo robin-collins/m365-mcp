@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import statistics
 import sys
@@ -39,6 +40,12 @@ from .grading import (
     score,
 )
 from .surface import open_surface
+
+# FastMCP's client tries to turn each output schema into a pydantic model and
+# logs an ERROR when it cannot (for example the email ``from`` field). The
+# server's output is valid JSON Schema (tests/test_sdk_client_conformance.py),
+# and the runner reads the raw structured content, so silence the noise.
+logging.getLogger("fastmcp.client.client").setLevel(logging.CRITICAL)
 
 DEFAULT_MODEL = os.environ.get("M365_EVAL_MODEL", "claude-sonnet-5")
 MAX_TURNS = 12

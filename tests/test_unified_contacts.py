@@ -9,12 +9,22 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
+from m365_mcp.rate_limit import RateLimiter
+from m365_mcp.tools.unified import common
 from tests.unified_harness import UnifiedHarness
 
 _CONFIRM_TEXT = (
     "Invalid confirm 'False': delete requires confirm=True to proceed. "
     "Expected: Explicit user confirmation"
 )
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limiter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give each test its own budget so deletes never hit the shared limit."""
+    monkeypatch.setattr(common, "rate_limiter", RateLimiter())
 
 
 def _seed_contact(harness: UnifiedHarness, contact_id: str, **fields: Any) -> None:

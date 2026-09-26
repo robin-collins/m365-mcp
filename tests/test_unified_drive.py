@@ -15,9 +15,17 @@ from typing import Any
 import pytest
 
 from m365_mcp import operations
+from m365_mcp.rate_limit import RateLimiter
+from m365_mcp.tools.unified import common
 from tests.unified_harness import UnifiedHarness
 
 MIB = 1024 * 1024
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limiter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give each test its own budget so deletes never hit the shared limit."""
+    monkeypatch.setattr(common, "rate_limiter", RateLimiter())
 
 
 def _seed_item(

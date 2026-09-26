@@ -13,7 +13,7 @@ from urllib.parse import urljoin, urlparse
 
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-LOGGER = logging.getLogger("microsoft_mcp.validators")
+LOGGER = logging.getLogger(__name__)
 
 EMAIL_PATTERN = re.compile(
     r"^(?P<local>[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+)"

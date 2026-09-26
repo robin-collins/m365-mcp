@@ -208,7 +208,7 @@ def setup_logging(
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
     # Log the startup
-    logger = logging.getLogger("microsoft_mcp.logging")
+    logger = logging.getLogger(__name__)
 
     # Log archival status first
     if archive_info["archived"]:

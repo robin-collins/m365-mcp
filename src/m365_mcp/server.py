@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import atexit
-import inspect
 import logging
 import os
 import signal

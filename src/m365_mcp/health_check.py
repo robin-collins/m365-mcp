@@ -183,8 +183,8 @@ def main() -> int:
     Command-line interface for health checking.
 
     Usage:
-        python -m microsoft_mcp.health_check http://localhost:8000/health
-        python -m microsoft_mcp.health_check --continuous --interval 10 http://localhost:8000/health
+        python -m m365_mcp.health_check http://localhost:8000/health
+        python -m m365_mcp.health_check --continuous --interval 10 http://localhost:8000/health
     """
     import argparse
 

@@ -1,17 +1,25 @@
-import os
-import sys
-import signal
-import atexit
 import argparse
 import asyncio
+import atexit
 import inspect
 import logging
-from pathlib import Path
+import os
+import signal
+import sys
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 from typing import Any
+
 from dotenv import load_dotenv
-from importlib.metadata import version, PackageNotFoundError
+from starlette.middleware import Middleware as StarletteMiddleware
+
+from .http_security import (
+    OriginValidationMiddleware,
+    allowed_origins_from_env,
+    token_matches,
+)
 
 # Logger will be initialized after argument parsing
 logger: logging.Logger | None = None
@@ -228,8 +236,8 @@ def main() -> None:
 
     # Import local modules after loading environment
     # (This allows auth.py to access environment variables)
+    from .logging_config import get_logger, setup_logging
     from .tools import mcp
-    from .logging_config import setup_logging, get_logger
 
     # Initialize logger after loading environment
     global logger
@@ -285,6 +293,23 @@ def main() -> None:
         auth_method = os.getenv("MCP_AUTH_METHOD", "none").lower()
         logger.info(f"Authentication method: {auth_method}")
 
+        if auth_method == "oauth":
+            logger.error("MCP_AUTH_METHOD=oauth is not supported")
+            print(
+                "Error: MCP_AUTH_METHOD=oauth is not supported. "
+                "Use MCP_AUTH_METHOD=bearer with MCP_AUTH_TOKEN=<token>.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if auth_method not in ("none", "bearer"):
+            logger.error(f"Invalid MCP_AUTH_METHOD '{auth_method}'")
+            print(
+                f"Error: Invalid MCP_AUTH_METHOD '{auth_method}'. "
+                "Must be 'bearer' or 'none'.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
         if auth_method == "none":
             logger.warning("Running HTTP server without authentication!")
             print(
@@ -320,19 +345,6 @@ def main() -> None:
         try:
             if auth_method == "bearer":
                 _run_http_with_bearer_auth(mcp, host, port, path)
-            elif auth_method == "oauth":
-                logger.info("Using FastMCP built-in OAuth authentication")
-                # Use FastMCP built-in OAuth (requires FastMCP 2.0+)
-                asyncio.run(
-                    _run_mcp_with_cache_lifecycle(
-                        mcp,
-                        transport="http",
-                        host=host,
-                        port=port,
-                        path=path,
-                        auth="oauth",
-                    )
-                )
             else:
                 logger.warning("Running in insecure mode (no authentication)")
                 # No auth (insecure mode - requires MCP_ALLOW_INSECURE=true)
@@ -343,6 +355,12 @@ def main() -> None:
                         host=host,
                         port=port,
                         path=path,
+                        middleware=[
+                            StarletteMiddleware(
+                                OriginValidationMiddleware,
+                                allowed_origins=allowed_origins_from_env(),
+                            )
+                        ],
                     )
                 )
         except Exception as e:
@@ -368,7 +386,6 @@ def main() -> None:
 def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
     """Run Streamable HTTP server with bearer token authentication"""
     assert logger is not None
-    from fastapi import FastAPI, Request
     import uvicorn
 
     logger.info("Configuring bearer token authentication")
@@ -396,6 +413,31 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
             file=sys.stderr,
         )
 
+    app = build_bearer_app(mcp, auth_token, allowed_origins_from_env())
+
+    print("✅ Bearer token authentication enabled", file=sys.stderr)
+    print(f"✅ Health check available at http://{host}:{port}/health", file=sys.stderr)
+    print(f"✅ MCP endpoint: http://{host}:{port}{path}", file=sys.stderr)
+
+    # Run the server
+    uvicorn.run(app, host=host, port=port, log_level="info")
+
+
+def build_bearer_app(mcp, auth_token: str, allowed_origins: list[str]):
+    """Build the FastAPI app that serves MCP behind bearer-token auth.
+
+    Args:
+        mcp: The FastMCP server to mount.
+        auth_token: The token every request must present.
+        allowed_origins: Origin patterns accepted from browsers.
+
+    Returns:
+        The ASGI application (Origin check, then bearer check, then MCP).
+    """
+    from fastapi import FastAPI, Request
+
+    log = logger or logging.getLogger(__name__)
+
     # Get the Streamable HTTP app from FastMCP and mount it.
     # Note: http_app() already includes routes at the configured path (e.g., /mcp)
     # so we mount it at root "/" to avoid double-pathing (e.g., /mcp/mcp).
@@ -422,30 +464,28 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
         """Validate bearer token on all requests"""
-        assert logger is not None
-        from fastapi.responses import JSONResponse
         import time
+
+        from fastapi.responses import JSONResponse
 
         start_time = time.time()
         client_ip = request.client.host if request.client else "unknown"
 
         # Skip auth for health check endpoint
         if request.url.path == "/health":
-            logger.debug(f"Health check request from {client_ip}")
+            log.debug(f"Health check request from {client_ip}")
             return await call_next(request)
 
         # Skip auth for common browser requests (return 404 instead of 401)
         if request.url.path in ["/favicon.ico", "/robots.txt"]:
-            logger.debug(
-                f"Ignoring browser request: {request.url.path} from {client_ip}"
-            )
+            log.debug(f"Ignoring browser request: {request.url.path} from {client_ip}")
             return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
-        logger.debug(f"Request: {request.method} {request.url.path} from {client_ip}")
+        log.debug(f"Request: {request.method} {request.url.path} from {client_ip}")
 
         auth_header = request.headers.get("Authorization")
         if not auth_header:
-            logger.warning(
+            log.warning(
                 f"Unauthorized request (missing auth header) from {client_ip} to {request.url.path}"
             )
             return JSONResponse(
@@ -455,7 +495,7 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
             )
 
         if not auth_header.startswith("Bearer "):
-            logger.warning(
+            log.warning(
                 f"Unauthorized request (invalid auth format) from {client_ip} to {request.url.path}"
             )
             return JSONResponse(
@@ -467,8 +507,8 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
             )
 
         token = auth_header[7:]  # Remove "Bearer " prefix
-        if token != auth_token:
-            logger.warning(
+        if not token_matches(token, auth_token):
+            log.warning(
                 f"Unauthorized request (invalid token) from {client_ip} to {request.url.path}"
             )
             return JSONResponse(
@@ -481,7 +521,7 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
         response = await call_next(request)
         duration = (time.time() - start_time) * 1000  # Convert to ms
 
-        logger.info(
+        log.info(
             f"Request processed: {request.method} {request.url.path} from {client_ip} - "
             f"Status: {response.status_code} - Duration: {duration:.2f}ms"
         )
@@ -495,13 +535,9 @@ def _run_http_with_bearer_auth(mcp, host: str, port: int, path: str) -> None:
 
     # Mount at root since http_app already has path-prefixed routes
     app.mount("/", http_app)
-
-    print("✅ Bearer token authentication enabled", file=sys.stderr)
-    print(f"✅ Health check available at http://{host}:{port}/health", file=sys.stderr)
-    print(f"✅ MCP endpoint: http://{host}:{port}{path}", file=sys.stderr)
-
-    # Run the server
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    # Added last, so it runs first: reject foreign origins before auth.
+    app.add_middleware(OriginValidationMiddleware, allowed_origins=allowed_origins)
+    return app
 
 
 if __name__ == "__main__":

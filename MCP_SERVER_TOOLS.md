@@ -223,8 +223,10 @@ bypasses the cached entry and fetches fresh data. There are no
   which every field is present (`null` when absent). They are compact
   projections, with no `@odata.*` fields and no internal fields.
 - A result is returned as `structuredContent` that validates against the
-  schema, plus one text block containing the `summary` string, which every
-  result includes.
+  schema, plus one text block holding the same result serialized as JSON
+  (the `summary` string is one field in it, always present). Per the MCP
+  spec, `structuredContent` is not guaranteed to reach the model, so the
+  text block carries every field, not just the summary.
 - List and search results (`m365_list`, `m365_search`) have `items`,
   `next_cursor`, `has_more` and `summary`. Lists return previews rather
   than full bodies; use `m365_get` for a body.

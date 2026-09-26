@@ -39,7 +39,9 @@ the same specs as package data in `src/m365_mcp/tool_specs/` (also generated;
   from the spec. It validates arguments against `inputSchema`, runs the
   per-tool rules, enforces `confirm` gates and the rate limit, validates
   output against `outputSchema`, and returns `structuredContent` plus a
-  one-line text `summary`. `M365_MCP_TOOLSETS` selects the tiers.
+  text block holding the same result as JSON (`summary` is one field in
+  it, not the whole text) — a text-only client still sees item ids and
+  subjects. `M365_MCP_TOOLSETS` selects the tiers.
 - **`tools/unified/`**: the tool handlers (thin layer: schema in,
   projection out): `mail.py`, `mail_compose.py`, `mail_bulk.py`,
   `mail_rules.py`, `calendar.py`, `calendar_availability.py`,

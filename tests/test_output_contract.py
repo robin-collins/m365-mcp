@@ -1,8 +1,14 @@
 """Output contract of the unified tools (task U2.4).
 
 Handlers return a result dict; the server returns it as
-``structuredContent`` plus one text block equal to ``summary``. Under
-pytest (test mode) every result is validated against the tool's
+``structuredContent`` plus one text block holding the same data as JSON.
+Per the MCP spec, ``structuredContent`` is not guaranteed to reach the
+model (many clients, including a plain Anthropic-API tool loop, only see
+``content``), so the text block must be "functionally equivalent" to the
+structured content, not a bare one-line count: a live evaluation run
+found that a summary-only text block collapsed task success from 91% to
+50%, because the model could never see item ids or subjects to act on.
+Under pytest (test mode) every result is validated against the tool's
 ``outputSchema``, so all handler tests check the output contract.
 """
 
@@ -95,7 +101,55 @@ def test_example_outputs_round_trip(
     result = call(server, name, example["input"])
     assert not result.isError, text_of(result)
     assert result.structuredContent == example["output"]
-    assert text_of(result) == example["output"]["summary"]
+    # The text block is the same data as JSON, so a text-only consumer
+    # (no structuredContent) still sees everything, per the MCP spec's
+    # "SHOULD also return the serialized JSON in a TextContent block".
+    assert json.loads(text_of(result)) == example["output"]
+
+
+def _email_summary(item_id: str, subject: str) -> dict[str, Any]:
+    """A schema-valid ``email_summary`` record for the test below."""
+    return {
+        "id": item_id,
+        "conversation_id": None,
+        "subject": subject,
+        "from": {"name": "Sender", "address": "sender@example.com"},
+        "to": [],
+        "cc": [],
+        "received_at": "2026-09-20T08:15:00+09:30",
+        "is_read": False,
+        "has_attachments": False,
+        "importance": "normal",
+        "flag_status": "not_flagged",
+        "categories": [],
+        "preview": None,
+        "folder_id": "junk",
+    }
+
+
+def test_text_block_carries_item_details_not_just_a_count(server: FastMCP) -> None:
+    """A list result's text must let the model act without structuredContent.
+
+    Regression test: a live evaluation run showed the model unable to name
+    or act on any listed item when the text block held only
+    ``"Returned 2 emails from junk."``.
+    """
+    output = {
+        "resource": "email",
+        "items": [
+            _email_summary("msg-008", "You won a prize!!!"),
+            _email_summary("msg-009", "Double your crypto today"),
+        ],
+        "next_cursor": None,
+        "has_more": False,
+        "summary": "Returned 2 emails from junk.",
+    }
+    handlers.register_handler("m365_list")(lambda args: output)
+    result = call(server, "m365_list", {"resource": "email", "container_id": "junk"})
+    assert not result.isError, text_of(result)
+    text = text_of(result)
+    assert "msg-008" in text and "You won a prize!!!" in text
+    assert "msg-009" in text and "Double your crypto today" in text
 
 
 def test_async_handler_is_awaited(server: FastMCP) -> None:
@@ -106,7 +160,7 @@ def test_async_handler_is_awaited(server: FastMCP) -> None:
     result = call(server, "m365_delete", DELETE_ARGS)
     assert not result.isError
     assert result.structuredContent == DELETE_OK
-    assert text_of(result) == "Deleted the email."
+    assert json.loads(text_of(result)) == DELETE_OK
 
 
 @pytest.mark.parametrize(

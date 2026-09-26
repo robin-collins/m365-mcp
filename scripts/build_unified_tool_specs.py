@@ -548,7 +548,11 @@ DEFS["operation"] = out_obj(
 
 SUMMARY = {
     "type": "string",
-    "description": "One-line human summary; also returned as the text content.",
+    "description": (
+        "One-line human summary. The tool's text content is this result "
+        "serialized as JSON (summary included), so a client that ignores "
+        "structuredContent still sees every field."
+    ),
 }
 NEXT_CURSOR = nullable(OUT_STR)
 

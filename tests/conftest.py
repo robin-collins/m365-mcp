@@ -8,14 +8,18 @@ from pathlib import Path
 import pytest
 from dotenv import load_dotenv
 
-from tests.unified_harness import harness  # noqa: F401  (shared fixture)
-
-# Load environment variables from .env file for all tests
+# Load environment variables from .env file for all tests, before importing
+# anything that might set its own fallback for one of these variables (the
+# eval harness below defaults M365_MCP_CLIENT_ID for a fake surface; since
+# load_dotenv() never overrides an already-set variable, importing it first
+# would have silently shadowed a real .env value for the whole session).
 test_env_file = os.getenv("TEST_ENV_FILE", ".env")
 if Path(test_env_file).exists():
     load_dotenv(dotenv_path=test_env_file)
 else:
     load_dotenv()
+
+from tests.unified_harness import harness  # noqa: F401  (shared fixture)
 
 
 @pytest.fixture(autouse=True, scope="session")

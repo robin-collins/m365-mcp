@@ -21,9 +21,6 @@ from typing import Any
 
 import httpx
 
-os.environ.setdefault("M365_MCP_CLIENT_ID", "eval-client-id")
-os.environ.setdefault("M365_MCP_CACHE_KEY", "eval-cache-key-not-secret-0000000000")
-
 from m365_mcp import auth, cache, cache_config
 from m365_mcp import graph as graph_module
 
@@ -107,6 +104,34 @@ def open_surface(
     """Yield a surface wired to a freshly seeded fake Graph."""
     fake = FakeGraph.seeded(anchor)
 
+    # A bare Graph client ID and cache key, so ``_load_server`` (which needs
+    # both) works even when the caller never set real ones. Scoped to this
+    # context and restored on exit, not a module-level default: merely
+    # importing this module must never shadow a real M365_MCP_CLIENT_ID for
+    # the rest of the process (see tests/test_eval_surface_env_isolation.py
+    # — this used to break the live integration tests).
+    env_defaults = {
+        "M365_MCP_CLIENT_ID": "eval-client-id",
+        "M365_MCP_CACHE_KEY": "eval-cache-key-not-secret-0000000000",
+    }
+    env_originals = {key: os.environ.get(key) for key in env_defaults}
+    for key, value in env_defaults.items():
+        os.environ.setdefault(key, value)
+
+    try:
+        yield from _open_surface_dir(name, toolsets, fake)
+    finally:
+        for key, original in env_originals.items():
+            if original is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = original
+
+
+def _open_surface_dir(
+    name: str, toolsets: str | None, fake: FakeGraph
+) -> Iterator[Surface]:
+    """The rest of ``open_surface``, run with the env defaults already set."""
     with tempfile.TemporaryDirectory(prefix="m365-eval-") as tmp:
         tmp_path = Path(tmp)
         sandbox = tmp_path / "sandbox"

@@ -656,7 +656,11 @@ class FakeGraph:
                     + msg["subject"],
                     "toRecipients": body.get("toRecipients")
                     or [{"emailAddress": msg["from"]["emailAddress"]}],
-                    "body": {"contentType": "text", "content": body.get("comment", "")},
+                    "body": {
+                        "contentType": "text",
+                        "content": body.get("comment")
+                        or body.get("message", {}).get("body", {}).get("content", ""),
+                    },
                 },
                 "sentitems",
             )

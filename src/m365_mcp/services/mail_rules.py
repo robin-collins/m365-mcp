@@ -125,14 +125,6 @@ def delete_rule(account_id: str, *, rule_id: str) -> dict[str, str]:
     return {"status": "deleted", "rule_id": rule_id}
 
 
-
-
-
-
-
-
-
-
 # ----------------------------------------------------------------------
 # Unified tool support (email_rule_manage)
 # ----------------------------------------------------------------------

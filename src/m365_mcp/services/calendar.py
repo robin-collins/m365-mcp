@@ -6,6 +6,7 @@ Graph requests, handle caching and return the Graph results.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -14,6 +15,8 @@ from .. import graph
 
 if TYPE_CHECKING:
     from ..cache import CacheManager
+
+logger = logging.getLogger(__name__)
 
 
 def _get_cache_manager() -> CacheManager:
@@ -25,22 +28,6 @@ def _get_cache_manager() -> CacheManager:
     from ..cache import get_cache_manager
 
     return get_cache_manager()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def forward_event(
@@ -82,8 +69,6 @@ def forward_event(
     return {"status": "forwarded"}
 
 
-
-
 def create_calendar(account_id: str, *, name: str) -> dict[str, Any]:
     """Create a calendar and invalidate the calendar list cache.
 
@@ -111,16 +96,9 @@ def create_calendar(account_id: str, *, name: str) -> dict[str, Any]:
             reason="calendar_created",
         )
     except Exception:
-        # If cache invalidation fails, continue
-        pass
+        logger.debug("Calendar cache invalidation failed", exc_info=True)
 
     return result
-
-
-
-
-
-
 
 
 # ----------------------------------------------------------------------

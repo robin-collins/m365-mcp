@@ -4,26 +4,6 @@ from typing import Any
 
 from .. import graph
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ----------------------------------------------------------------------
 # Unified tool surface (m365_* contact and contact_folder resources)
 # ----------------------------------------------------------------------

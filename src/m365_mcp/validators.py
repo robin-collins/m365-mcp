@@ -6,11 +6,11 @@ import logging
 import os
 import re
 import tempfile
+from collections.abc import Collection, Iterable, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Collection, Iterable, Sequence
+from typing import Any
 from urllib.parse import urljoin, urlparse
-
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 LOGGER = logging.getLogger(__name__)
@@ -309,7 +309,7 @@ def validate_iso_datetime(
         )
 
     try:
-        parsed = datetime.fromisoformat(trimmed.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(trimmed)
     except ValueError as exc:
         reason = f"invalid ISO-8601 datetime ({exc})"
         _log_failure(param_name, reason, value)
@@ -665,18 +665,17 @@ def ensure_safe_path(
     candidate = Path(path).expanduser()
     candidate_str = str(candidate)
 
-    if os.name == "nt":
-        if candidate_str.startswith("\\\\"):
-            reason = "UNC paths are not allowed"
-            _log_failure(param_name, reason, candidate_str)
-            raise ValidationError(
-                format_validation_error(
-                    param_name,
-                    candidate_str,
-                    reason,
-                    "Absolute path on local drive",
-                )
+    if os.name == "nt" and candidate_str.startswith("\\\\"):
+        reason = "UNC paths are not allowed"
+        _log_failure(param_name, reason, candidate_str)
+        raise ValidationError(
+            format_validation_error(
+                param_name,
+                candidate_str,
+                reason,
+                "Absolute path on local drive",
             )
+        )
 
     resolved = candidate.resolve(strict=False)
 

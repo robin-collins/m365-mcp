@@ -7,70 +7,14 @@ own the Graph endpoints, request bodies, caching and cache invalidation.
 from __future__ import annotations
 
 import base64
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from .. import graph
 from ..validators import (
     ValidationError,
 )
 
-if TYPE_CHECKING:
-    pass
-
-
-
 MAX_ATTACHMENT_DOWNLOAD_BYTES = 25 * 1024 * 1024
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 # ----------------------------------------------------------------------

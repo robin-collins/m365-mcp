@@ -24,61 +24,10 @@ from urllib.parse import parse_qsl, quote, urlsplit
 from .. import graph
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def _odata_string_literal(value: str) -> str:
     """Encode a Python string as an OData single-quoted string literal."""
     escaped = value.replace("'", "''")
     return f"'{escaped}'"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 # --------------------------------------------------------------------------

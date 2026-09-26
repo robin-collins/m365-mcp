@@ -6,12 +6,13 @@ the cache with frequently accessed data on server startup.
 
 import asyncio
 import logging
+from collections.abc import Callable
 from contextlib import suppress
-from datetime import datetime, timezone
-from typing import Any, Callable
+from datetime import UTC, datetime
+from typing import Any
 
-from .cache import CacheManager
 from . import resource_cache
+from .cache import CacheManager
 from .cache_config import CACHE_WARMING_OPERATIONS, CacheState
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ class CacheWarmer:
             return
 
         logger.info(f"Starting cache warming for {len(self.accounts)} account(s)")
-        self.warming_started_at = datetime.now(timezone.utc)
+        self.warming_started_at = datetime.now(UTC)
 
         # Build warming queue
         warming_queue = self._build_warming_queue()
@@ -137,7 +138,7 @@ class CacheWarmer:
 
         # Initialize started_at if not already set
         if not self.warming_started_at:
-            self.warming_started_at = datetime.now(timezone.utc)
+            self.warming_started_at = datetime.now(UTC)
 
         try:
             for item in queue:
@@ -169,7 +170,7 @@ class CacheWarmer:
 
                     self.operations_completed += 1
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 - one failing warm-up must not stop the others
                     logger.warning(
                         f"Failed to warm cache for {operation} "
                         f"(account {account_id[:8]}...): {e}"
@@ -181,7 +182,7 @@ class CacheWarmer:
                 if throttle_sec > 0:
                     await asyncio.sleep(throttle_sec)
 
-            self.warming_completed_at = datetime.now(timezone.utc)
+            self.warming_completed_at = datetime.now(UTC)
             duration = (
                 self.warming_completed_at - self.warming_started_at
             ).total_seconds()
@@ -248,9 +249,7 @@ class CacheWarmer:
         elif self.is_warming:
             # Calculate current duration if still warming
             if self.warming_started_at:
-                duration = (
-                    datetime.now(timezone.utc) - self.warming_started_at
-                ).total_seconds()
+                duration = (datetime.now(UTC) - self.warming_started_at).total_seconds()
                 status["duration_seconds"] = round(duration, 2)
 
         # Calculate progress percentage

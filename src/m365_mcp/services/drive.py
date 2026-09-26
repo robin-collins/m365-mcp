@@ -12,7 +12,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from urllib.parse import quote, urljoin
 
 import httpx
@@ -22,23 +22,11 @@ from ..validators import (
     validate_graph_url,
 )
 
-if TYPE_CHECKING:
-    pass
-
 LOGGER = logging.getLogger(__name__)
 
 DEFAULT_DOWNLOAD_TIMEOUT = float(os.getenv("MCP_FILE_DOWNLOAD_TIMEOUT", "60.0"))
 DEFAULT_CHUNK_SIZE = int(os.getenv("MCP_FILE_DOWNLOAD_CHUNK_SIZE", "1048576"))
 MAX_REDIRECTS = 3
-
-
-
-
-
-
-
-
-
 
 
 def _stream_download(
@@ -51,22 +39,24 @@ def _stream_download(
     """Stream file contents from a validated URL to destination path."""
     target_url = url
     for _redirect in range(MAX_REDIRECTS + 1):
-        with httpx.Client(timeout=timeout, follow_redirects=False) as client:
-            with client.stream("GET", target_url) as response:
-                if response.status_code in {301, 302, 303, 307, 308}:
-                    location = response.headers.get("Location")
-                    if not location:
-                        raise RuntimeError("Redirect response missing Location header")
-                    next_url = urljoin(target_url, location)
-                    target_url = validate_graph_url(next_url, "redirect_url")
-                    continue
+        with (
+            httpx.Client(timeout=timeout, follow_redirects=False) as client,
+            client.stream("GET", target_url) as response,
+        ):
+            if response.status_code in {301, 302, 303, 307, 308}:
+                location = response.headers.get("Location")
+                if not location:
+                    raise RuntimeError("Redirect response missing Location header")
+                next_url = urljoin(target_url, location)
+                target_url = validate_graph_url(next_url, "redirect_url")
+                continue
 
-                response.raise_for_status()
-                with destination.open("wb") as output:
-                    for chunk in response.iter_bytes(chunk_size):
-                        if chunk:
-                            output.write(chunk)
-                return
+            response.raise_for_status()
+            with destination.open("wb") as output:
+                for chunk in response.iter_bytes(chunk_size):
+                    if chunk:
+                        output.write(chunk)
+            return
     raise RuntimeError("Exceeded redirect limit during download")
 
 
@@ -112,40 +102,6 @@ def _download_with_retries(
     raise RuntimeError(f"Failed to download file after retries: {last_error}") from (
         last_error
     )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 # ----------------------------------------------------------------------

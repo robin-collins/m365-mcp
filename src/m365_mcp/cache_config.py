@@ -13,14 +13,13 @@ The cache uses a three-state TTL model:
 3. Expired: Data is too old and must be refreshed before serving
 """
 
-import os
 import hashlib
 import json
+import os
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional
-from dataclasses import dataclass
-
+from typing import Any
 
 # ============================================================================
 # DATABASE CONFIGURATION
@@ -75,7 +74,7 @@ class TTLPolicy:
 
 # TTL policies for different resource types
 # Format: resource_type -> TTLPolicy(fresh_seconds, stale_seconds)
-TTL_POLICIES: Dict[str, TTLPolicy] = {
+TTL_POLICIES: dict[str, TTLPolicy] = {
     # Folder Operations (relatively static)
     "folder_get_tree": TTLPolicy(
         fresh_seconds=30 * 60,  # 30 minutes fresh
@@ -270,7 +269,7 @@ CACHE_WARMING_OPERATIONS = [
 
 
 def generate_cache_key(
-    account_id: str, resource_type: str, parameters: Optional[Dict[str, Any]] = None
+    account_id: str, resource_type: str, parameters: dict[str, Any] | None = None
 ) -> str:
     """Generate deterministic cache key from operation parameters.
 
@@ -299,7 +298,7 @@ def generate_cache_key(
     return ":".join(key_parts)
 
 
-def parse_cache_key(cache_key: str) -> Dict[str, str]:
+def parse_cache_key(cache_key: str) -> dict[str, str]:
     """Parse cache key back into components.
 
     Args:

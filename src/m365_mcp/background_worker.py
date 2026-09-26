@@ -10,7 +10,7 @@ import asyncio
 import logging
 import time
 import traceback
-from typing import Any, Optional
+from typing import Any
 
 from .cache import CacheManager
 from .cache_warming import get_inactive_warming_status
@@ -53,7 +53,7 @@ class BackgroundWorker:
         self.cache_manager = cache_manager
         self.tool_executor = tool_executor
         self.is_running = False
-        self.worker_task: Optional[asyncio.Task] = None
+        self.worker_task: asyncio.Task | None = None
         self.max_retries = max_retries
         self.initial_backoff = initial_backoff
         self.cache_warmer: Any | None = None
@@ -112,7 +112,7 @@ class BackgroundWorker:
             try:
                 # Wait up to 30 seconds for graceful shutdown
                 await asyncio.wait_for(self.worker_task, timeout=30.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Background worker did not stop gracefully, cancelling")
                 self.worker_task.cancel()
                 try:
@@ -144,7 +144,7 @@ class BackgroundWorker:
                     # Small delay between tasks to prevent overwhelming the system
                     await asyncio.sleep(0.1)
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - the worker must survive any task failure
                 logger.error(
                     f"Unexpected error in worker loop: {e}",
                     extra={"error": str(e), "traceback": traceback.format_exc()},
@@ -205,12 +205,12 @@ class BackgroundWorker:
 
             return True
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - the worker must survive any task failure
             # Handle task failure
             await self._handle_task_failure(task, e)
             return True
 
-    def _claim_next_task(self) -> Optional[dict[str, Any]]:
+    def _claim_next_task(self) -> dict[str, Any] | None:
         """
         Atomically claim the next highest priority queued task.
 
@@ -258,7 +258,7 @@ class BackgroundWorker:
 
                 return None
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - the worker must survive any task failure
             logger.error(f"Error claiming next task: {e}")
             return None
 
@@ -293,7 +293,7 @@ class BackgroundWorker:
                 )
                 conn.commit()
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - the worker must survive any task failure
             logger.error(
                 f"Error updating task status: {e}",
                 extra={"task_id": task_id, "status": status},
@@ -315,7 +315,7 @@ class BackgroundWorker:
         task_id = task["task_id"]
         retry_count = task.get("retry_count", 0)
 
-        error_message = f"{type(error).__name__}: {str(error)}"
+        error_message = f"{type(error).__name__}: {error!s}"
 
         if retry_count < self.max_retries:
             # Calculate exponential backoff delay

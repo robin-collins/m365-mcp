@@ -1,6 +1,5 @@
 """Account listing and device-flow orchestration over ``auth``."""
 
-
 from .. import auth
 from ..validators import (
     ValidationError,
@@ -57,8 +56,6 @@ def resolve_account_id(account_id: str | None) -> str:
     )
 
 
-
-
 def list_account_records() -> list[dict[str, str | None]]:
     """List signed-in accounts as ``account_list`` records.
 
@@ -75,7 +72,3 @@ def list_account_records() -> list[dict[str, str | None]]:
         }
         for acc in auth.list_accounts()
     ]
-
-
-
-

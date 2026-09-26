@@ -5,14 +5,14 @@ This module provides structured logging with rotation, detailed formatting,
 and separate log levels for different components.
 """
 
+import json
 import logging
 import logging.handlers
-import sys
 import shutil
+import sys
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
-from typing import Any
-import json
+from typing import Any, ClassVar
 
 
 class StructuredFormatter(logging.Formatter):
@@ -20,7 +20,7 @@ class StructuredFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -44,7 +44,7 @@ class StructuredFormatter(logging.Formatter):
 class HumanReadableFormatter(logging.Formatter):
     """Human-readable formatter with colors for console output."""
 
-    COLORS = {
+    COLORS: ClassVar[dict[str, str]] = {
         "DEBUG": "\033[36m",  # Cyan
         "INFO": "\033[32m",  # Green
         "WARNING": "\033[33m",  # Yellow
@@ -61,7 +61,7 @@ class HumanReadableFormatter(logging.Formatter):
             record.levelname = f"{color}{record.levelname}{reset}"
 
         # Format: timestamp [LEVEL] logger.module.function:line - message
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        timestamp = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         location = f"{record.module}.{record.funcName}:{record.lineno}"
 
         formatted = f"{timestamp} [{record.levelname}] {record.name}.{location} - {record.getMessage()}"
@@ -100,7 +100,7 @@ def archive_existing_logs(log_dir: Path) -> dict[str, Any]:
         return result
 
     # Create archive directory with timestamp
-    archive_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    archive_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     archive_dir = log_dir / "archives" / archive_timestamp
     archive_dir.mkdir(parents=True, exist_ok=True)
 
@@ -111,7 +111,7 @@ def archive_existing_logs(log_dir: Path) -> dict[str, Any]:
             dest = archive_dir / log_file.name
             shutil.move(str(log_file), str(dest))
             archived_count += 1
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - archiving is best effort; keep starting
             # Print to stderr since logging isn't setup yet
             print(f"Warning: Failed to archive {log_file.name}: {e}", file=sys.stderr)
 

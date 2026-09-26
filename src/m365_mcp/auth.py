@@ -1,6 +1,6 @@
-import pathlib as pl
 import logging
 import os
+import pathlib as pl
 import sys
 import threading
 from typing import Any, NamedTuple
@@ -41,6 +41,10 @@ logger = logging.getLogger(__name__)
 _APP_LOCK = threading.Lock()
 _APPS: dict[tuple[str, str], msal.PublicClientApplication] = {}
 _TOKEN_CACHE: msal_extensions.PersistedTokenCache | None = None
+
+
+class AuthenticationError(RuntimeError):
+    """Raised when a device-code or MSAL sign-in attempt fails."""
 
 
 class SignInRequiredError(RuntimeError):
@@ -179,7 +183,7 @@ def _initiate_device_flow(
         error_message = flow.get(
             "error_description", flow.get("error", "Unknown error")
         )
-        raise Exception(error_message)
+        raise AuthenticationError(error_message)
 
     try:
         return app, _start(app, tenant_id)
@@ -428,7 +432,7 @@ def get_token(account_id: str | None = None, force_refresh: bool = False) -> str
         account = _select_account(accounts, result, account)
 
     if "error" in result:
-        raise Exception(
+        raise AuthenticationError(
             f"Auth failed: {result.get('error_description', result['error'])}"
         )
 
@@ -552,7 +556,7 @@ def authenticate_new_account() -> Account:
 
     Raises:
         PersonalAccountRequiredError: If a work or school account signed in.
-        Exception: If the device flow fails.
+        AuthenticationError: If the device flow fails.
     """
     app, tenant_id = get_app()
 
@@ -571,7 +575,7 @@ def authenticate_new_account() -> Account:
     result = app.acquire_token_by_device_flow(flow)
 
     if "error" in result:
-        raise Exception(
+        raise AuthenticationError(
             f"Auth failed: {result.get('error_description', result['error'])}"
         )
 

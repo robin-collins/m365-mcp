@@ -14,12 +14,12 @@ from typing import Any
 from dotenv import load_dotenv
 from starlette.middleware import Middleware as StarletteMiddleware
 
-from .resource_cache import UNIFIED_REFRESH_PREFIX
 from .http_security import (
     OriginValidationMiddleware,
     allowed_origins_from_env,
     token_matches,
 )
+from .resource_cache import UNIFIED_REFRESH_PREFIX
 
 # Logger will be initialized after argument parsing
 logger: logging.Logger | None = None
@@ -163,10 +163,10 @@ async def _execute_warming_operation(
 
 async def _start_cache_runtime() -> CacheRuntime | None:
     """Start cache warming/background refresh services when enabled."""
+    from . import cache, warming_status
     from .background_worker import BackgroundWorker
     from .cache_config import CACHE_WARMING_ENABLED
     from .cache_warming import CacheWarmer
-    from . import cache, warming_status
 
     active_logger = logger or logging.getLogger(__name__)
     if not CACHE_WARMING_ENABLED:

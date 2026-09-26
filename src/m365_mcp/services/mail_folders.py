@@ -70,8 +70,6 @@ def get_folder(account_id: str, *, folder_id: str) -> dict[str, Any]:
     return result
 
 
-
-
 def create_folder(
     account_id: str,
     *,
@@ -130,8 +128,6 @@ def rename_folder(
     return result
 
 
-
-
 def delete_folder(account_id: str, *, folder_id: str) -> dict[str, str]:
     """Delete a mail folder and its contents.
 
@@ -145,10 +141,6 @@ def delete_folder(account_id: str, *, folder_id: str) -> dict[str, str]:
     graph.request("DELETE", f"/me/mailFolders/{folder_id}", account_id)
 
     return {"status": "deleted", "folder_id": folder_id}
-
-
-
-
 
 
 # ----------------------------------------------------------------------

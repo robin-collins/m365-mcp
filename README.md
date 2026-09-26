@@ -472,8 +472,8 @@ and cursors are separate per account.
 ## Development
 
 ```bash
-# Run unit tests (no network; test_integration.py is a live legacy test)
-uv run pytest tests/ -q --ignore=tests/test_integration.py
+# Run the test suite (no network; live tests are skipped by default)
+uv run pytest tests/ -q
 
 # Live read-only tests against a signed-in personal account
 M365_MCP_LIVE_TESTS=1 uv run pytest tests/test_integration_unified.py -v
@@ -482,8 +482,8 @@ M365_MCP_LIVE_TESTS=1 uv run pytest tests/test_integration_unified.py -v
 uv run pyright
 
 # Format and lint
-uvx ruff format .
-uvx ruff check --fix --unsafe-fixes .
+uvx ruff format --check .
+uvx ruff check .
 
 # Regenerate and verify the tool specs and reference
 uv run python scripts/build_unified_tool_specs.py

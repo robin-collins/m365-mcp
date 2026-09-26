@@ -194,8 +194,8 @@ uv run authenticate.py
 # Run the MCP server (requires M365_MCP_CLIENT_ID)
 uv run m365-mcp
 
-# Unit tests (no network; test_integration.py is a live legacy test, skip it)
-uv run pytest tests/ -q --ignore=tests/test_integration.py
+# Test suite (no network; live tests are skipped by default)
+uv run pytest tests/ -q
 
 # Live read-only tests on a signed-in personal account
 M365_MCP_LIVE_TESTS=1 uv run pytest tests/test_integration_unified.py -v
@@ -203,16 +203,21 @@ M365_MCP_LIVE_TESTS=1 uv run pytest tests/test_integration_unified.py -v
 # Type checking
 uv run pyright
 
-# Format and lint
-uvx ruff format .
-uvx ruff check --fix --unsafe-fixes .
+# Lint and format check (CI runs `ruff check`)
+uvx ruff check .
+uvx ruff format --check .
 
 # Regenerate and verify the tool specs and the tool reference
 uv run python scripts/build_unified_tool_specs.py
 uv run python scripts/build_unified_tool_specs.py --check
 uv run python scripts/generate_tools_doc.py --check
 
+<<<<<<< HEAD
 # Golden-prompt evaluation harness (needs ANTHROPIC_API_KEY and credits)
+=======
+# Golden-prompt evaluation harness (anthropic is a dev dependency; needs
+# ANTHROPIC_API_KEY and credits, or --base-url for a local model)
+>>>>>>> 15a702a (Docs sweep for v1.0.0: rewrite MCP_SERVER_TOOLS.md header and sections 1-3, fix test layout and commands in CLAUDE.md, steering, README, QUICKSTART, FILETREE)
 uv run python -m evals.runner --help
 ```
 
@@ -269,14 +274,23 @@ grants; a missing permission fails only the tools that need it.
   (`tests/unified_harness.py`, `tests/fixtures/graph/`), plus conformance
   tests: `test_tool_registry.py` compares the live `tools/list` with the
   specs; `test_unified_tool_specs.py` validates the specs;
-  `test_parity_part1.py` / `test_parity_part2.py` cover every legacy
-  mapping row.
+  `test_parity.py` covers every legacy-to-unified mapping row;
+  `test_sdk_client_conformance.py` drives the server through the MCP client
+  SDK; `test_evals_harness.py` covers the `evals/` harness. Per-domain
+  suites are `test_unified_*.py`, `test_services_*.py`, and one file per
+  cross-cutting module (`test_graph_*.py`, `test_cursors.py`,
+  `test_http_security.py`, `test_local_files.py`, `test_rate_limit.py`,
+  `test_cache*.py`, and so on).
 - Every `validation_rules` entry needs a test with its exact error text;
   spec examples are fixtures.
 - Follow TDD (steering `python.md`): failing test first.
-- The live test `tests/test_integration_unified.py` (reads only) needs
-  `M365_MCP_LIVE_TESTS=1`, a valid `M365_MCP_CLIENT_ID` and an authenticated
-  personal account.
+- The live test `tests/test_integration_unified.py` (reads only) is opt-in:
+  it needs `M365_MCP_LIVE_TESTS=1`, a valid `M365_MCP_CLIENT_ID` and an
+  authenticated personal account.
+- Before finishing a change, all of these must pass: `uv run pytest tests/
+  -q`, `uv run pyright`, `uvx ruff check .`, `uvx ruff format --check .`,
+  `uv run python scripts/build_unified_tool_specs.py --check` and
+  `uv run python scripts/generate_tools_doc.py --check`.
 
 ## Common Patterns
 

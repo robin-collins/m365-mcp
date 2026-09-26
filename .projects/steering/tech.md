@@ -19,11 +19,11 @@
 
 ### Production Dependencies
 ```python
-fastmcp>=0.2.0      # MCP server framework
+fastmcp>=2.8.0      # MCP server framework
 msal>=1.20.0        # Microsoft authentication
 httpx>=0.25.0       # Async HTTP client
 python-dotenv>=1.0.0 # Environment variable management
-sqlcipher3>=0.5.0   # Encrypted SQLite for cache (AES-256)
+sqlcipher3-wheels==0.5.6 # Encrypted SQLite for cache (AES-256)
 keyring>=24.0.0     # Secure key storage (system keyring integration)
 ```
 
@@ -55,23 +55,30 @@ uv pip install -e .
 # Run type checking
 uv run pyright
 
-# Format code
-uvx ruff format .
+# Check formatting
+uvx ruff format --check .
 
-# Lint code
-uvx ruff check --fix --unsafe-fixes .
+# Lint code (CI runs this)
+uvx ruff check .
 ```
 
 #### Testing
 ```bash
-# Run all tests
-uv run pytest tests/ -v
+# Run all tests (no network; live tests are skipped by default)
+uv run pytest tests/ -q
 
 # Run specific test file
-uv run pytest tests/test_integration.py -v
+uv run pytest tests/test_tool_registry.py -v
+
+# Live read-only tests against a signed-in personal account (opt-in)
+M365_MCP_LIVE_TESTS=1 uv run pytest tests/test_integration_unified.py -v
 
 # Run with coverage
 uv run pytest --cov=src tests/
+
+# Verify the generated tool specs and tool reference are current
+uv run python scripts/build_unified_tool_specs.py --check
+uv run python scripts/generate_tools_doc.py --check
 ```
 
 #### Running the Server
@@ -133,7 +140,8 @@ uv run authenticate.py
 ### Architecture Patterns
 - **MCP Tool Pattern** - All Microsoft 365 operations exposed as MCP tools
 - **Modular Tool Package** - Tool implementations live under `src/m365_mcp/tools/`
-  and register against the shared FastMCP instance from `mcp_instance.py`
+  and are registered by `tools/registry.py` (`build_server()`) from the
+  packaged tool specs
 - **Authentication Proxy** - Centralized token management and refresh
 - **Graph API Client** - Unified HTTP client with retry logic and rate limiting
 - **Multi-account Support** - Account isolation and context management
@@ -148,15 +156,18 @@ uv run authenticate.py
 
 ### Caching Strategy
 - **Encrypted SQLite Cache** - AES-256 encryption via SQLCipher for data at rest
-- **Three-State TTL** - Fresh (0-5 min), Stale (5-30 min), Expired (>30 min) lifecycle
+- **Three-State TTL** - Fresh, Stale and Expired lifecycle with per-resource
+  lifetimes (`cache_config.RESOURCE_TTL_POLICIES`, for example `email` fresh
+  2 min and expired after 10 min)
 - **Automatic Compression** - Gzip compression for entries ≥50KB (70-80% size reduction)
-- **Smart Invalidation** - Pattern-based cache invalidation on write operations
+- **Smart Invalidation** - Mutating tools invalidate the affected resources for that account
 - **Connection Pooling** - Pool of 5 SQLite connections for concurrent access
 - **Automatic Cleanup** - Triggers at 80% of 2GB limit, reduces to 60% target
 - **Cache Warming** - Background pre-population and stale-cache refresh are
   wired behind `M365_MCP_CACHE_WARMING=true`; default startup leaves the worker
   inactive
-- **Performance Impact** - 300x faster for folder_get_tree, 40-100x for email_list/file_list
+- **Scope** - Only `m365_list` and `m365_get` results are cached; the only
+  model-facing control is `refresh`
 - **Encryption Key Management** - System keyring integration with environment
   fallback and explicit warnings for non-persistent generated keys
 

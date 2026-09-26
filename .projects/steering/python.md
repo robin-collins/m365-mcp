@@ -85,7 +85,7 @@ class GraphAPIError(MicrosoftMCPServerError):
 from typing import Any, Optional, Union
 from collections.abc import Iterator
 
-def email_list(
+def message_list(
     account_id: str,
     folder_id: Optional[str] = None,
     limit: int = 10,

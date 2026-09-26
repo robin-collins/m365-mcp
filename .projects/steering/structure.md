@@ -15,7 +15,6 @@ m365-mcp/
 │   ├── errors.py              # GraphAPIError and mapping to actionable ToolError text
 │   ├── server.py              # Entry point, stdio and HTTP transports
 │   ├── http_security.py       # Origin allowlist and constant-time bearer check
-│   ├── mcp_instance.py        # Legacy FastMCP instance (removed at cut-over)
 │   ├── tool_specs/            # Packaged spec JSON (generated; do not edit)
 │   ├── tools/
 │   │   ├── registry.py        # Builds the server from tool_specs; validation,
@@ -125,9 +124,18 @@ Account isolation and management:
 ### Testing Structure
 ```
 tests/
-├── test_integration.py        # End-to-end integration tests
-├── test_unit/                 # Unit tests (future)
-└── test_fixtures/             # Test data and fixtures (future)
+├── conftest.py, unified_harness.py, parity_helpers.py   # Shared fixtures and mocked Graph harness
+├── fixtures/graph/            # Recorded Graph response fixtures
+├── test_unified_*.py          # Handler tests per domain (mail, calendar, drive, ...)
+├── test_services_*.py         # Services layer tests
+├── test_parity.py             # Legacy-to-unified mapping rows
+├── test_tool_registry.py      # Live tools/list equals the specs
+├── test_unified_tool_specs.py # Spec validation
+├── test_sdk_client_conformance.py  # MCP client SDK against the server
+├── test_evals_harness.py      # evals/ harness
+├── test_graph_*.py, test_cursors.py, test_local_files.py, ...  # One file per module
+├── test_cache*.py, test_encryption.py, ...  # Cache layer
+└── test_integration_unified.py  # Live read-only tests (M365_MCP_LIVE_TESTS=1)
 ```
 
 ### Documentation Structure

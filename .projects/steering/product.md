@@ -43,4 +43,4 @@
 
 ## Current Status
 
-Active development with 40+ MCP tools implemented, focusing on intelligent organization features and performance optimizations for enterprise-scale deployments.
+Version 1.0.0 exposes 29 intent-based MCP tools in three tiers (`core`, `extended`, `admin`) for personal Microsoft accounts; see `docs/unified-tools/`.

@@ -674,3 +674,44 @@ class TestCacheEncryption:
         # Sensitive data should NOT appear in plaintext
         assert b"super-secret-123" not in raw_content
         assert b"abc123" not in raw_content
+
+
+class TestCacheManagerSingleton:
+    def test_concurrent_first_calls_create_exactly_one_manager(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Handlers run in threads: two first calls must not build two managers
+        (on a fresh install they could generate different encryption keys)."""
+        import threading
+        import time
+
+        from src.m365_mcp import cache
+
+        created: list[object] = []
+
+        class SlowManager:
+            def __init__(self) -> None:
+                time.sleep(0.2)  # widen the check-then-create window
+                created.append(self)
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(cache, "CacheManager", SlowManager)
+        monkeypatch.setattr(cache, "_cache_manager", None)
+        monkeypatch.setattr(cache, "_cache_manager_atexit_registered", True)
+        results: list[object] = []
+        gate = threading.Barrier(8)
+
+        def first_call() -> None:
+            gate.wait()
+            results.append(cache.get_cache_manager())
+
+        threads = [threading.Thread(target=first_call) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+        assert len(created) == 1
+        assert len(results) == 8 and all(r is created[0] for r in results)

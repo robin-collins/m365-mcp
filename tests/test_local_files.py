@@ -283,3 +283,60 @@ def test_protected_link_name_is_refused_even_if_target_is_safe(
 )
 def test_sanitize_file_name(name: str, expected: str) -> None:
     assert sanitize_file_name(name) == expected
+
+
+def _http(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MCP_TRANSPORT", "http")
+    for name in ("MCP_FILE_ALLOW_CWD", "MCP_FILE_ALLOW_TEMP"):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_http_transport_defaults_to_explicit_roots_only(
+    roots: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _http(monkeypatch)
+    assert allowed_roots() == []
+    (roots["cwd"] / "a.txt").write_text("x")
+    (roots["temp"] / "b.txt").write_text("x")
+    for name in ("cwd", "temp"):
+        with pytest.raises(ValidationError, match="outside allowed folders"):
+            check_read_path(str(roots[name] / ("a.txt" if name == "cwd" else "b.txt")))
+
+
+def test_http_transport_uses_configured_roots(
+    roots: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _http(monkeypatch)
+    monkeypatch.setenv("MCP_FILE_ALLOWED_ROOTS", str(roots["extra"]))
+    target = roots["extra"] / "report.pdf"
+    target.write_bytes(b"x")
+    assert allowed_roots() == [roots["extra"].resolve()]
+    assert check_read_path(str(target)) == target.resolve()
+
+
+def test_http_transport_can_opt_back_in(
+    roots: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _http(monkeypatch)
+    monkeypatch.setenv("MCP_FILE_ALLOW_CWD", "true")
+    assert allowed_roots() == [roots["cwd"].resolve()]
+    monkeypatch.setenv("MCP_FILE_ALLOW_TEMP", "1")
+    assert allowed_roots() == [roots["cwd"].resolve(), roots["temp"].resolve()]
+
+
+def test_stdio_can_drop_the_temp_directory(
+    roots: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("MCP_TRANSPORT", raising=False)
+    monkeypatch.setenv("MCP_FILE_ALLOW_TEMP", "false")
+    assert allowed_roots() == [roots["cwd"].resolve()]
+    monkeypatch.setenv("MCP_FILE_ALLOW_CWD", "false")
+    assert allowed_roots() == []
+
+
+def test_unrecognised_flag_falls_back_to_the_transport_default(
+    roots: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("MCP_TRANSPORT", raising=False)
+    monkeypatch.setenv("MCP_FILE_ALLOW_TEMP", "maybe")
+    assert roots["temp"].resolve() in allowed_roots()

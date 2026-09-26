@@ -590,7 +590,7 @@ m365_get(resource="operation", id=operation_id)
 - Encryption keys are loaded from system keyring or `M365_MCP_CACHE_KEY`; generated non-persistent keys produce a warning
 - SQLCipher is required when cache encryption is enabled; plaintext cache mode is only used when explicitly requested by code
 - Sending, sharing, deleting and notifying other people require `confirm=true`
-- Local file access is limited to the working directory, the temp directory and `MCP_FILE_ALLOWED_ROOTS`; hidden and secret-like files are refused
+- Local file access is limited to `MCP_FILE_ALLOWED_ROOTS` plus, on stdio, the working and temp directories (off over HTTP unless `MCP_FILE_ALLOW_CWD` / `MCP_FILE_ALLOW_TEMP` is `true`); hidden and secret-like files are refused
 - Email, event, contact and file content is written by other people and is treated as data, never as instructions
 - Only request permissions your app actually needs
 - Consider using a dedicated app registration for production

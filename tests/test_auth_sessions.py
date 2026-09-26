@@ -206,3 +206,54 @@ def test_expired_sessions_are_purged(app: FakeApp, store, clock: Clock) -> None:
 def test_default_store_exists() -> None:
     assert isinstance(auth_sessions.store, auth_sessions.AuthSessionStore)
     assert auth_sessions.SESSION_TTL_SECONDS == 900
+
+
+def test_concurrent_completion_polls_and_redeems_once(app: FakeApp, store) -> None:
+    """A second caller must not poll (and possibly redeem) an in-flight flow."""
+    import threading
+
+    session_id = store.begin()["auth_session_id"]
+    app.sign_in("ada@outlook.com", PERSONAL_ID, auth.PERSONAL_TENANT_ID)
+    entered = threading.Event()
+    release = threading.Event()
+    real_poll = app.acquire_token_by_device_flow
+
+    def slow_poll(flow: dict[str, Any], exit_condition: Any = None) -> dict[str, Any]:
+        entered.set()
+        assert release.wait(timeout=10)
+        return real_poll(flow, exit_condition)
+
+    app.acquire_token_by_device_flow = slow_poll  # type: ignore[method-assign]
+    first: dict[str, Any] = {}
+    worker = threading.Thread(
+        target=lambda: first.update(store.complete(session_id)), daemon=True
+    )
+    worker.start()
+    assert entered.wait(timeout=10)
+
+    second = store.complete(session_id)  # while the first poll is in flight
+
+    assert second == {"status": "pending", "account": None}
+    assert app.polls == []  # the second caller never touched Microsoft
+    release.set()
+    worker.join(timeout=10)
+    assert first["status"] == "success"
+    assert len(app.polls) == 1
+    with pytest.raises(ValidationError):
+        store.complete(session_id)
+
+
+def test_pending_poll_releases_the_in_flight_mark(app: FakeApp, store) -> None:
+    session_id = store.begin()["auth_session_id"]
+    assert store.complete(session_id)["status"] == "pending"
+    assert store.complete(session_id)["status"] == "pending"
+    assert len(app.polls) == 2  # each sequential call really polled
+
+
+def test_failed_poll_still_ends_the_session(app: FakeApp, store) -> None:
+    session_id = store.begin()["auth_session_id"]
+    app.outcome = {"error": "expired_token", "error_description": "gone"}
+    with pytest.raises(RuntimeError):
+        store.complete(session_id)
+    with pytest.raises(ValidationError):
+        store.complete(session_id)

@@ -866,6 +866,7 @@ class CacheManager:
 # Process-wide cache manager (lazy-initialised). It lives here, outside the
 # tool layer, so the Graph services can use it without importing FastMCP.
 _cache_manager: CacheManager | None = None
+_cache_manager_lock = threading.Lock()
 _cache_manager_atexit_registered = False
 
 
@@ -884,8 +885,13 @@ def get_cache_manager() -> CacheManager:
     global _cache_manager
     global _cache_manager_atexit_registered
     if _cache_manager is None:
-        _cache_manager = CacheManager()
-        if not _cache_manager_atexit_registered:
-            atexit.register(_close_cache_manager)
-            _cache_manager_atexit_registered = True
+        # Tool handlers run in worker threads, so two first calls can race.
+        # Two managers could each generate an encryption key on a fresh
+        # install and treat the other's database as unreadable.
+        with _cache_manager_lock:
+            if _cache_manager is None:
+                _cache_manager = CacheManager()
+                if not _cache_manager_atexit_registered:
+                    atexit.register(_close_cache_manager)
+                    _cache_manager_atexit_registered = True
     return _cache_manager

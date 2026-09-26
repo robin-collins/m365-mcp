@@ -9,7 +9,8 @@ import secrets
 import threading
 import time
 from collections.abc import Callable
-from typing import Any, NamedTuple
+from dataclasses import dataclass
+from typing import Any
 
 from . import auth
 from .validators import ValidationError
@@ -21,9 +22,11 @@ UNKNOWN_SESSION_ERROR = (
 )
 
 
-class _Session(NamedTuple):
+@dataclass
+class _Session:
     flow: dict[str, Any]
     expires_at: float
+    in_flight: bool = False  # a poll of Microsoft is running
 
 
 class AuthSessionStore:
@@ -106,11 +109,25 @@ class AuthSessionStore:
         with self._lock:
             self._purge_expired(self._clock())
             session = self._sessions.get(auth_session_id)
-        if session is None:
-            raise ValidationError(UNKNOWN_SESSION_ERROR)
+            if session is None:
+                raise ValidationError(UNKNOWN_SESSION_ERROR)
+            if session.in_flight:
+                # Another caller is polling Microsoft right now. Polling the
+                # same device code twice could redeem it twice, so this call
+                # just reports "not finished"; the caller retries shortly.
+                return {"status": "pending", "account": None}
+            session.in_flight = True
 
-        app, result = auth.poll_device_flow_once(session.flow)
+        try:
+            app, result = auth.poll_device_flow_once(session.flow)
+        except BaseException:
+            # A transient failure (network, MSAL) must not end the session.
+            with self._lock:
+                session.in_flight = False
+            raise
         if result.get("error") == "authorization_pending":
+            with self._lock:
+                session.in_flight = False
             return {"status": "pending", "account": None}
 
         with self._lock:

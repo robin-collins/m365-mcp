@@ -175,3 +175,16 @@ def test_retry_counter_counts_graph_retries(monkeypatch) -> None:
         assert graph.retry_count() == 1
     finally:
         graph.restore_retry_count(token)
+
+
+def test_retries_counted_in_a_worker_thread_reach_the_caller() -> None:
+    """Handlers run off the event loop in a copied context; counts must survive."""
+    import contextvars
+
+    token = graph.reset_retry_count()
+    try:
+        contextvars.copy_context().run(graph.note_retry)
+        contextvars.copy_context().run(graph.note_retry)
+        assert graph.retry_count() == 2
+    finally:
+        graph.restore_retry_count(token)

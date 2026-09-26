@@ -6,6 +6,12 @@ Concept §8.13 and §12.5. Paths are allowed only inside:
 - the system temp directory,
 - each entry of ``MCP_FILE_ALLOWED_ROOTS`` (``os.pathsep``-separated).
 
+The first two are defaults for a local (stdio) server. Over HTTP, where the
+holder of the bearer token is not necessarily the person at the machine,
+they are off: only ``MCP_FILE_ALLOWED_ROOTS`` applies. Set
+``MCP_FILE_ALLOW_CWD`` / ``MCP_FILE_ALLOW_TEMP`` to ``true`` or ``false`` to
+override either default in any mode.
+
 Symlinks are resolved before the check, so a link that escapes a root is
 refused. The deny-list applies to reads and writes alike: any path
 component below the root that starts with ``.`` (which covers ``.env``),
@@ -26,20 +32,38 @@ from pathlib import Path
 from .validators import WINDOWS_RESERVED_NAMES, ValidationError
 
 ALLOWED_ROOTS_ENV = "MCP_FILE_ALLOWED_ROOTS"
+ALLOW_CWD_ENV = "MCP_FILE_ALLOW_CWD"
+ALLOW_TEMP_ENV = "MCP_FILE_ALLOW_TEMP"
 DEFAULT_FILE_NAME = "download"
 
 _INVALID_NAME_CHARS = re.compile(r'[<>:"/\\|?*]')
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 
 
+def _flag(name: str, default: bool) -> bool:
+    """Read a true/false environment flag; anything else keeps ``default``."""
+    value = os.getenv(name, "").strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 def allowed_roots() -> list[Path]:
     """Return the resolved folders local paths must stay inside.
 
     Returns:
-        The working directory, the temp directory, then each
+        The working directory and the temp directory (each on by default
+        except over HTTP, see the module docstring), then each
         ``MCP_FILE_ALLOWED_ROOTS`` entry.
     """
-    roots = [Path.cwd().resolve(), Path(tempfile.gettempdir()).resolve()]
+    local = os.getenv("MCP_TRANSPORT", "stdio").strip().lower() != "http"
+    roots: list[Path] = []
+    if _flag(ALLOW_CWD_ENV, local):
+        roots.append(Path.cwd().resolve())
+    if _flag(ALLOW_TEMP_ENV, local):
+        roots.append(Path(tempfile.gettempdir()).resolve())
     for entry in os.getenv(ALLOWED_ROOTS_ENV, "").split(os.pathsep):
         if entry.strip():
             roots.append(Path(entry.strip()).expanduser().resolve())

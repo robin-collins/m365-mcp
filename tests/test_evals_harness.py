@@ -206,3 +206,23 @@ def test_unified_surface_loads_from_registry():
     (call,) = result.calls
     assert call.tool == "m365_list" and call.schema_valid and not call.is_error
     assert "emails from inbox" in call.result_text
+
+
+class _FailingModel:
+    """A model client whose API always errors (for example: no credits)."""
+
+    def create(self, system, tools, messages):
+        raise RuntimeError("credit balance is too low")
+
+
+def test_errored_runs_never_count_as_success() -> None:
+    cases = [c for c in CASES if c.id in ("n01", "a02", "d01")]
+    extra = [c for c in CASES if c.id in ("d02", "d03")]
+    results = asyncio.run(run(cases + extra, "legacy", _FailingModel(), ANCHOR, None))
+    assert len(results) == 3, "the run stops after three consecutive errors"
+    assert all(r.error for r in results)
+    assert not any(r.task_success or r.first_tool_correct for r in results)
+    summary = summarise(results, "legacy")
+    assert summary["run_errors"] == 3
+    assert summary["task_success"] == 0.0 and summary["correct_first_tool"] == 0.0
+    assert "INVALID RUN" in render_markdown("t", "legacy", "m", ANCHOR, results)

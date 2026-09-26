@@ -299,6 +299,9 @@ async def run_case(
                 messages.append({"role": "user", "content": results})
 
             first, first_ok, success = score(case, surface_name, calls, asked_user)
+            if error is not None:
+                # A run that hit an API or harness error proves nothing.
+                first_ok = success = False
             result = CaseResult(
                 case_id=case.id,
                 category=case.category,
@@ -394,9 +397,21 @@ def render_markdown(
         "Held-out": [r for r in results if r.split == "heldout"],
     }
     summaries = {name: summarise(rs, surface) for name, rs in groups.items()}
+    errored = [r.case_id for r in results if r.error]
     lines = [
         f"# {title}",
         "",
+    ]
+    if errored:
+        lines += [
+            (
+                f"> **INVALID RUN:** {len(errored)} of {len(results)} cases hit an "
+                f"API or harness error and scored as failures ({', '.join(errored)}). "
+                "Do not use these numbers."
+            ),
+            "",
+        ]
+    lines += [
         f"- Surface: `{surface}`",
         f"- Model: `{model}`",
         f"- Run date (fixture anchor): {anchor.isoformat()}",
@@ -457,6 +472,13 @@ async def run(
         result, transcript = await run_case(case, surface, model, anchor, toolsets)
         results.append(result)
         transcripts[case.id] = transcript
+        if len(results) >= 3 and all(r.error for r in results[-3:]):
+            print(
+                "Aborting: three consecutive cases hit an API or harness error "
+                f"({results[-1].error}).",
+                file=sys.stderr,
+            )
+            break
         print(
             f"[{index}/{len(cases)}] {case.id:4} first={result.first_tool or '-':32} "
             f"ok={result.first_tool_correct!s:5} success={result.task_success!s:5} "
@@ -514,7 +536,15 @@ def main(argv: list[str] | None = None) -> int:
             args.title,
         )
     )
-    print(json.dumps(summarise(results, args.surface), indent=2))
+    summary = summarise(results, args.surface)
+    print(json.dumps(summary, indent=2))
+    if summary["run_errors"]:
+        print(
+            f"INVALID RUN: {summary['run_errors']} case(s) errored; "
+            "these numbers must not be used.",
+            file=sys.stderr,
+        )
+        return 2
     return 0
 
 

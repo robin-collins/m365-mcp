@@ -249,3 +249,43 @@ def test_local_endpoint_model_client(monkeypatch) -> None:
     hosted.client.messages = FakeMessages()  # type: ignore[assignment]
     hosted.create("system", [], [])
     assert sent["cache_control"] == {"type": "ephemeral"}
+
+
+def test_user_approves_when_the_model_asks_before_a_plain_write() -> None:
+    case = next(c for c in CASES if c.id == "c07")
+    assert not case.side_effect and not case.clarify_ok
+    create = (
+        "emailfolders_create",
+        {"account_id": ACCOUNT_ID, "display_name": "Kids"},
+    )
+    results = _run(
+        [case],
+        {
+            "c07": [
+                text_turn("I'll create the folder Kids. Shall I proceed?"),
+                tool_turn(create),
+                text_turn("Created."),
+            ]
+        },
+    )
+    assert results[0].task_success and results[0].approvals_given == 1
+
+
+def test_no_approval_when_the_model_simply_finishes() -> None:
+    case = next(c for c in CASES if c.id == "d01")
+    results = _run(
+        [case],
+        {
+            "d01": [
+                tool_turn(("email_list", {"account_id": ACCOUNT_ID})),
+                text_turn("You have 4 unread emails."),
+            ]
+        },
+    )
+    assert results[0].approvals_given == 0
+
+
+def test_ask_first_cases_are_not_auto_approved() -> None:
+    case = next(c for c in CASES if c.id == "a02")
+    results = _run([case], {"a02": [text_turn("Which email do you mean?")]})
+    assert results[0].approvals_given == 0 and results[0].task_success

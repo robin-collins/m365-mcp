@@ -261,7 +261,12 @@ async def run_case(
                     stop_reason = "error"
                     break
                 usage = getattr(response, "usage", None)
-                usage_in += getattr(usage, "input_tokens", 0) or 0
+                # Cached prompt tokens are reported separately by Anthropic.
+                usage_in += (
+                    (getattr(usage, "input_tokens", 0) or 0)
+                    + (getattr(usage, "cache_creation_input_tokens", 0) or 0)
+                    + (getattr(usage, "cache_read_input_tokens", 0) or 0)
+                )
                 usage_out += getattr(usage, "output_tokens", 0) or 0
                 messages.append(
                     {
@@ -286,7 +291,13 @@ async def run_case(
                     if followups:
                         messages.append({"role": "user", "content": followups.pop(0)})
                         continue
-                    if case.side_effect and not approved and approvals == 0:
+                    # The simulated user says yes once: always for side-effect
+                    # cases, and for any other case when the model asks a
+                    # question (cases that test whether it asks are left alone).
+                    wants_go_ahead = case.side_effect or (
+                        "?" in text and not case.clarify_ok
+                    )
+                    if wants_go_ahead and not approved and approvals == 0:
                         approved = True
                         approvals += 1
                         messages.append({"role": "user", "content": APPROVAL})

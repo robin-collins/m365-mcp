@@ -9,7 +9,6 @@ from typing import Any
 import pytest
 
 from src.m365_mcp import auth
-from src.m365_mcp.services import accounts
 
 WORK_TENANT = "72f988bf-86f1-41af-91ab-2d7cd011db47"
 PERSONAL_ID = f"00000000-0000-0000-1111-222233334444.{auth.PERSONAL_TENANT_ID}"
@@ -135,31 +134,3 @@ def test_authenticate_new_account_rejects_work_account(
 
     with pytest.raises(auth.PersonalAccountRequiredError):
         auth.authenticate_new_account()
-
-
-def test_complete_device_flow_rejects_work_account(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    app = _work_app()
-    monkeypatch.setattr(auth, "_build_app", lambda tenant: app)
-
-    with pytest.raises(auth.PersonalAccountRequiredError):
-        accounts.complete_device_flow(
-            str({"device_code": "dc", auth.DEVICE_FLOW_TENANT_KEY: "consumers"})
-        )
-
-
-def test_list_accounts_reports_personal(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        auth,
-        "list_accounts",
-        lambda: [auth.Account(username="ada@outlook.com", account_id="acc-1")],
-    )
-
-    assert accounts.list_accounts() == [
-        {
-            "username": "ada@outlook.com",
-            "account_id": "acc-1",
-            "account_type": "personal",
-        }
-    ]

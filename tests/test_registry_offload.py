@@ -110,3 +110,74 @@ def test_concurrency_limit_is_configurable(monkeypatch: pytest.MonkeyPatch) -> N
     assert registry.max_concurrency() == registry.DEFAULT_MAX_CONCURRENCY
     monkeypatch.delenv(registry.MAX_CONCURRENCY_ENV)
     assert registry.max_concurrency() == registry.DEFAULT_MAX_CONCURRENCY
+
+
+def _record_invalidations(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    from m365_mcp import resource_cache
+
+    calls: list[str] = []
+    monkeypatch.setattr(registry, "_resolved_account", lambda args: "acct")
+    monkeypatch.setattr(
+        resource_cache,
+        "invalidate_for_call",
+        lambda tool, args, account: calls.append(tool) or 0,
+    )
+    return calls
+
+
+def _wait_for(condition: Any, timeout: float = 5.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(0.01)
+    return False
+
+
+def test_cache_is_invalidated_when_the_caller_is_cancelled_mid_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancelling the await cannot stop the worker; its mutation still lands."""
+    calls = _record_invalidations(monkeypatch)
+    started, release = threading.Event(), threading.Event()
+
+    def handler(args: dict[str, Any]) -> dict[str, Any]:
+        started.set()
+        assert release.wait(timeout=10)
+        return dict(DELETE_OK)  # the Graph mutation completed
+
+    async def run() -> None:
+        task = asyncio.create_task(registry._run_handler("m365_delete", handler, {}))
+        while not started.is_set():
+            await asyncio.sleep(0.005)
+        task.cancel()  # e.g. the HTTP client timed out
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert calls == []  # nothing has finished yet
+        release.set()
+
+    asyncio.run(run())
+    assert _wait_for(lambda: calls == ["m365_delete"]), calls
+
+
+def test_failed_mutation_does_not_invalidate(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _record_invalidations(monkeypatch)
+
+    def handler(args: dict[str, Any]) -> dict[str, Any]:
+        raise ValueError("graph said no")
+
+    with pytest.raises(ValueError):
+        asyncio.run(registry._run_handler("m365_delete", handler, {}))
+    assert calls == []
+
+
+def test_async_mutation_still_invalidates_after_it_finishes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _record_invalidations(monkeypatch)
+
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
+        return dict(DELETE_OK)
+
+    asyncio.run(registry._run_handler("m365_delete", handler, {}))
+    assert calls == ["m365_delete"]

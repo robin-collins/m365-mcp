@@ -339,11 +339,9 @@ async def _run_handler(tool: str, handler: Any, args: dict[str, Any]) -> Any:
     if served:
         return value
 
-    result = await _off_loop(lambda: handler(args))
-    if inspect.isawaitable(result):
-        result = await result
-
     def invalidate() -> None:
+        if tool not in resource_cache.MUTATION_INVALIDATES:
+            return
         mutated_account = _resolved_account(args)
         if mutated_account is not None:
             try:
@@ -351,7 +349,19 @@ async def _run_handler(tool: str, handler: Any, args: dict[str, Any]) -> Any:
             except Exception:  # noqa: BLE001 - cache trouble must not fail calls
                 logger.warning("Cache invalidation failed after %s", tool)
 
-    if tool in resource_cache.MUTATION_INVALIDATES:
+    def run_and_invalidate() -> Any:
+        result = handler(args)
+        if not inspect.isawaitable(result):
+            # Invalidate in the worker, right after the mutation: cancelling
+            # the awaiting task (a client timeout) cannot stop this thread, so
+            # the Graph change can land after the caller has gone. Doing it
+            # here keeps the cache from serving stale entries in that case.
+            invalidate()
+        return result
+
+    result = await _off_loop(run_and_invalidate)
+    if inspect.isawaitable(result):
+        result = await result
         await _off_loop(invalidate)
     return result
 

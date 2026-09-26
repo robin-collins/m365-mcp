@@ -32,6 +32,12 @@ unchanged.
 
 ### Fixed
 
+- A mutation whose caller is cancelled (for example an HTTP client timeout) still
+  invalidates the cache: invalidation now runs in the worker thread right
+  after the handler, since cancelling the await cannot stop that thread.
+- `get_cache_manager()` is safe to call from several threads at once; two
+  first calls could previously build two managers (and, on a fresh install,
+  two encryption keys).
 - `account_auth_complete` is single-consumer per session: a second call made
   while the first is polling Microsoft reports `pending` instead of polling
   (and possibly redeeming) the same device flow again.

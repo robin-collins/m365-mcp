@@ -213,7 +213,7 @@ uv run python scripts/build_unified_tool_specs.py --check
 uv run python scripts/generate_tools_doc.py --check
 
 # Golden-prompt evaluation harness (needs ANTHROPIC_API_KEY and credits)
-uv run --group evals python -m evals.runner --help
+uv run python -m evals.runner --help
 ```
 
 Live tests are skipped unless `M365_MCP_LIVE_TESTS=1`. Never set it for

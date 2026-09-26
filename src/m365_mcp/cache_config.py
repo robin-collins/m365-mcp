@@ -133,6 +133,58 @@ TTL_POLICIES: Dict[str, TTLPolicy] = {
 }
 
 
+# TTL policies for the unified tools, keyed by resource rather than tool
+# name (concept §7). Entries are served from cache until stale_seconds;
+# no background refresh is queued for them, so a stale entry is simply
+# served until it expires. Values mirror the legacy list/get policies of
+# the same data:
+# - email: mailbox contents change often (as email_list).
+# - email_folder: carries unread/total counts, so shorter than the
+#   legacy folder tree.
+# - email_rule, calendar, contact, contact_folder: rarely change outside
+#   this server, whose own mutations invalidate them.
+# - event: time-sensitive (as calendar_list_events).
+# - drive_item: moderately changing (as file_list).
+RESOURCE_TTL_POLICIES: dict[str, TTLPolicy] = {
+    "email": TTLPolicy(
+        fresh_seconds=2 * 60,  # 2 minutes fresh
+        stale_seconds=10 * 60,  # 10 minutes stale
+    ),
+    "email_folder": TTLPolicy(
+        fresh_seconds=5 * 60,  # 5 minutes fresh
+        stale_seconds=30 * 60,  # 30 minutes stale
+    ),
+    "email_rule": TTLPolicy(
+        fresh_seconds=15 * 60,  # 15 minutes fresh
+        stale_seconds=1 * 60 * 60,  # 1 hour stale
+    ),
+    "event": TTLPolicy(
+        fresh_seconds=5 * 60,  # 5 minutes fresh
+        stale_seconds=30 * 60,  # 30 minutes stale
+    ),
+    "calendar": TTLPolicy(
+        fresh_seconds=30 * 60,  # 30 minutes fresh
+        stale_seconds=2 * 60 * 60,  # 2 hours stale
+    ),
+    "contact": TTLPolicy(
+        fresh_seconds=20 * 60,  # 20 minutes fresh
+        stale_seconds=2 * 60 * 60,  # 2 hours stale
+    ),
+    "contact_folder": TTLPolicy(
+        fresh_seconds=30 * 60,  # 30 minutes fresh
+        stale_seconds=4 * 60 * 60,  # 4 hours stale
+    ),
+    "drive_item": TTLPolicy(
+        fresh_seconds=10 * 60,  # 10 minutes fresh
+        stale_seconds=1 * 60 * 60,  # 1 hour stale
+    ),
+}
+
+# The CacheManager looks policies up by resource type in TTL_POLICIES.
+# The resource names never collide with the legacy tool-name keys.
+TTL_POLICIES.update(RESOURCE_TTL_POLICIES)
+
+
 # ============================================================================
 # CACHE LIMITS
 # ============================================================================

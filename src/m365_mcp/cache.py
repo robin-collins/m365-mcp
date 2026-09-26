@@ -232,7 +232,11 @@ class CacheManager:
         logger.info("Database schema initialized")
 
     def get_cached(
-        self, account_id: str, resource_type: str, params: dict[str, Any]
+        self,
+        account_id: str,
+        resource_type: str,
+        params: dict[str, Any],
+        enqueue_refresh: bool = True,
     ) -> Optional[tuple[Any, CacheState]]:
         """
         Retrieve cached data with state detection.
@@ -241,6 +245,8 @@ class CacheManager:
             account_id: Microsoft account identifier.
             resource_type: Type of resource (e.g., 'email_list', 'folder_tree').
             params: Parameters used to generate cache key.
+            enqueue_refresh: Whether a stale hit queues a background refresh
+                task. Callers without a registered refresher pass False.
 
         Returns:
             Tuple of (data, state) if found, None if not found or expired.
@@ -306,7 +312,7 @@ class CacheManager:
                 (time.time(), cache_key),
             )
 
-            if state == CacheState.STALE:
+            if state == CacheState.STALE and enqueue_refresh:
                 self._enqueue_refresh_task(conn, account_id, resource_type, params)
 
             return (data, state)

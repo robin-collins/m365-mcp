@@ -204,5 +204,5 @@ def test_unified_surface_loads_from_registry():
         run([case], "unified", ScriptedModel(scripts), ANCHOR, None)
     )
     (call,) = result.calls
-    assert call.tool == "m365_list" and call.schema_valid and call.is_error
-    assert "not implemented yet" in call.result_text
+    assert call.tool == "m365_list" and call.schema_valid and not call.is_error
+    assert "emails from inbox" in call.result_text

@@ -319,3 +319,70 @@ def empty_folder(account_id: str, *, folder_id: str) -> dict[str, Any]:
         "folder_id": folder_id,
         "messages_deleted": delete_count,
     }
+
+
+# ----------------------------------------------------------------------
+# Unified tool surface (m365_* tools)
+# ----------------------------------------------------------------------
+
+
+def list_folders_page(
+    account_id: str,
+    *,
+    parent_folder_id: str | None = None,
+    include_hidden: bool = False,
+    top: int = 20,
+    next_link: str | None = None,
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Fetch one page of top-level or child mail folders.
+
+    Args:
+        account_id: Microsoft account ID.
+        parent_folder_id: Parent folder ID or well-known name; None lists
+            the top level.
+        include_hidden: Whether to include hidden folders.
+        top: Page size.
+        next_link: Graph ``@odata.nextLink`` of a previous page; when set,
+            the other query arguments are ignored.
+
+    Returns:
+        The Graph mailFolder objects of the page and the next page's link.
+    """
+    if next_link:
+        result = graph.request("GET", next_link.replace(graph.BASE_URL, ""), account_id)
+    else:
+        params: dict[str, Any] = {"$select": _FOLDER_SELECT, "$top": top}
+        if include_hidden:
+            params["includeHiddenFolders"] = "true"
+        result = graph.request(
+            "GET", _folders_endpoint(parent_folder_id), account_id, params=params
+        )
+    result = result or {}
+    return list(result.get("value", [])), result.get("@odata.nextLink")
+
+
+def move_folder_to(
+    account_id: str, *, folder_id: str, destination_id: str
+) -> dict[str, Any]:
+    """Move a mail folder under another folder (``POST .../move``).
+
+    Args:
+        account_id: Microsoft account ID.
+        folder_id: The folder to move.
+        destination_id: Destination parent folder ID or well-known name.
+
+    Returns:
+        The moved Graph mailFolder object.
+
+    Raises:
+        ValueError: If Graph returns no folder.
+    """
+    result = graph.request(
+        "POST",
+        f"/me/mailFolders/{folder_id}/move",
+        account_id,
+        json={"destinationId": destination_id},
+    )
+    if not result or "id" not in result:
+        raise ValueError(f"Failed to move mail folder {folder_id}")
+    return result

@@ -1,22 +1,40 @@
 # M365 MCP
 
-Powerful MCP server for Microsoft Graph API - a complete AI assistant toolkit for Outlook, Calendar, OneDrive, and Contacts.
+MCP server for Microsoft Graph: 29 intent-based tools that give an AI
+assistant safe access to Outlook mail, Calendar, Contacts and OneDrive on
+**personal Microsoft accounts** (outlook.com, hotmail.com, live.com).
 
 ## Features
 
-- **Email Management**: Read, send, reply, manage attachments, organize folders
-- **Calendar Intelligence**: Create, update, check availability, respond to invitations
-- **OneDrive Files**: Upload, download, browse with pagination
-- **Contacts**: Search and list contacts from your address book
-- **Multi-Account**: Support for multiple Microsoft accounts (personal, work, school)
-- **Unified Search**: Search across emails, files, events, and people
-- **⚡ High-Performance Caching**: AES-256 encrypted cache with 300x performance improvement
-- **🔒 Security & Compliance**: Encrypted-at-rest cache designed for
-  GDPR/HIPAA-aligned deployments
+- **Small tool surface**: 29 tools in three tiers (16 core, 7 extended, 6 admin,
+  hidden by default) instead of one tool per Graph endpoint. Eight generic
+  `m365_*` tools browse, read, search, create, update, move and delete across
+  eight resource types; dedicated tools cover sending mail, calendar
+  invitations, sharing and file transfer.
+- **Safe by design**: anything that sends mail, notifies attendees, shares a
+  file or deletes data needs `confirm=true`, enforced by the server. Local file
+  access is limited to allowed folders with a deny-list for secrets.
+- **Compact, typed results**: every tool has an `outputSchema`. Lists return
+  previews (not full bodies) with an opaque `next_cursor` and a short summary.
+- **Multi-account**: several personal accounts at once; `account_id` is
+  optional when only one is signed in.
+- **Whole-mailbox search**: email search runs server-side over the entire
+  mailbox, plus events, contacts and OneDrive files in one call.
+- **Free-time finder**: `calendar_find_availability` suggests free slots inside
+  your working hours.
+- **Encrypted caching**: AES-256 SQLCipher cache keyed by account and
+  resource; the only model-facing control is `refresh`.
+- **Hardened transports**: stdio by default; Streamable HTTP with bearer
+  token, constant-time comparison and Origin validation.
+- **Audit log and rate limits**: one JSON log line per call (no argument
+  values or secrets); per-account limits on sends, shares and deletes.
+
+Only personal Microsoft accounts are supported. Work and school accounts are
+rejected at sign-in.
 
 ## Quick Start
 
-**📚 See [QUICKSTART.md](QUICKSTART.md) for complete installation and setup guide.**
+**See [QUICKSTART.md](QUICKSTART.md) for the complete installation and setup guide.**
 
 ### TL;DR
 
@@ -29,7 +47,7 @@ cd m365-mcp && uv sync
 cp .env.example .env
 # Edit .env with your M365_MCP_CLIENT_ID
 
-# 3. Authenticate
+# 3. Sign in a personal Microsoft account
 uv run authenticate.py
 
 # 4. Run
@@ -48,194 +66,152 @@ claude
 
 ### Usage Examples
 
-```bash
-# Email examples
-> read my latest emails with full content
-> reply to the email from John saying "I'll review this today"
-> send an email with attachment to alice@example.com
+```text
+# Email
+> show my unread emails from last week
+> find the email about the Telstra migration
+> reply to Jane saying "Tuesday works" (asks you to confirm before sending)
 
-# Calendar examples  
-> show my calendar for next week
-> check if I'm free tomorrow at 2pm
-> create a meeting with Bob next Monday at 10am
+# Calendar
+> what is on my calendar next week?
+> when am I free for an hour on Thursday?
+> book a dentist appointment on Friday at 9am
 
-# File examples
-> list files in my OneDrive
-> upload this report to OneDrive
-> search for "project proposal" across all my files
+# Files
+> what is in my OneDrive Documents folder?
+> upload budget.xlsx from Downloads to /Documents
+> send me a view-only link to budget.xlsx (asks you to confirm)
 
-# Multi-account
-> list all my Microsoft accounts
-> send email from my work account
+# Contacts and accounts
+> put Jane in my Family contacts folder
+> use my second account for this
 ```
 
 ## Available Tools
 
-### Email Tools
-- **`email_list`** - List emails with optional body content
-- **`email_get`** - Get a specific email with attachments
-- **`email_create_draft`** - Create an email draft with attachment support
-- **`email_send`** - Send email immediately with CC/BCC and attachments
-- **`email_reply`** - Reply while maintaining thread context
-- **`email_reply_all`** - Reply to all recipients in a thread
-- **`email_forward`** - Forward an email
-- **`email_update`** - Update message metadata
-- **`email_move`** - Move email between folders
-- **`email_delete`** - Delete email
-- **`email_get_attachment`** - Download an attachment to a validated local path
-- **`email_mark_read`** - Mark email read or unread
-- **`email_flag`** - Add or clear follow-up flags
-- **`email_add_category`** - Add an Outlook category
-- **`email_archive`** - Archive an email
-- **`search_emails`** - Search emails by query
+The server exposes 29 tools. `M365_MCP_TOOLSETS` (default `core,extended`)
+chooses the tiers; see [Client Configuration](#client-configuration). Every
+Microsoft 365 tool takes an optional `account_id`. The complete input and
+output schema of each tool is in
+[`docs/unified-tools/SCHEMA_REFERENCE.md`](docs/unified-tools/SCHEMA_REFERENCE.md)
+and [`MCP_SERVER_TOOLS.md`](MCP_SERVER_TOOLS.md).
 
-### Calendar Tools
-- **`calendar_list_calendars`** - List calendars
-- **`calendar_create_calendar`** - Create a calendar
-- **`calendar_delete_calendar`** - Delete a calendar
-- **`calendar_list_events`** - List calendar events with details
-- **`calendar_get_event`** - Get specific event details
-- **`calendar_create_event`** - Create events with location and attendees
-- **`calendar_update_event`** - Reschedule or modify events
-- **`calendar_delete_event`** - Cancel events
-- **`calendar_respond_event`** - Accept, decline, or tentatively accept invitations
-- **`calendar_forward_event`** - Forward an event invitation
-- **`calendar_propose_new_time`** - Propose a new meeting time
-- **`calendar_get_free_busy`** - Get free/busy schedules
-- **`calendar_check_availability`** - Check free/busy times for scheduling
-- **`search_events`** - Search calendar events
+Safety: **safe** = read-only; **moderate** = changes data; **dangerous** =
+communicates with other people or grants access; **critical** = destroys data.
+"Confirm" means `confirm=true` is required (`conditional` = only in some
+cases, as described).
 
-### Contact Tools
-- **`contact_list`** - List all contacts
-- **`contact_get`** - Get specific contact details
-- **`contact_create`** - Create a new contact
-- **`contact_update`** - Update contact information
-- **`contact_delete`** - Delete a contact
-- **`contact_create_list`** - Create a contact list
-- **`contact_add_to_list`** - Add contacts to a contact list
-- **`contact_export`** - Export contacts
-- **`search_contacts`** - Search contacts by query
+### Core tier (16, on by default)
 
-### File Tools
-- **`file_list`** - Browse OneDrive files and folders
-- **`file_get`** - Download file content
-- **`file_create`** - Upload files to OneDrive
-- **`file_update`** - Update existing file content
-- **`file_delete`** - Delete files
-- **`file_copy`** - Copy files
-- **`file_move`** - Move files
-- **`file_rename`** - Rename files
-- **`file_share`** - Create sharing links
-- **`file_download_url`** - Get a temporary download URL
-- **`folder_list`** - List OneDrive folders
-- **`folder_get`** - Get folder metadata
-- **`folder_get_tree`** - Build a recursive folder tree
-- **`folder_create`** - Create folders
-- **`folder_move`** - Move folders
-- **`folder_rename`** - Rename folders
-- **`folder_delete`** - Delete folders
-- **`search_files`** - Search files in OneDrive
+| Tool | Safety | What it does |
+|---|---|---|
+| `m365_list` | safe | Browse emails in a folder, events in a time window, calendars, contacts, contact folders, mail folders, inbox rules or OneDrive files (optionally as a tree) |
+| `m365_get` | safe | Read one item by ID: email with body, event with attendees, contact, folder, rule, calendar, OneDrive item, or the status of a copy (`resource="operation"`) |
+| `m365_search` | safe | Find emails, events, contacts or OneDrive files by free text, one type or several at once |
+| `m365_get_content` | moderate | Save a OneDrive file or email attachment to a local file, get a temporary download link, or export a contact as a vCard |
+| `m365_create` | moderate | Create a mail folder, calendar, contact, contact folder or OneDrive folder |
+| `m365_update` | moderate | Mark read, flag, categorise, set importance, rename folders and files, edit contact details |
+| `m365_move` | moderate | Move an email, mail folder, contact or OneDrive item (emails and contacts get a new ID) |
+| `m365_delete` | critical, confirm | Delete an email, folder, rule, event, calendar, contact or OneDrive item (OneDrive items go to the recycle bin; deleting a meeting you organise sends cancellations) |
+| `email_create_draft` | moderate | Create an unsent draft (sends nothing) |
+| `email_send` | dangerous, confirm | Send a new email or a draft |
+| `email_reply` | dangerous, confirm | Reply to the sender or to everyone |
+| `email_forward` | dangerous, confirm | Forward an email with an optional note |
+| `calendar_create_event` | dangerous, conditional | Add an event; confirm required only when attendees would be emailed |
+| `calendar_update_event` | dangerous, conditional | Change an event; confirm required when attendees are notified |
+| `calendar_respond` | dangerous, conditional | Accept, tentatively accept or decline an invitation; confirm required when a response is emailed |
+| `calendar_find_availability` | safe | Show your busy times and suggest free slots inside your working hours (own calendar only) |
 
-### Email Folder And Rule Tools
-- **`emailfolders_list`** - List mail folders
-- **`emailfolders_get`** - Get mail folder metadata
-- **`emailfolders_get_tree`** - Build a recursive mail folder tree
-- **`emailfolders_create`** - Create mail folders
-- **`emailfolders_rename`** - Rename mail folders
-- **`emailfolders_move`** - Move mail folders
-- **`emailfolders_delete`** - Delete mail folders
-- **`emailfolders_mark_all_as_read`** - Mark a folder as read
-- **`emailfolders_empty`** - Empty a mail folder
-- **`emailrules_list`** - List inbox rules
-- **`emailrules_get`** - Get a rule
-- **`emailrules_create`** - Create a rule
-- **`emailrules_update`** - Update a rule
-- **`emailrules_delete`** - Delete a rule
-- **`emailrules_move_top`**, **`emailrules_move_bottom`**, **`emailrules_move_up`**, **`emailrules_move_down`** - Reorder rules
+### Extended tier (7, on by default)
 
-### Utility Tools
-- **`search_unified`** - Search across emails, events, files, and contacts
-- **`account_list`** - Show authenticated Microsoft accounts
-- **`account_authenticate`** - Start authentication for a new Microsoft account
-- **`account_complete_auth`** - Complete authentication after entering the device code
-- **`server_get_version`** - Return server version metadata
+| Tool | Safety | What it does |
+|---|---|---|
+| `drive_upload` | moderate | Upload a local file to OneDrive as a new file or replace an existing one |
+| `drive_copy` | moderate | Copy a OneDrive file or folder (asynchronous; returns an `operation_id`) |
+| `drive_share` | dangerous, confirm | Share a file or folder by link or by inviting named people |
+| `email_folder_mark_all_read` | moderate | Mark every unread message in a mail folder as read (bounded per call) |
+| `email_folder_empty` | critical, confirm | Delete all messages in a mail folder such as Junk Email (bounded per call) |
+| `email_rule_manage` | dangerous, conditional | Create, change, enable/disable or reorder an inbox rule; confirm required for rules that forward, redirect or delete |
+| `calendar_forward` | dangerous, confirm | Forward a meeting invitation to named people |
 
-### Cache Management Tools
-- **`cache_get_stats`** - View cache statistics (size, entries, hit rate)
-- **`cache_invalidate`** - Manually invalidate cache entries by pattern
-- **`cache_task_get_status`** - Check status of queued cache tasks
-- **`cache_task_list`** - List all cache tasks by account or status
-- **`cache_warming_status`** - View cache warming/background refresh status
+### Admin tier (6, hidden by default; add `admin` to `M365_MCP_TOOLSETS`)
 
-## ⚡ High-Performance Caching
+| Tool | Safety | What it does |
+|---|---|---|
+| `account_list` | safe | List the signed-in accounts (needed only with more than one account) |
+| `account_auth_begin` | moderate | Start a device-code sign-in; returns a URL, a code and an `auth_session_id` |
+| `account_auth_complete` | moderate | Finish the sign-in (single non-blocking poll); work or school accounts are rejected |
+| `admin_cache_get` | safe | Cache statistics, background tasks, one task, or warming progress (`view`) |
+| `admin_cache_invalidate` | moderate | Clear cached results for one resource type or all, for one account or all |
+| `admin_server_info` | safe | Server version, protocol versions, enabled toolsets |
 
-M365 MCP includes an intelligent caching system that dramatically improves performance by reducing redundant API calls to Microsoft Graph.
+## High-Performance Caching
+
+Reads through `m365_list` and `m365_get` use an encrypted local cache, which
+cuts repeated Microsoft Graph calls and makes repeated browsing fast.
 
 ### Key Features
 
-- **🔒 AES-256 Encryption**: Cached data is encrypted at rest using SQLCipher by default
-- **⚡ 300x Performance Boost**: Common operations like `folder_get_tree` go from 30s → <100ms
-- **🧠 Intelligent TTL**: Three-state cache (Fresh/Stale/Expired) with automatic refresh
-- **📦 Automatic Compression**: Large entries (≥50KB) automatically compressed (70-80% size reduction)
-- **🔄 Optional Cache Warming**: Set `M365_MCP_CACHE_WARMING=true` to start
-  the background worker, startup warming, and stale-cache refresh queue
-- **🎯 Smart Invalidation**: Write operations automatically invalidate related caches
-- **🌐 Multi-Account**: Complete isolation between different accounts
-- **✅ Compliance Ready**: Encryption and retention controls for regulated deployments
+- **AES-256 encryption**: cached data is encrypted at rest using SQLCipher by default
+- **Three-state TTL per resource**: fresh (returned immediately), stale (still
+  served until it expires) and expired (refetched); for example `email` is
+  fresh for 2 minutes and expires after 10, `drive_item` 10 and 60 minutes
+- **Automatic compression**: entries of 50 KB or more are gzip-compressed
+- **Keys by account and resource**: accounts never share entries; entries
+  are keyed by the resolved account, the resource, the normalised request
+  and the cursor
+- **Smart invalidation**: every mutating tool clears the affected resources
+  for its own account only
+- **Optional cache warming**: set `M365_MCP_CACHE_WARMING=true` to start the
+  background worker
+- **Automatic cleanup**: kept under 2 GB
 
-### Performance Benchmarks
+### The `refresh` parameter
 
-| Operation | Without Cache | With Cache | Speedup |
-|-----------|---------------|------------|---------|
-| `folder_get_tree` | 30s | <100ms | **300x** |
-| `email_list` | 2-5s | <50ms | **40-100x** |
-| `file_list` | 1-3s | <30ms | **30-100x** |
-| Cache Hit Rate | N/A | >80% | **70%+ API call reduction** |
-
-### Cache Configuration
-
-The cache works automatically, but you can control its behavior:
+The model never manages the cache. The only control is `refresh` on
+`m365_list` and `m365_get`:
 
 ```python
-# Use cache (default - recommended)
-folder_get_tree(account_id, path="/Documents")
+# Served from the cache when fresh (default)
+m365_list(resource="drive_item", path="/Documents")
 
-# Force refresh (bypass cache, update with fresh data)
-folder_get_tree(account_id, path="/Documents", force_refresh=True)
-
-# Disable cache for this request only
-email_list(account_id, folder="inbox", use_cache=False)
+# Bypass the cache and fetch fresh data
+m365_list(resource="drive_item", path="/Documents", refresh=True)
+m365_get(resource="email", id=email_id, refresh=True)
 ```
 
 ### Cache Security
 
 - **Encryption**: AES-256 encryption via SQLCipher. If SQLCipher is missing
   while encryption is enabled, startup fails instead of silently using plaintext.
-- **Key Storage**: System keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service)
-- **Fallback**: Environment variable `M365_MCP_CACHE_KEY` for headless servers;
+- **Key storage**: system keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+- **Fallback**: environment variable `M365_MCP_CACHE_KEY` for headless servers;
   if neither keyring nor the env var is available, a generated ephemeral key is
   used with a warning
-- **Plaintext Mode**: Only used when cache encryption is explicitly disabled
+- **Plaintext mode**: only used when cache encryption is explicitly disabled
   by code, primarily for tests and diagnostics
 
-### Cache Management
+### Cache Management (admin tier)
 
-View cache statistics:
+Add `admin` to `M365_MCP_TOOLSETS` to enable the cache tools:
+
 ```python
-stats = cache_get_stats()
-# Returns: total_entries, size_bytes, hit_rate, oldest_entry, etc.
+# Statistics: entries, size, hits, per-resource breakdown
+admin_cache_get(view="stats")
+
+# Background tasks and cache warming progress
+admin_cache_get(view="tasks", status="running")
+admin_cache_get(view="warming")
+
+# Clear cached emails for one account, or everything
+admin_cache_invalidate(scope="email", account_id="me@outlook.com", reason="stale inbox")
+admin_cache_invalidate(scope="all")
 ```
 
-Manually invalidate cache:
-```python
-# Invalidate all email caches
-cache_invalidate("email_*")
-
-# Invalidate specific account's caches
-cache_invalidate("email_*", account_id="account-123")
-```
-
-**📚 For complete cache documentation, see [CLAUDE.md](CLAUDE.md#cache-architecture)**
+**For the cache guides, see [docs/cache_user_guide.md](docs/cache_user_guide.md),
+[docs/cache_examples.md](docs/cache_examples.md) and
+[docs/cache_security.md](docs/cache_security.md); for the architecture, see
+[CLAUDE.md](CLAUDE.md#cache-architecture).**
 
 ## Manual Setup
 
@@ -243,17 +219,21 @@ cache_invalidate("email_*", account_id="account-123")
 
 1. Go to [Azure Portal](https://portal.azure.com) → Microsoft Entra ID → App registrations
 2. New registration → Name: `m365-mcp`
-3. Supported account types: Personal + Work/School
+3. Supported account types: **Personal Microsoft accounts only**
 4. Authentication → Allow public client flows: Yes
 5. API permissions → Add these delegated permissions:
   - offline_access (required for refresh tokens; the CLI retries against the consumers authority if a personal account flags it as reserved)
   - Mail.ReadWrite
   - Calendars.ReadWrite
   - Files.ReadWrite
-  - Contacts.Read
+  - Contacts.ReadWrite
+  - MailboxSettings.Read (working hours for `calendar_find_availability`)
   - People.Read
   - User.Read
 6. Copy Application ID
+
+The default authority is `consumers`. Set `M365_MCP_TENANT_ID` only if you
+know you need a different value; work and school accounts are still rejected.
 
 ### 2. Installation
 
@@ -278,8 +258,13 @@ uv run authenticate.py --re-auth <account-id-or-email>
 # Remove an account, its tokens, and its local data cache
 uv run authenticate.py --remove <account-id-or-email>
 
-# Follow the prompts to authenticate your Microsoft accounts
+# Follow the prompts to sign in your personal Microsoft accounts
 ```
+
+Alternatively add the `admin` tier and let the assistant call
+`account_auth_begin` / `account_auth_complete`. You enter the displayed code
+at the shown URL; the underlying MSAL flow stays on the server and the model
+only sees an opaque `auth_session_id`.
 
 ### 4. Claude Desktop Configuration
 
@@ -459,101 +444,144 @@ async with http_client(
 
 ## Multi-Account Support
 
-Account-scoped tools require an `account_id` argument. Established public tool
-signatures keep their historical parameter order for compatibility, so use the
-tool schema or examples for exact ordering instead of assuming `account_id` is
-always first.
+Every Microsoft 365 tool accepts an optional `account_id` (the account ID or
+its email address).
+
+- With **one** signed-in account, omit it.
+- With **several** accounts, omitting it fails with an error that lists each
+  account's ID and email, so the assistant can ask you which one to use.
+- `account_list` (admin tier) shows the signed-in accounts.
 
 ```python
-# List accounts to get IDs
-accounts = account_list()
-account_id = accounts[0]["account_id"]
+# One account signed in
+m365_list(resource="email", limit=10)
 
-# Use account for operations
-email_send(account_id, "user@example.com", "Subject", "Body", confirm=True)
-email_list(account_id, limit=10, include_body=True)
-calendar_create_event(account_id, "Meeting", "2024-01-15T10:00:00Z", "2024-01-15T11:00:00Z")
+# Several accounts
+m365_list(resource="email", account_id="me@outlook.com", limit=10)
+m365_list(resource="event", account_id="family@hotmail.com")
 ```
+
+All accounts must be personal Microsoft accounts. Cache entries, rate limits
+and cursors are separate per account.
 
 ## Development
 
 ```bash
-# Run tests
-uv run pytest tests/ -v
+# Run unit tests (no network; test_integration.py is a live legacy test)
+uv run pytest tests/ -q --ignore=tests/test_integration.py
+
+# Live read-only tests against a signed-in personal account
+M365_MCP_LIVE_TESTS=1 uv run pytest tests/test_integration_unified.py -v
 
 # Type checking
 uv run pyright
 
-# Format code
+# Format and lint
 uvx ruff format .
-
-# Lint
 uvx ruff check --fix --unsafe-fixes .
+
+# Regenerate and verify the tool specs and reference
+uv run python scripts/build_unified_tool_specs.py
+uv run python scripts/build_unified_tool_specs.py --check
+uv run python scripts/generate_tools_doc.py --check
 ```
+
+The tool surface is defined by the generated specs in
+[`docs/unified-tools/`](docs/unified-tools/README.md); see
+[CLAUDE.md](CLAUDE.md) for the architecture and [CHANGELOG.md](CHANGELOG.md)
+for the 1.0.0 migration table from the old tool names.
 
 ## Example: AI Assistant Scenarios
 
 ### Smart Email Management
+
 ```python
-# Get account ID first
-accounts = account_list()
-account_id = accounts[0]["account_id"]
+# Newest unread mail (previews only)
+page = m365_list(resource="email", email_filter={"unread": True}, limit=10)
 
-# List latest emails with full content
-emails = email_list(account_id, limit=10, include_body=True)
+# Read one message in full
+email = m365_get(resource="email", id=page["items"][0]["id"])
 
-# Reply maintaining thread
-email_reply(account_id, email_id, "Thanks for your message. I'll review and get back to you.", confirm=True)
+# Draft a reply for review, or reply after the user approves
+email_reply(email_id=email["item"]["id"], mode="sender",
+            body="Thanks, I'll review and get back to you.", confirm=True)
 
-# Download attachments locally
-email = email_get(email_id, account_id)
-for attachment in email["attachments"]:
-    email_get_attachment(
-        email_id,
-        attachment["id"],
-        f"C:/Users/you/Downloads/{attachment['name']}",
-        account_id,
-    )
+# Save an attachment locally (inside an allowed folder)
+m365_get_content(resource="email", id=email["item"]["id"], mode="download",
+                 attachment_id=email["item"]["attachments"][0]["id"],
+                 save_path="C:/Users/you/Downloads/attachment.pdf")
+
+# Archive the message
+m365_move(resource="email", id=email["item"]["id"], destination_id="archive")
 ```
 
 ### Intelligent Scheduling
+
 ```python
-# Get account ID first
-accounts = account_list()
-account_id = accounts[0]["account_id"]
+# When am I free for an hour on Thursday?
+calendar_find_availability(start="2026-10-01T00:00:00+09:30",
+                           end="2026-10-02T00:00:00+09:30",
+                           slot_minutes=60, max_slots=3)
 
-# Check availability before scheduling
-availability = calendar_check_availability(account_id, "2024-01-15T10:00:00Z", "2024-01-15T18:00:00Z", ["colleague@company.com"])
+# Private appointment (no attendees, no confirm needed)
+calendar_create_event(subject="Dentist", start="2026-10-02T09:00:00+09:30",
+                      end="2026-10-02T10:00:00+09:30", location="City Dental")
 
-# Create meeting with details
-calendar_create_event(
-    account_id,
-    "Project Review",
-    "2024-01-15T14:00:00Z", 
-    "2024-01-15T15:00:00Z",
-    location="Conference Room A",
-    body="Quarterly review of project progress",
-    attendees=["colleague@company.com", "manager@company.com"]
-)
+# Meeting with attendees emails invitations, so confirm is required
+calendar_create_event(subject="Project Review",
+                      start="2026-10-02T14:00:00+09:30",
+                      end="2026-10-02T15:00:00+09:30",
+                      attendees=[{"address": "colleague@example.com"}], confirm=True)
+```
+
+Date-times use RFC 3339 with an offset. Availability covers your own calendar
+only, because Microsoft Graph does not expose other people's free/busy for
+personal accounts.
+
+### OneDrive
+
+```python
+# Upload, then share by view-only link (asks the user first)
+drive_upload(local_path="C:/Users/you/Downloads/budget.xlsx",
+             parent_path="/Documents")
+drive_share(item_id=item_id, mode="link", link_type="view", confirm=True)
+
+# Copy is asynchronous: check the returned operation_id
+drive_copy(item_id=item_id, destination_path="/Backups")
+m365_get(resource="operation", id=operation_id)
 ```
 
 ## Security Notes
 
+- Personal Microsoft accounts only; work and school sign-ins are rejected
 - Tokens are cached locally in `~/.m365_mcp_token_cache.json`
 - Cache data is encrypted at rest using AES-256 SQLCipher in `~/.m365_mcp_cache.db`
 - Encryption keys are loaded from system keyring or `M365_MCP_CACHE_KEY`; generated non-persistent keys produce a warning
 - SQLCipher is required when cache encryption is enabled; plaintext cache mode is only used when explicitly requested by code
-- Use app-specific passwords if you have 2FA enabled
+- Sending, sharing, deleting and notifying other people require `confirm=true`
+- Local file access is limited to the working directory, the temp directory and `MCP_FILE_ALLOWED_ROOTS`; hidden and secret-like files are refused
+- Email, event, contact and file content is written by other people and is treated as data, never as instructions
 - Only request permissions your app actually needs
 - Consider using a dedicated app registration for production
+
+See [SECURITY.md](SECURITY.md) for the full security guide.
 
 ## Troubleshooting
 
 - **Authentication fails**: Check your CLIENT_ID is correct
-- **"Need admin approval"**: Use `M365_MCP_TENANT_ID=consumers` for personal accounts
+- **"Need admin approval"** or a work/school account is rejected: only personal
+  accounts are supported; leave `M365_MCP_TENANT_ID` unset (default `consumers`)
 - **Missing permissions**: Ensure all required API permissions are granted in Azure
 - **Token errors**: Delete `~/.m365_mcp_token_cache.json` and re-authenticate
+- **"several accounts are signed in"**: pass `account_id` (the error lists the choices)
+- **"Invalid cursor: it does not match this request"**: repeat the call without `cursor`;
+  cursors are valid only for the identical request, for 24 hours, and expire
+  on restart unless `M365_MCP_CURSOR_KEY` is set
+- **Local path refused**: the path must be inside the working directory, the
+  temp directory or a folder in `MCP_FILE_ALLOWED_ROOTS`, and not hidden or
+  secret-like
 - **Cache issues**: Delete `~/.m365_mcp_cache.db` to reset cache. If the stored key cannot open the database, the cache is recreated automatically.
+- **Stale results**: call `m365_list` or `m365_get` with `refresh=true`
 - **Slow first requests**: Normal on a cold cache. Set `M365_MCP_CACHE_WARMING=true` to enable startup warming and stale-cache background refresh.
 
 ## License

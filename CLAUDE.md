@@ -4,105 +4,169 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-M365 MCP is a Model Context Protocol (MCP) server that provides AI assistants with access to Microsoft Graph API. It enables management of Outlook emails, Calendar events, OneDrive files, and Contacts with support for multiple Microsoft accounts (personal, work, school).
+M365 MCP is a Model Context Protocol (MCP) server that gives AI assistants
+access to Microsoft Graph for **personal Microsoft accounts** (outlook.com,
+hotmail.com, live.com): Outlook mail, Calendar, Contacts and OneDrive. Several
+personal accounts can be signed in at once. Work and school accounts are not
+supported and are rejected at sign-in.
+
+Version 1.0.0 exposes 29 intent-based tools (16 `core`, 7 `extended`, 6
+`admin`). The full contract for every tool lives in `docs/unified-tools/`.
 
 ## Architecture
 
-### Core Modules
+### Specification first
 
-- **`src/m365_mcp/server.py`**: Entry point that initializes the FastMCP server
-- **`src/m365_mcp/auth.py`**: Handles MSAL authentication using device flow, token caching to `~/.m365_mcp_token_cache.json`, and multi-account management
-- **`src/m365_mcp/graph.py`**: HTTP client wrapper for Microsoft Graph API with retry logic, pagination, chunked uploads (15×320 KiB chunks), and rate limiting handling
-- **`src/m365_mcp/mcp_instance.py`**: Defines the shared FastMCP instance
-- **`src/m365_mcp/tools/`**: Modular MCP tool package; each domain module
-  registers tools with FastMCP decorators (`@mcp.tool`)
-- **`authenticate.py`**: Standalone script for interactive account authentication
+`docs/unified-tools/` is the source of truth for the tool surface. One JSON
+file per tool (`tools/<tool>.json`) holds the name, title, description,
+annotations, `inputSchema`, `outputSchema`, `validation_rules`, `graph_calls`
+and examples. `index.json` holds the tool order, tiers and default toolsets;
+`legacy_mapping.json` maps the 85 removed v0.x names to their replacements.
 
-### Cache System
+These files are **generated** by `scripts/build_unified_tool_specs.py`; never
+edit them by hand. To change a tool: edit the script, run
+`uv run python scripts/build_unified_tool_specs.py`, then
+`uv run pytest tests/test_unified_tool_specs.py`. The server ships a copy of
+the same specs as package data in `src/m365_mcp/tool_specs/` (also generated;
+`--check` verifies both copies).
 
-- **`src/m365_mcp/cache.py`**: Encrypted SQLite cache manager with AES-256 encryption via SQLCipher
-- **`src/m365_mcp/cache_config.py`**: Cache configuration, TTL policies, and cache key generation
-- **`src/m365_mcp/cache_warming.py`**: Optional startup cache warming when `M365_MCP_CACHE_WARMING=true`
-- **`src/m365_mcp/background_worker.py`**: Async background worker for cache warming and stale-cache refresh tasks
-- **`src/m365_mcp/encryption.py`**: Encryption key management with keyring integration, environment fallback, and ephemeral-key warnings
+### Core modules (`src/m365_mcp/`)
 
-### Key Design Patterns
+- **`server.py`**: entry point; transport selection (stdio or Streamable
+  HTTP), cache lifecycle, bearer authentication for HTTP.
+- **`tools/registry.py`**: `build_server(toolsets)` registers each tool
+  **from its spec JSON** in fixed index order, so `tools/list` cannot drift
+  from the spec. It validates arguments against `inputSchema`, runs the
+  per-tool rules, enforces `confirm` gates and the rate limit, validates
+  output against `outputSchema`, and returns `structuredContent` plus a
+  one-line text `summary`. `M365_MCP_TOOLSETS` selects the tiers.
+- **`tools/unified/`**: the tool handlers (thin layer: schema in,
+  projection out): `mail.py`, `mail_compose.py`, `mail_bulk.py`,
+  `mail_rules.py`, `calendar.py`, `calendar_availability.py`,
+  `contacts.py`, `drive.py`, `search.py`, `admin.py`, plus shared helpers in
+  `common.py`. `tools/handlers.py` holds the per-tool semantic rule hook.
+- **`services/`**: all Graph logic (`mail`, `mail_compose`, `mail_folders`,
+  `mail_rules`, `calendar`, `contacts`, `drive`, `search`, `accounts`).
+  Tools never build Graph URLs; services never import FastMCP (checked by
+  `tests/test_services_boundaries.py`).
+- **`tool_specs/`**: packaged copy of the generated specs (`index.json`,
+  `tools/*.json`).
+- **`projections.py`**: Graph JSON to compact result records (no `@odata.*`,
+  no cache fields, every field present).
+- **`cursors.py`**: opaque, HMAC-protected pagination cursors bound to
+  account, resource and request; 24 hour expiry; the nextLink host is
+  verified. Key from `M365_MCP_CURSOR_KEY`, else random per process.
+- **`errors.py`**: `GraphAPIError` and its mapping to actionable `ToolError`
+  text (no URLs, codes or request IDs). The server runs with
+  `mask_error_details=True`.
+- **`resource_cache.py`**: cache keyed by account + resource + normalised
+  parameters + cursor, over the encrypted cache manager; per-resource TTLs
+  (`cache_config.RESOURCE_TTL_POLICIES`) and a mutation-to-resource
+  invalidation table.
+- **`observability.py`**: middleware writing one JSON audit line per call
+  (tool, resource, hashed account, duration, outcome, retries, result bytes,
+  mutation flag; never argument values, tokens or URLs).
+- **`http_security.py`**: Origin validation (loopback default,
+  `MCP_ALLOWED_ORIGINS`) and constant-time bearer token comparison.
+- **`local_files.py`**: allowed local roots (working directory, temp
+  directory, `MCP_FILE_ALLOWED_ROOTS`), deny-list for dotfiles and secrets,
+  symlink resolution, file-name sanitising.
+- **`rate_limit.py`**: per-account token buckets: 20 per minute for sends,
+  shares and deletes; 300 per minute overall.
+- **`operations.py`**: server-side store for asynchronous Graph operations
+  (`drive_copy` monitor URLs), polled by `m365_get(resource="operation")`.
+- **`auth_sessions.py`**: server-side device-code sessions for
+  `account_auth_begin` / `account_auth_complete` (opaque ID, single use,
+  15 minute TTL; the device code and MSAL flow never reach the model).
+- **`untrusted.py`**: strips control and bidirectional characters, converts
+  HTML to text and caps previews and bodies.
+- **`auth.py`**: MSAL public client, device flow, token cache at
+  `~/.m365_mcp_token_cache.json`, multi-account management. Default
+  authority is `consumers`; work/school accounts are removed at sign-in.
+- **`graph.py`**: HTTP client for Microsoft Graph: retries with exponential
+  backoff (idempotent requests only), `Retry-After`, 401 refresh,
+  pagination, `$batch`, chunked uploads, and a per-call deadline (45 s reads,
+  60 s writes).
+- **`validators.py`**, **`logging_config.py`**, **`health_check.py`**:
+  shared validation helpers, logging setup and health check.
+- **`authenticate.py`** (repository root): standalone interactive sign-in.
 
-- **Multi-Account Architecture**: Account-scoped tool functions require `account_id`, but established public signatures preserve their historical parameter order. Use `account_list()` to get available account IDs.
-- **Token Management**: Uses MSAL `PublicClientApplication` with cached silent refresh during normal MCP requests. The interactive device flow is enabled by `authenticate.py` or `M365_MCP_INTERACTIVE_AUTH=true`.
-- **Pagination**: `graph.request_paginated()` follows `@odata.nextLink` for large result sets
-- **Large File Handling**: Files >4.8MB use resumable upload sessions via `graph.upload_large_file()` and `graph.upload_large_mail_attachment()`
-- **Error Handling**: Graph requests implement exponential backoff for 5xx errors and respect 429 rate limit headers
-- **Encrypted Caching**: AES-256 encrypted SQLite cache with automatic
-  compression, TTL management, and on-demand cache hits for large performance
-  improvements on repeated operations
+### Cache system
 
-### Cache Architecture
+- **`cache.py`**: encrypted SQLite cache manager (AES-256 via SQLCipher)
+- **`cache_config.py`**: TTL policies, limits, cache-key generation
+- **`cache_warming.py`**, **`background_worker.py`**: optional warming and
+  background tasks, enabled with `M365_MCP_CACHE_WARMING=true`
+- **`encryption.py`**: key management (keyring, `M365_MCP_CACHE_KEY`
+  fallback, ephemeral-key warning)
 
-The M365 MCP server includes a comprehensive caching system that dramatically improves performance by reducing redundant API calls to Microsoft Graph.
+### Key design patterns
 
-#### Key Features
+- **Spec-first**: change the spec builder, regenerate, then implement. The
+  live `tools/list` must equal the spec for every toolset combination
+  (`tests/test_tool_registry.py`).
+- **Optional `account_id`**: every Microsoft 365 tool accepts an optional
+  `account_id` (ID or email address). Omitted means the only signed-in
+  account; with several accounts the error lists them.
+  `account_list` (admin tier) shows them.
+- **Confirm gates**: tools that send mail, share, delete, or notify others
+  carry a `confirm` parameter (default `false`) that the server enforces.
+  `meta.confirm` is `always` (`m365_delete`, `email_send`, `email_reply`,
+  `email_forward`, `drive_share`, `email_folder_empty`, `calendar_forward`),
+  `conditional` (`calendar_create_event`, `calendar_update_event`,
+  `calendar_respond`, `email_rule_manage`) or `never`. The model must ask
+  the user first; hosts should also require approval for `dangerous` and
+  `critical` tools.
+- **Resource-tagged sub-objects**: generic tools take `resource` plus exactly
+  one matching sub-object (for example `email_changes`), not `oneOf`.
+- **Compact results**: projections with `next_cursor`, `has_more` and a
+  `summary`; lists return previews, not bodies.
+- **Untrusted content**: subject, preview, body, location and file names are
+  written by other people; the server instructions tell the model to treat
+  them as data.
+- **Layering**: tools (MCP layer) to services (Graph logic) to `graph.py`.
+- **Encrypted caching**: AES-256 SQLite cache with compression, three-state
+  TTL and per-resource invalidation.
 
-1. **AES-256 Encryption**: All cached data is encrypted at rest using SQLCipher
-   - Encryption keys stored securely in system keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service)
-   - Environment variable fallback for headless servers (`M365_MCP_CACHE_KEY`)
-   - Startup fails if SQLCipher is unavailable while encryption is enabled
-   - Generated non-persistent keys are allowed only with an explicit warning
+### Cache architecture
 
-2. **Intelligent TTL Management**: Three-state cache lifecycle
-   - **Fresh** (0-5 min for folder tree, 0-5 min for emails): Return immediately, no API call
-   - **Stale** (5-30 min): Return cached data immediately, refresh in background
-   - **Expired** (>30 min): Fetch fresh data from API, update cache
+The cache reduces repeated Graph calls for reads.
 
-3. **Automatic Compression**: Entries ≥50KB are automatically gzip-compressed (typically 70-80% size reduction)
+1. **AES-256 encryption** via SQLCipher. Keys come from the system keyring
+   (Windows Credential Manager, macOS Keychain, Linux Secret Service), then
+   `M365_MCP_CACHE_KEY`. Startup fails if SQLCipher is unavailable while
+   encryption is enabled; a generated key that cannot be stored is logged as
+   ephemeral.
+2. **Three-state TTL per resource** (`cache_config.RESOURCE_TTL_POLICIES`):
+   Fresh entries are returned with no Graph call; stale entries are still
+   served until they expire; expired entries are refetched. For example
+   `email` is fresh for 2 minutes and expires after 10; `email_folder` 5 and
+   30; `event` 5 and 30; `drive_item` 10 and 60.
+3. **Keys by account + resource**: a key combines the resolved account ID,
+   the resource, the hashed normalised parameters and the cursor. Accounts
+   never share entries.
+4. **Compression** for entries of 50 KB or more.
+5. **Invalidation on write**: each mutating tool clears the affected
+   resources for that account only (`resource_cache.MUTATION_INVALIDATES`).
+6. **Cleanup** keeps the cache under 2 GB (starts at 80%, reduces to 60%).
+7. **Warming** is off by default; `M365_MCP_CACHE_WARMING=true` starts the
+   background worker.
 
-4. **Smart Invalidation**: Write operations automatically invalidate related cache entries
-   - Pattern-based invalidation (e.g., `email_*` invalidates all email caches)
-   - Account-isolated invalidation (changes to account A don't affect account B)
-
-5. **Cache Warming**: Startup warming and stale-cache background refresh are
-   wired behind `M365_MCP_CACHE_WARMING=true`; disabled-by-default mode reports
-   an inactive status provider
-
-6. **Connection Pooling**: Pool of 5 SQLite connections for concurrent access
-
-7. **Automatic Cleanup**: Maintains cache size under 2GB limit
-   - Triggers cleanup at 80% threshold (1.6GB)
-   - Reduces to 60% target (1.2GB) by removing oldest entries
-   - Expires stale entries automatically
-
-#### Cache Tools
-
-Five MCP tools for cache management:
-
-1. **`cache_get_stats()`**: View cache statistics (size, entries, hit rate)
-2. **`cache_invalidate(pattern, account_id?, reason?)`**: Manually invalidate cache entries
-3. **`cache_task_get_status(task_id)`**: Check status of background task
-4. **`cache_task_list(account_id?, status?)`**: List queued/running tasks
-5. **`cache_warming_status()`**: Report startup warming and stale refresh status
-
-#### Performance Impact
-
-- **folder_get_tree**: 30s → <100ms (300x faster)
-- **email_list**: 2-5s → <50ms (40-100x faster)
-- **file_list**: 1-3s → <30ms (30-100x faster)
-- **Cache hit rate**: >80% on typical workloads
-- **API call reduction**: >70% fewer Graph API calls
-
-#### Using Cache Parameters
-
-Most tools support optional caching parameters:
+Cache metadata is never returned to the model. The only model-facing control
+is `refresh` on `m365_list` and `m365_get`:
 
 ```python
-# Use cache by default (recommended)
-folder_get_tree(account_id, path="/Documents")
-
-# Force refresh and update cache
-folder_get_tree(account_id, path="/Documents", force_refresh=True)
-
-# Disable cache for this request only
-email_list(account_id, folder="inbox", use_cache=False)
+m365_list(resource="drive_item", path="/Documents")                # cached
+m365_list(resource="drive_item", path="/Documents", refresh=True)  # bypass
 ```
+
+#### Cache tools (admin tier, hidden by default)
+
+1. **`admin_cache_get(view, task_id?, status?, account_id?, limit?)`**:
+   `view` is `stats`, `tasks`, `task` or `warming`.
+2. **`admin_cache_invalidate(scope, account_id?, reason?)`**: `scope` is a
+   resource type (`email`, `email_folder`, `email_rule`, `event`,
+   `calendar`, `contact`, `contact_folder`, `drive_item`) or `all`.
 
 ### Steering and Guidance Documents
 
@@ -121,88 +185,144 @@ Read and reference the below documentation and ensure compliance for all code ed
 # Install dependencies
 uv sync
 
-# Run authentication (interactive)
+# Sign in a personal account (interactive device flow)
 uv run authenticate.py
 
-# Run MCP server (requires M365_MCP_CLIENT_ID env var)
+# Run the MCP server (requires M365_MCP_CLIENT_ID)
 uv run m365-mcp
 
-# Run tests (requires authenticated account)
-uv run pytest tests/ -v
+# Unit tests (no network; test_integration.py is a live legacy test, skip it)
+uv run pytest tests/ -q --ignore=tests/test_integration.py
+
+# Live read-only tests on a signed-in personal account
+M365_MCP_LIVE_TESTS=1 uv run pytest tests/test_integration_unified.py -v
 
 # Type checking
 uv run pyright
 
-# Format code
+# Format and lint
 uvx ruff format .
-
-# Lint and auto-fix
 uvx ruff check --fix --unsafe-fixes .
+
+# Regenerate and verify the tool specs and the tool reference
+uv run python scripts/build_unified_tool_specs.py
+uv run python scripts/build_unified_tool_specs.py --check
+uv run python scripts/generate_tools_doc.py --check
+
+# Golden-prompt evaluation harness (needs ANTHROPIC_API_KEY and credits)
+uv run --group evals python -m evals.runner --help
 ```
+
+Live tests are skipped unless `M365_MCP_LIVE_TESTS=1`. Never set it for
+write-capable checks against a real mailbox unless you use a disposable
+folder, draft, event and contact.
 
 ## Environment Variables
 
+Authentication and tools:
+
 - **`M365_MCP_CLIENT_ID`** (required): Azure app registration client ID
-- **`M365_MCP_TENANT_ID`** (optional): Defaults to "common". Use "consumers" for personal accounts only
+- **`M365_MCP_TENANT_ID`** (optional): defaults to `consumers`. Only personal
+  accounts are supported.
+- **`M365_MCP_TOOLSETS`** (optional): comma-separated tiers to register,
+  from `core`, `extended`, `admin`. Default `core,extended` (23 tools).
+  Unknown values fail at startup.
+- **`M365_MCP_INTERACTIVE_AUTH`**: set by `authenticate.py`; normal MCP
+  requests never start an interactive flow.
+- **`M365_MCP_CURSOR_KEY`**: HMAC key for pagination cursors. Set it to keep
+  cursors valid across restarts or workers; otherwise a random per-process
+  key is used.
+- **`MCP_FILE_ALLOWED_ROOTS`**: extra local folders (separated by
+  `os.pathsep`) that file tools may read or write.
+- **`MCP_FILE_DOWNLOAD_MAX_MB`**: largest OneDrive download (default 512).
+
+Cache: `M365_MCP_CACHE_KEY`, `M365_MCP_CACHE_DB_PATH`,
+`M365_MCP_CACHE_WARMING`.
+
+HTTP transport: `MCP_TRANSPORT`, `MCP_HOST`, `MCP_PORT`, `MCP_PATH`,
+`MCP_AUTH_METHOD` (`bearer` or `none`), `MCP_AUTH_TOKEN`, `MCP_ALLOW_INSECURE`,
+`MCP_ALLOWED_ORIGINS`. See `.env.example` and `SECURITY.md`.
 
 ## Azure App Requirements
 
-Required delegated permissions:
+Supported account types: personal Microsoft accounts. Public client flows
+must be allowed (device code). Required delegated permissions:
+
 - offline_access
 - Mail.ReadWrite
 - Calendars.ReadWrite
 - Files.ReadWrite
-- Contacts.Read
+- Contacts.ReadWrite
+- MailboxSettings.Read (working hours for `calendar_find_availability`)
 - People.Read
 - User.Read
 
-App must allow public client flows (device code authentication).
-
 ## Testing
 
-Tests in `tests/test_integration.py` run against live Microsoft Graph API and require:
-1. Valid `M365_MCP_CLIENT_ID` in environment
-2. At least one authenticated account (run `authenticate.py` first)
-3. Test account with email, calendar, and OneDrive access
+- `tests/` holds unit tests against a mocked Graph layer
+  (`tests/unified_harness.py`, `tests/fixtures/graph/`), plus conformance
+  tests: `test_tool_registry.py` compares the live `tools/list` with the
+  specs; `test_unified_tool_specs.py` validates the specs;
+  `test_parity_part1.py` / `test_parity_part2.py` cover every legacy
+  mapping row.
+- Every `validation_rules` entry needs a test with its exact error text;
+  spec examples are fixtures.
+- Follow TDD (steering `python.md`): failing test first.
+- The live test `tests/test_integration_unified.py` (reads only) needs
+  `M365_MCP_LIVE_TESTS=1`, a valid `M365_MCP_CLIENT_ID` and an authenticated
+  personal account.
 
 ## Common Patterns
 
-### Working with Account IDs
-```python
-# Account-scoped tools require account_id; check each tool schema for ordering
-accounts = account_list()
-account_id = accounts[0]["account_id"]
+### Working with accounts
 
-# Use in tool calls
-email_send(account_id, to="user@example.com", subject="Test", body="Hello")
+```python
+# With one account signed in, omit account_id everywhere.
+m365_list(resource="email", limit=10)
+
+# With several accounts, pass the ID or the email address.
+m365_list(resource="email", account_id="me@outlook.com", limit=10)
 ```
 
-### Email with Attachments
+### Browse, find, read
+
 ```python
-# Attachments are base64-encoded strings
-attachments = [{
-    "name": "file.pdf",
-    "content_bytes": base64_string,
-    "content_type": "application/pdf"
-}]
-email_send(account_id, to="...", subject="...", body="...", attachments=attachments)
+m365_list(resource="email", email_filter={"unread": True}, limit=20)
+m365_search(query="tax return", resources=["email", "drive_item"])
+m365_get(resource="email", id=email_id)
 ```
 
-### File Uploads
+### Sending mail (confirm gate)
+
 ```python
-# Files auto-switch to chunked upload for files >4.8MB
-file_create(
-    onedrive_path="/Uploads/file.pdf",
-    local_file_path="/path/to/file.pdf",
-    account_id=account_id,
-)
+# Ask the user to approve recipients and content, then:
+email_send(mode="new", to=["alice@example.com"], subject="Hi",
+           body="Hello", confirm=True)
 ```
+
+### File transfer
+
+```python
+# Local file to OneDrive (local path must be inside the allowed folders)
+drive_upload(local_path="C:/Users/me/report.pdf", parent_path="/Documents")
+
+# OneDrive file or attachment to a local file
+m365_get_content(resource="drive_item", id=item_id, mode="download",
+                 save_path="C:/Users/me/Downloads/report.pdf")
+```
+
+Files above 4.8 MB use resumable upload sessions automatically
+(`graph.upload_large_file()`).
 
 ## Important Notes
 
-- FastMCP handles tool registration via decorators; importing
-  `src/m365_mcp/tools/__init__.py` loads the domain modules and registers tools
-  against `mcp_instance.mcp`
-- Graph API requests automatically add `ConsistencyLevel: eventual` header for search queries
-- Email body content returns as plain text (via `outlook.body-content-type="text"` preference header)
-- Folder names in `FOLDERS` dict map user-friendly names to Graph API folder IDs (e.g., "deleted" → "deleteditems")
+- Removing or renaming a tool, parameter or result field is a breaking
+  change: only in a major version, recorded in `CHANGELOG.md`.
+- Graph search queries add `ConsistencyLevel: eventual` automatically.
+- Email and event bodies are returned as plain text
+  (`outlook.body-content-type="text"`), capped by `body_max_chars`.
+- Well-known mail folder aliases: `inbox`, `sent`, `drafts`, `deleted`,
+  `junk`, `archive`, `root`.
+- Moved emails and contacts get a new ID, returned in the result.
+- The generated tool reference is `MCP_SERVER_TOOLS.md`; regenerate it with
+  `scripts/generate_tools_doc.py`, never by hand.

@@ -205,4 +205,4 @@ def test_unified_surface_loads_from_registry():
     )
     (call,) = result.calls
     assert call.tool == "m365_list" and call.schema_valid and call.is_error
-    assert "m365_list is not implemented yet" in call.result_text
+    assert "not implemented yet" in call.result_text

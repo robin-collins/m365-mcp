@@ -30,6 +30,7 @@ from ..observability import AuditLogMiddleware
 from ..tool_specs import load_index, load_tool_spec
 from ..validators import format_validation_error
 from . import handlers
+from . import unified as _unified  # noqa: F401  (registers the handlers)
 
 __all__ = [
     "SERVER_INSTRUCTIONS",

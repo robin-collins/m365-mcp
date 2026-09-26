@@ -11,6 +11,7 @@ import pytest
 from dotenv import load_dotenv
 
 from src.m365_mcp import graph
+from tests.unified_harness import harness  # noqa: F401  (shared fixture)
 
 # Load environment variables from .env file for all tests
 test_env_file = os.getenv("TEST_ENV_FILE", ".env")

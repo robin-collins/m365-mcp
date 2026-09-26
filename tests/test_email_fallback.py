@@ -1,7 +1,9 @@
 """Unit tests for user email fallback functionality."""
 
-import pytest
 from unittest.mock import patch
+
+import pytest
+
 from src.m365_mcp.services.calendar import _get_user_email_with_fallback
 
 

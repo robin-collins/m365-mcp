@@ -3,12 +3,13 @@ Tests for background worker task queue system.
 """
 
 import asyncio
-import pytest
 import tempfile
 from pathlib import Path
 
-from src.m365_mcp.cache import CacheManager
+import pytest
+
 from src.m365_mcp.background_worker import BackgroundWorker
+from src.m365_mcp.cache import CacheManager
 
 
 @pytest.fixture
@@ -283,7 +284,7 @@ class TestRetryLogic:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
-                raise Exception("Simulated failure")
+                raise RuntimeError("Simulated failure")
             return {"success": True}
 
         worker = BackgroundWorker(cache_manager, failing_executor, max_retries=3)
@@ -307,7 +308,7 @@ class TestRetryLogic:
         """Test task marked failed after max retries."""
 
         async def always_failing_executor(operation, parameters):
-            raise Exception("Always fails")
+            raise RuntimeError("Always fails")
 
         worker = BackgroundWorker(cache_manager, always_failing_executor, max_retries=2)
 

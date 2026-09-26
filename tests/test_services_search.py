@@ -7,7 +7,6 @@ from typing import Any
 
 import pytest
 
-from src.m365_mcp import search_router
 from src.m365_mcp.services import search as search_service
 
 
@@ -101,15 +100,6 @@ def _hits(*resources: dict[str, Any]) -> dict[str, Any]:
     return {
         "value": [{"hitsContainers": [{"hits": [{"resource": r} for r in resources]}]}]
     }
-
-
-def test_search_router_shim_reexports_service() -> None:
-    assert search_router.search_emails is search_service.search_emails
-    assert search_router.unified_search is search_service.unified_search
-    assert search_router.graph is search_service.graph
-    assert (
-        search_router._search_contacts_filter is search_service._search_contacts_filter
-    )
 
 
 def test_get_account_type_is_always_personal() -> None:

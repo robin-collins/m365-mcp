@@ -2,12 +2,13 @@
 Tests for encrypted cache manager.
 """
 
-import pytest
 import tempfile
-from pathlib import Path
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from src.m365_mcp import cache as cache_module
 from src.m365_mcp.cache import CacheManager, CacheState
@@ -196,9 +197,8 @@ class TestCacheBasics:
 
         assert len(manager._connection_pool) == 1
 
-        with pytest.raises(RuntimeError, match="boom"):
-            with manager._db():
-                raise RuntimeError("boom")
+        with pytest.raises(RuntimeError, match="boom"), manager._db():
+            raise RuntimeError("boom")
 
         assert manager._connection_pool == []
         manager.close()

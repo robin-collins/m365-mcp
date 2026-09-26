@@ -1,7 +1,8 @@
 # Golden-prompt evaluation harness
 
 Measures how well a Claude model uses a tool surface (concept §16.2): the
-legacy 85-tool surface now, and the unified 29-tool surface once it exists.
+unified 29-tool surface. The legacy 85-tool surface was removed in v1.0.0;
+its baseline can still be re-run from a git tag (see the end of this file).
 
 ## How it works
 
@@ -54,3 +55,15 @@ The default model is `claude-sonnet-5` (override with `--model` or
 before it starts. Each run writes `<out>.md` (metrics table), `<out>.jsonl`
 (one scored result per case) and `<out>.transcripts.json` (full
 conversations and the Graph calls made).
+
+## Running the legacy baseline
+
+`--surface legacy` no longer works in the current tree (`open_surface`
+raises an error pointing here). To re-run the legacy 85-tool baseline, check
+out the tag `v0.2.3-final` in a separate worktree
+(`git worktree add ../m365-legacy v0.2.3-final`), copy this `evals/`
+directory over the tag's, restore the pre-cut-over loader with
+`git show cf1e890:evals/surface.py > evals/surface.py`, run
+`uv sync --group evals`, and then run the commands above with
+`--surface legacy`. `cases.py` and `grading.py` keep the legacy
+expectations for exactly this purpose.

@@ -220,9 +220,9 @@ def test_delete_event_with_and_without_cancellation(
     recorder = _patch_request(monkeypatch)
 
     assert calendar_service.delete_event(ACCOUNT, "e1") == {"status": "deleted"}
-    assert calendar_service.delete_event(
-        ACCOUNT, "e2", send_cancellation=False
-    ) == {"status": "deleted"}
+    assert calendar_service.delete_event(ACCOUNT, "e2", send_cancellation=False) == {
+        "status": "deleted"
+    }
 
     assert recorder.calls[0]["method"] == "POST"
     assert recorder.calls[0]["path"] == "/me/events/e1/cancel"
@@ -244,9 +244,7 @@ def test_respond_event(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_check_availability_merges_user(monkeypatch: pytest.MonkeyPatch) -> None:
-    recorder = _patch_request(
-        monkeypatch, {"mail": "Me@example.com"}, {"value": []}
-    )
+    recorder = _patch_request(monkeypatch, {"mail": "Me@example.com"}, {"value": []})
     start = datetime(2026, 1, 1, 10, tzinfo=UTC)
     end = datetime(2026, 1, 1, 11, tzinfo=UTC)
 
@@ -308,8 +306,7 @@ def test_list_calendars(monkeypatch: pytest.MonkeyPatch, cache: FakeCache) -> No
     assert captured["path"] == "/me/calendars"
     assert captured["params"] == {
         "$select": (
-            "id,name,color,canEdit,canShare,canViewPrivateItems,owner,"
-            "isDefaultCalendar"
+            "id,name,color,canEdit,canShare,canViewPrivateItems,owner,isDefaultCalendar"
         )
     }
     assert result[0]["_cache_status"] == "fresh"
@@ -345,9 +342,7 @@ def test_delete_calendar(monkeypatch: pytest.MonkeyPatch, cache: FakeCache) -> N
     recorder = _patch_request(monkeypatch, {"isDefaultCalendar": False})
 
     assert calendar_service.delete_calendar(ACCOUNT, "c1") == {"status": "deleted"}
-    assert recorder.calls[0]["path"] == (
-        "/me/calendars/c1?$select=isDefaultCalendar"
-    )
+    assert recorder.calls[0]["path"] == ("/me/calendars/c1?$select=isDefaultCalendar")
     assert recorder.calls[1]["method"] == "DELETE"
     assert recorder.calls[1]["path"] == "/me/calendars/c1"
     assert cache.invalidations == [

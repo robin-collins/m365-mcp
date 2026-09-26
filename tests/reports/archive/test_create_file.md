@@ -40,7 +40,7 @@ The test was attempting to:
 ### Validation Logic
 The validator checks:
 ```python
-if not trimmed.startswith('/'):
+if not trimmed.startswith("/"):
     reason = "must start with '/'"
     _log_failure(...)
     raise ValidationError(...)

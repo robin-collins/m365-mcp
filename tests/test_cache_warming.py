@@ -4,11 +4,12 @@ This module tests the CacheWarmer class and cache warming operations.
 """
 
 import asyncio
-import pytest
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from m365_mcp import cache as cache_module
 from m365_mcp import resource_cache
@@ -247,7 +248,7 @@ class TestWarmingLoop:
 
         def failing_executor(account_id: str, operation: str, params: dict[str, Any]):
             """Executor that always fails."""
-            raise Exception("Simulated failure")
+            raise RuntimeError("Simulated failure")
 
         single_account = [mock_accounts[0]]
         warmer = CacheWarmer(cache_manager, failing_executor, single_account)
@@ -364,7 +365,7 @@ class TestWarmingStatus:
 
         # Execute warming synchronously for this test
         queue = warmer._build_warming_queue()
-        warmer.warming_started_at = datetime.now(timezone.utc)
+        warmer.warming_started_at = datetime.now(UTC)
         warmer.operations_total = len(queue)
         await warmer._warming_loop(queue)
 

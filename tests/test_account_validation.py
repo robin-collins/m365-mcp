@@ -5,12 +5,12 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
+from msal import PublicClientApplication
 
 from src.m365_mcp.services import accounts as account_service
-from src.m365_mcp.tools import account as account_tools
 
 
 def test_account_list_serialises_namedtuple(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -25,7 +25,7 @@ def test_account_list_serialises_namedtuple(monkeypatch: pytest.MonkeyPatch) -> 
     ]
     monkeypatch.setattr(account_service.auth, "list_accounts", lambda: accounts)
 
-    result = account_tools.account_list.fn()
+    result = account_service.list_accounts()
 
     assert result == [
         {
@@ -53,14 +53,17 @@ def test_account_authenticate_returns_flow_details(
     }
 
     class FakeApp:
+        def __init__(self) -> None:
+            self.scopes: list[str] = []
+
         def initiate_device_flow(self, scopes: Iterable[str]) -> dict[str, Any]:
-            self.scopes = list(scopes)  # type: ignore[attr-defined]
+            self.scopes = list(scopes)
             return flow
 
     fake_app = FakeApp()
     monkeypatch.setattr(account_service.auth, "get_app", lambda: (fake_app, "common"))
 
-    result = account_tools.account_authenticate.fn()
+    result = account_service.begin_device_flow()
 
     assert result["status"] == "authentication_required"
     assert result["device_code"] == flow["user_code"]
@@ -145,7 +148,7 @@ def test_account_authenticate_raises_when_flow_missing_user_code(
     )
 
     with pytest.raises(Exception, match="Failed to get device code"):
-        account_tools.account_authenticate.fn()
+        account_service.begin_device_flow()
 
 
 def test_account_complete_auth_rejects_invalid_cache(
@@ -156,7 +159,7 @@ def test_account_complete_auth_rejects_invalid_cache(
     monkeypatch.setattr(account_service.auth, "get_app", lambda: (None, "common"))
 
     with pytest.raises(ValueError, match="Invalid flow cache"):
-        account_tools.account_complete_auth.fn("not-a-dict")
+        account_service.complete_device_flow("not-a-dict")
 
 
 def test_account_complete_auth_returns_pending_status(
@@ -185,7 +188,7 @@ def test_account_complete_auth_returns_pending_status(
     captured: dict[str, Any] = {}
     monkeypatch.setattr(account_service.auth, "get_app", lambda: (FakeApp(), "common"))
 
-    result = account_tools.account_complete_auth.fn(str(flow_cache))
+    result = account_service.complete_device_flow(str(flow_cache))
 
     assert result["status"] == "pending"
     assert "Authentication is still pending" in result["message"]
@@ -220,7 +223,7 @@ def test_account_complete_auth_returns_success(
 
     monkeypatch.setattr(account_service.auth, "get_app", lambda: (FakeApp(), "common"))
 
-    result = account_tools.account_complete_auth.fn(str(flow_cache))
+    result = account_service.complete_device_flow(str(flow_cache))
 
     assert result == {
         "status": "success",
@@ -731,7 +734,9 @@ def test_device_flow_records_issuing_tenant(monkeypatch: pytest.MonkeyPatch) -> 
         account_service.auth, "_build_app", lambda tenant_id: consumer_app
     )
 
-    app, flow = account_service.auth._initiate_device_flow(FakeApp(True), "common")
+    app, flow = account_service.auth._initiate_device_flow(
+        cast(PublicClientApplication, FakeApp(True)), "common"
+    )
 
     assert app is consumer_app
     assert flow[account_service.auth.DEVICE_FLOW_TENANT_KEY] == "consumers"
@@ -763,7 +768,7 @@ def test_account_complete_auth_uses_issuing_tenant(
         "device_code": "dc",
         account_service.auth.DEVICE_FLOW_TENANT_KEY: "consumers",
     }
-    result = account_tools.account_complete_auth.fn(str(flow))
+    result = account_service.complete_device_flow(str(flow))
 
     assert result["status"] == "pending"
     assert built == ["consumers"]

@@ -31,6 +31,12 @@ from .fake_graph import ACCOUNT_EMAIL, ACCOUNT_ID, FakeGraph
 
 SURFACES = ("legacy", "unified")
 
+LEGACY_SURFACE_REMOVED = (
+    "The legacy 85-tool surface was removed in v1.0.0. To re-run the legacy "
+    "baseline, check out the git tag v0.2.3-final in a worktree; see "
+    "'Running the legacy baseline' in evals/README.md."
+)
+
 
 class _NoSleepTime:
     """``time`` stand-in for ``graph.py`` whose ``sleep`` returns at once."""
@@ -56,8 +62,7 @@ class Surface:
 def _load_server(name: str, toolsets: str | None) -> Any:
     """Return the FastMCP server object for ``name``."""
     if name == "legacy":
-        importlib.import_module("m365_mcp.tools")
-        return importlib.import_module("m365_mcp.mcp_instance").mcp
+        raise RuntimeError(LEGACY_SURFACE_REMOVED)
     if name == "unified":
         if toolsets:
             os.environ["M365_MCP_TOOLSETS"] = toolsets

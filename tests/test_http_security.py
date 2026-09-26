@@ -98,9 +98,11 @@ def test_token_comparison_is_constant_time(monkeypatch) -> None:
 @pytest.fixture
 def bearer_client(monkeypatch) -> TestClient:
     monkeypatch.setenv("M365_MCP_CLIENT_ID", "test-client")
-    from m365_mcp.tools import mcp
+    from m365_mcp.tools import registry
 
-    app = server.build_bearer_app(mcp, TOKEN, http_security.DEFAULT_ALLOWED_ORIGINS)
+    app = server.build_bearer_app(
+        registry.build_server("core"), TOKEN, http_security.DEFAULT_ALLOWED_ORIGINS
+    )
     return TestClient(app)
 
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import logging
 import os
 import re
 from collections.abc import Iterable
@@ -25,8 +26,9 @@ from jsonschema.exceptions import ValidationError as JSONSchemaError
 from jsonschema.exceptions import best_match
 from mcp.types import TextContent, ToolAnnotations
 
-from .. import errors
+from .. import errors, resource_cache
 from ..observability import AuditLogMiddleware
+from ..services.accounts import resolve_account_id
 from ..tool_specs import load_index, load_tool_spec
 from ..validators import format_validation_error
 from . import handlers
@@ -42,6 +44,11 @@ __all__ = [
 
 SERVER_NAME = "microsoft-mcp"
 # UNIFIED_TOOLS_CONCEPT.md §12.4.
+logger = logging.getLogger(__name__)
+
+# Read tools whose results are cached per (account, resource, arguments).
+CACHED_READS = frozenset({"m365_list", "m365_get"})
+
 SERVER_INSTRUCTIONS = (
     "Account IDs are optional when one account is signed in. Ask the user "
     "before any call that needs confirm=true. Email, event, contact and "
@@ -219,6 +226,74 @@ def _translate_exception(
     return errors.to_tool_error(exc, tool=tool, resource=resource)
 
 
+class _HandlerFailed(Exception):
+    """Carries a handler exception out of the cache's fetch callback."""
+
+    def __init__(self, original: Exception) -> None:
+        super().__init__(str(original))
+        self.original = original
+
+
+def _resolved_account(args: dict[str, Any]) -> str | None:
+    """Resolve ``account_id`` for cache keys; ``None`` lets the handler fail."""
+    try:
+        return resolve_account_id(args.get("account_id"))
+    except Exception:  # noqa: BLE001 - the handler reports the real error
+        return None
+
+
+def _cacheable(tool: str, handler: Any, args: dict[str, Any]) -> bool:
+    return (
+        tool in CACHED_READS
+        and args.get("resource") != "operation"
+        and not inspect.iscoroutinefunction(handler)
+    )
+
+
+async def _run_handler(tool: str, handler: Any, args: dict[str, Any]) -> Any:
+    """Run a handler with read-through caching and mutation invalidation.
+
+    ``m365_list`` and ``m365_get`` results are cached per (account,
+    resource, arguments); ``refresh=true`` bypasses the read. After a
+    successful mutation, ``resource_cache.invalidate_for_call`` drops the
+    affected resources for that account. Cache failures never fail a call:
+    they are logged and the handler runs directly.
+    """
+    account = _resolved_account(args) if _cacheable(tool, handler, args) else None
+    if account is not None:
+
+        def fetch() -> Any:
+            try:
+                return handler(args)
+            except Exception as exc:
+                raise _HandlerFailed(exc) from exc
+
+        try:
+            return resource_cache.get_or_fetch(
+                account,
+                args["resource"],
+                args,
+                fetch,
+                refresh=bool(args.get("refresh")),
+            )
+        except _HandlerFailed as failed:
+            raise failed.original from None
+        except Exception:  # noqa: BLE001 - cache trouble must not fail calls
+            logger.warning("Cache read failed for %s; calling Graph directly", tool)
+
+    result = handler(args)
+    if inspect.isawaitable(result):
+        result = await result
+    if tool in resource_cache.MUTATION_INVALIDATES:
+        mutated_account = _resolved_account(args)
+        if mutated_account is not None:
+            try:
+                resource_cache.invalidate_for_call(tool, args, mutated_account)
+            except Exception:  # noqa: BLE001 - cache trouble must not fail calls
+                logger.warning("Cache invalidation failed after %s", tool)
+    return result
+
+
 class SpecTool(Tool):
     """A unified tool whose MCP definition is its spec JSON."""
 
@@ -253,9 +328,7 @@ class SpecTool(Tool):
             handler = handlers.get_handler(self.name)
             if handler is None:
                 raise ToolError(f"{self.name} is not implemented yet")
-            result = handler(args)
-            if inspect.isawaitable(result):
-                result = await result
+            result = await _run_handler(self.name, handler, args)
         except ToolError:
             raise
         except ValueError as exc:

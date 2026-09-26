@@ -212,12 +212,8 @@ uv run python scripts/build_unified_tool_specs.py
 uv run python scripts/build_unified_tool_specs.py --check
 uv run python scripts/generate_tools_doc.py --check
 
-<<<<<<< HEAD
-# Golden-prompt evaluation harness (needs ANTHROPIC_API_KEY and credits)
-=======
 # Golden-prompt evaluation harness (anthropic is a dev dependency; needs
 # ANTHROPIC_API_KEY and credits, or --base-url for a local model)
->>>>>>> 15a702a (Docs sweep for v1.0.0: rewrite MCP_SERVER_TOOLS.md header and sections 1-3, fix test layout and commands in CLAUDE.md, steering, README, QUICKSTART, FILETREE)
 uv run python -m evals.runner --help
 ```
 

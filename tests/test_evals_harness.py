@@ -226,3 +226,26 @@ def test_errored_runs_never_count_as_success() -> None:
     assert summary["run_errors"] == 3
     assert summary["task_success"] == 0.0 and summary["correct_first_tool"] == 0.0
     assert "INVALID RUN" in render_markdown("t", "legacy", "m", ANCHOR, results)
+
+
+def test_local_endpoint_model_client(monkeypatch) -> None:
+    from evals.runner import AnthropicModel
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    model = AnthropicModel("local-model", base_url="http://10.10.10.10:1234")
+    assert str(model.client.base_url).startswith("http://10.10.10.10:1234")
+    sent: dict = {}
+
+    class FakeMessages:
+        def create(self, **kwargs):
+            sent.update(kwargs)
+            return "response"
+
+    model.client.messages = FakeMessages()  # type: ignore[assignment]
+    assert model.create("system", [], [{"role": "user", "content": "hi"}]) == "response"
+    assert "cache_control" not in sent, "prompt caching is Anthropic-only"
+
+    hosted = AnthropicModel("claude-sonnet-5", api_key="test-key")
+    hosted.client.messages = FakeMessages()  # type: ignore[assignment]
+    hosted.create("system", [], [])
+    assert sent["cache_control"] == {"type": "ephemeral"}

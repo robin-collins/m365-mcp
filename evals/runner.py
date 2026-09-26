@@ -64,29 +64,70 @@ class ModelClient(Protocol):
 
 
 class AnthropicModel:
-    """Claude through the official Anthropic SDK."""
+    """A model behind an Anthropic-style Messages API.
 
-    def __init__(self, model: str) -> None:
+    Talks to Anthropic through the official SDK, or (with ``base_url``) to
+    any server that implements ``POST /v1/messages``, such as LM Studio. A
+    local server is queried for its own model list, is sent no prompt-cache
+    parameter, and reads its key from ``M365_EVAL_API_KEY`` (any value
+    works for LM Studio).
+    """
+
+    def __init__(
+        self, model: str, base_url: str | None = None, api_key: str | None = None
+    ) -> None:
         import anthropic
 
         self.model = model
-        self.client = anthropic.Anthropic(max_retries=5)
+        self.base_url = base_url
+        if base_url:
+            self.client = anthropic.Anthropic(
+                base_url=base_url,
+                api_key=api_key or os.environ.get("M365_EVAL_API_KEY", "lm-studio"),
+                max_retries=2,
+                timeout=900.0,
+            )
+        else:
+            self.client = anthropic.Anthropic(api_key=api_key, max_retries=5)
 
     def check_model(self) -> str:
         """Confirm the model ID exists; return its display name."""
-        info = self.client.models.retrieve(self.model)
-        return f"{info.display_name} ({info.id})"
+        if not self.base_url:
+            info = self.client.models.retrieve(self.model)
+            return f"{info.display_name} ({info.id})"
+        import httpx
+
+        listing = httpx.get(f"{self.base_url.rstrip('/')}/api/v1/models", timeout=30)
+        listing.raise_for_status()
+        payload = listing.json()
+        entries = payload.get("models") or payload.get("data") or []
+        known = {e.get("key") or e.get("id"): e for e in entries}
+        if self.model not in known:
+            sample = ", ".join(sorted(k for k in known if k)[:8])
+            raise SystemExit(
+                f"Model {self.model!r} not on {self.base_url}: {sample} ..."
+            )
+        entry = known[self.model]
+        loaded = (
+            "loaded"
+            if entry.get("loaded_instances")
+            else "NOT loaded (first call loads it)"
+        )
+        return f"{entry.get('display_name', self.model)} ({self.model}, {loaded})"
 
     def create(
         self, system: str, tools: list[dict[str, Any]], messages: list[dict[str, Any]]
     ) -> Any:
+        extra: dict[str, Any] = {}
+        if not self.base_url:
+            extra["cache_control"] = {"type": "ephemeral"}
         return self.client.messages.create(
             model=self.model,
             max_tokens=16000,
             system=system,
             tools=tools,  # type: ignore[arg-type]
             messages=messages,  # type: ignore[arg-type]
-            cache_control={"type": "ephemeral"},
+            **extra,
         )
 
 
@@ -509,6 +550,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument(
+        "--base-url",
+        default=os.environ.get("M365_EVAL_BASE_URL"),
+        help="Anthropic-compatible server, e.g. http://10.10.10.10:1234 (LM Studio)",
+    )
+    parser.add_argument(
         "--toolsets", default=None, help="unified only, e.g. core,extended"
     )
     parser.add_argument("--cases", default=None, help="comma-separated case IDs")
@@ -522,7 +568,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cases:
         wanted = set(args.cases.split(","))
         cases = [c for c in cases if c.id in wanted]
-    model = AnthropicModel(args.model)
+    model = AnthropicModel(args.model, base_url=args.base_url)
     print(f"Model: {model.check_model()}", file=sys.stderr)
     results = asyncio.run(
         run(

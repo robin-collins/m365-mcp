@@ -314,7 +314,7 @@ or notify others need `confirm=true`.
 
 This is the last release of the 85-tool surface. Everything below refers to
 tools that 1.0.0 removes; see the migration table under
-[1.0.0](#100---2026-09-26-unreleased) for the replacement of each one.
+[1.0.0](#100---2026-09-26) for the replacement of each one.
 
 ### Fixed (reliability and authentication review, September 2026)
 
